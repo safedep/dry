@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -30,8 +31,10 @@ var (
 	globalTracer = otel.Tracer("NOP")
 )
 
+// InitTracing initializes the global tracer
 func InitTracing() func(context.Context) error {
 	if !isTracingEnabled() {
+		log.Debugf("Tracing is not enabled")
 		return func(ctx context.Context) error { return nil }
 	}
 
@@ -80,6 +83,9 @@ func InitTracing() func(context.Context) error {
 
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	globalTracer = otel.Tracer(serviceName)
+
+	log.Debugf("Tracer initialized for service=%s env=%s",
+		serviceName, serviceEnv)
 
 	return exporter.Shutdown
 }

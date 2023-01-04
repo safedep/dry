@@ -23,14 +23,13 @@ type MySqlAdapterConfig struct {
 	Username string
 	Password string
 	Database string
-	Logger   log.Logger
 }
 
 func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		config.Username, config.Password, config.Host, config.Port, config.Database)
 
-	config.Logger.Debugf("Connecting to MySQL database with %s@%s:%d", config.Username, config.Host, config.Port)
+	log.Debugf("Connecting to MySQL database with %s@%s:%d", config.Username, config.Host, config.Port)
 
 	var db *gorm.DB
 	var err error
@@ -41,7 +40,7 @@ func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
 	}, func(arg retry.RetryFuncArg) error {
 		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 		if err != nil {
-			config.Logger.Debugf("[%d/%d] Failed to connect to MySQL server: %v",
+			log.Debugf("[%d/%d] Failed to connect to MySQL server: %v",
 				arg.Current, arg.Total, err)
 		}
 

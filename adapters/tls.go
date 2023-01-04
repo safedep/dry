@@ -1,4 +1,4 @@
-package utils
+package adapters
 
 import (
 	"crypto/tls"
@@ -16,7 +16,8 @@ func TlsConfigFromEnvironment(serverName string) (tls.Config, error) {
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(caCert)
 
-	cert, err := tls.LoadX509KeyPair(os.Getenv("APP_SERVICE_TLS_CERT"), os.Getenv("APP_SERVICE_TLS_KEY"))
+	cert, err := tls.LoadX509KeyPair(os.Getenv("APP_SERVICE_TLS_CERT"),
+		os.Getenv("APP_SERVICE_TLS_KEY"))
 	if err != nil {
 		return tls.Config{}, err
 	}

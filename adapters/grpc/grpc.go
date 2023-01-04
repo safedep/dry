@@ -14,7 +14,6 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
-	"github.com/safedep/gateway/services/pkg/common/utils"
 
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	grpcotel "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
@@ -121,7 +120,7 @@ func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer Grp
 }
 
 func grpcTransportCredentials(serverName string) (grpc.DialOption, error) {
-	tlsConfig, err := utils.TlsConfigFromEnvironment(serverName)
+	tlsConfig, err := adapters.TlsConfigFromEnvironment(serverName)
 	if err != nil {
 		return nil, err
 	}

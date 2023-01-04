@@ -66,14 +66,14 @@ func Through[T any](key *CacheKey, ttl time.Duration, fun CachableFunc[T]) (T, e
 		// Cache output from actual function - Must not fail original path
 		serializedData, err := JsonSerialize(realData)
 		if err != nil {
-			log.Warnf("Cache: Failed to serialize type:%T err:%v",
+			log.Debugf("Cache: Failed to serialize type:%T err:%v",
 				realData, err)
 			return realData, nil
 		}
 
 		err = system.Put(key, &serializedData, ttl)
 		if err != nil {
-			log.Warnf("Cache: Failed to put due to: %v", err)
+			log.Debugf("Cache: Failed to put due to: %v", err)
 		}
 
 		return realData, nil

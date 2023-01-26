@@ -1,8 +1,11 @@
 package errors
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+
+	goerrors "errors"
 
 	"github.com/safedep/dry/api"
 )
@@ -40,6 +43,22 @@ func BuildApiError(errType api.ApiErrorType, errCode api.ApiErrorCode,
 			Message: &message,
 		},
 	}
+}
+
+func UnmarshalApiError(body []byte) (*apiErrWrap, bool) {
+	apiErr := api.ApiError{}
+	err := json.Unmarshal(body, &apiErr)
+	if err != nil {
+		return AsApiError(err)
+	}
+
+	if (apiErr.Type == nil) || (apiErr.Code == nil) {
+		return AsApiError(goerrors.New("invalid API error model"))
+	}
+
+	return &apiErrWrap{
+		apiErr: &apiErr,
+	}, true
 }
 
 func (err *apiErrWrap) AddParam(key, val string) *apiErrWrap {

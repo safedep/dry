@@ -4,6 +4,7 @@ import (
 	stderrors "errors"
 	"testing"
 
+	"github.com/safedep/dry/api"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -18,6 +19,12 @@ func TestAsApiError(t *testing.T) {
 			stderrors.New("err"),
 			false,
 		},
+		{
+			"Wrappable error",
+			BuildApiError(api.ApiErrorTypeInvalidRequest,
+				api.ApiErrorCodeAppGenericError, "Test"),
+			true,
+		},
 	}
 
 	for _, test := range cases {
@@ -30,10 +37,24 @@ func TestAsApiError(t *testing.T) {
 }
 
 func TestApiErrorBuilder(t *testing.T) {
-	err := BuildApiError("200", "Test error", "test_type")
+	err := BuildApiError("test_type", "200", "Test error")
 	assert.NotNil(t, err)
 
-	assert.Equal(t, "200", *err.ApiError().Code)
+	assert.Equal(t, api.ApiErrorCode("200"), *err.ApiError().Code)
+	assert.Equal(t, api.ApiErrorType("test_type"), *err.ApiError().Type)
 	assert.Equal(t, "Test error", *err.ApiError().Message)
-	assert.Equal(t, "test_type", *err.ApiError().Type)
+}
+
+func TestApiErrorAddParams(t *testing.T) {
+	err := BuildApiError("test_type", "200", "Test error")
+	err.AddParam("p1", "v1")
+
+	assert.NotNil(t, err.apiErr.Params)
+
+	v, ok := err.apiErr.Params.Get("p1")
+	assert.True(t, ok)
+	assert.Equal(t, "v1", *v.Value)
+
+	_, ok = err.apiErr.Params.Get("p2")
+	assert.False(t, ok)
 }

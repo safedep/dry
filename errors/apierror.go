@@ -3,47 +3,58 @@ package errors
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/safedep/dry/api"
 )
 
 type apiErrWrap struct {
-	apiErr *ApiError
+	apiErr *api.ApiError
 }
 
+// AsApiError safely performs type conversion
+// or build a generic Api Error object with message
 func AsApiError(err error) (*apiErrWrap, bool) {
 	if aErr, ok := err.(*apiErrWrap); ok {
 		return aErr, true
 	}
 
-	return &apiErrWrap{}, false
+	error_type := api.ApiErrorTypeInternalError
+	error_code := api.ApiErrorCodeAppGenericError
+	error_msg := err.Error()
+
+	return &apiErrWrap{
+		apiErr: &api.ApiError{
+			Type:    &error_type,
+			Code:    &error_code,
+			Message: &error_msg,
+		},
+	}, false
 }
 
-func BuildApiError(code, message, errType string) *apiErrWrap {
+func BuildApiError(errType api.ApiErrorType, errCode api.ApiErrorCode,
+	message string) *apiErrWrap {
 	return &apiErrWrap{
-		apiErr: &ApiError{
-			Code:    &code,
-			Message: &message,
+		apiErr: &api.ApiError{
 			Type:    &errType,
+			Code:    &errCode,
+			Message: &message,
 		},
 	}
 }
 
 func (err *apiErrWrap) AddParam(key, val string) *apiErrWrap {
 	if err.apiErr.Params == nil {
-		err.apiErr.Params = &ApiError_Params{}
+		err.apiErr.Params = &api.ApiError_Params{}
 	}
 
-	err.apiErr.Params.AdditionalProperties[key] = struct {
+	err.apiErr.Params.Set(key, struct {
 		Key   *string `json:"key,omitempty"`
 		Value *string `json:"value,omitempty"`
 	}{
-		&key,
-		&val,
-	}
+		Key:   &key,
+		Value: &val,
+	})
 
-	return err
-}
-
-func (err *apiErrWrap) AsError() error {
 	return err
 }
 
@@ -54,12 +65,8 @@ func (err *apiErrWrap) Error() string {
 
 func (err *apiErrWrap) HttpCode() int {
 	switch *err.apiErr.Code {
-	case "404":
+	case api.ApiErrorCodeAppPackageVersionNotFound:
 		return http.StatusNotFound
-	case "401":
-		return http.StatusUnauthorized
-	case "403":
-		return http.StatusForbidden
 	default:
 		return http.StatusInternalServerError
 	}
@@ -71,6 +78,6 @@ func (err *apiErrWrap) Retriable() bool {
 	return false
 }
 
-func (err *apiErrWrap) ApiError() *ApiError {
+func (err *apiErrWrap) ApiError() *api.ApiError {
 	return err.apiErr
 }

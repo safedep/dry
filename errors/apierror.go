@@ -8,6 +8,7 @@ import (
 	goerrors "errors"
 
 	"github.com/safedep/dry/api"
+	"github.com/safedep/dry/utils"
 )
 
 type apiErrWrap struct {
@@ -78,8 +79,18 @@ func (err *apiErrWrap) AddParam(key, val string) *apiErrWrap {
 }
 
 func (err *apiErrWrap) Error() string {
-	return fmt.Sprintf("ApiError: Code=%s Message=%s",
-		*err.apiErr.Code, *err.apiErr.Message)
+	params := "[]"
+	if err.apiErr.Params != nil {
+		params = "["
+		for key, value := range err.apiErr.Params.AdditionalProperties {
+			params = params + " "
+			params = params + fmt.Sprintf("%s:\"%s\"", key, utils.SafelyGetValue(value.Value))
+		}
+		params = params + " ]"
+	}
+
+	return fmt.Sprintf("ApiError: Type=%s Code=%s Message=%s Params=%s",
+		*err.apiErr.Type, *err.apiErr.Code, *err.apiErr.Message, params)
 }
 
 func (err *apiErrWrap) HttpCode() int {

@@ -115,3 +115,40 @@ func TestUnmarshalApiError(t *testing.T) {
 		}
 	}
 }
+
+func TestApiErrorErrorMessage(t *testing.T) {
+	errJson := `
+			{
+				"code": "api_guard_invalid_credentials",
+				"message": "Key has expired, please renew",
+				"type": "invalid_request",
+				"params": {
+					"key1": {
+						"key": "key1",
+						"value": "value1"
+					}
+				}
+			}
+			`
+	apiErr, ok := UnmarshalApiError([]byte(errJson))
+	assert.True(t, ok)
+	assert.ErrorContains(t, apiErr, "Code=api_guard_invalid_credentials")
+	assert.ErrorContains(t, apiErr, "Type=invalid_request")
+	assert.ErrorContains(t, apiErr, "Params=[ key1:\"value1\" ]")
+}
+
+func TestApiErrorErrorMessageWithoutParams(t *testing.T) {
+	errJson := `
+			{
+				"code": "api_guard_invalid_credentials",
+				"message": "Key has expired, please renew",
+				"type": "invalid_request"
+			}
+			`
+	apiErr, ok := UnmarshalApiError([]byte(errJson))
+	assert.True(t, ok)
+	assert.ErrorContains(t, apiErr, "Code=api_guard_invalid_credentials")
+	assert.ErrorContains(t, apiErr, "Type=invalid_request")
+	assert.ErrorContains(t, apiErr, "Params=[]")
+
+}

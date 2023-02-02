@@ -58,3 +58,16 @@ func TestDiff(t *testing.T) {
 		})
 	}
 }
+
+func TestDriftHelper(t *testing.T) {
+	d, _ := Diff("1.2.3", "1.2.4")
+	assert.True(t, d.IsPatch())
+	assert.False(t, d.IsMajor())
+	assert.False(t, d.IsMinor())
+
+	d, _ = Diff("1.2.3", "1.3.5")
+	assert.True(t, d.IsMinor())
+
+	d, _ = Diff("1.2.3", "2.3.5")
+	assert.True(t, d.IsMajor())
+}

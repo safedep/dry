@@ -42,3 +42,19 @@ func Diff(base, head string) (SemverDrift, int64) {
 
 	return NoDrift, 0
 }
+
+func (d SemverDrift) IsNone() bool {
+	return d == NoDrift
+}
+
+func (d SemverDrift) IsMajor() bool {
+	return d == MajorDrift
+}
+
+func (d SemverDrift) IsMinor() bool {
+	return d == MinorDrift
+}
+
+func (d SemverDrift) IsPatch() bool {
+	return d == PatchDrift
+}

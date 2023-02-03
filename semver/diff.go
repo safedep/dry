@@ -1,7 +1,7 @@
 package semver
 
 import (
-	mver "github.com/masterminds/semver"
+	mver "github.com/Masterminds/semver/v3"
 )
 
 type SemverDrift int
@@ -17,7 +17,7 @@ const (
 // Diff calculates the differnce between two semver
 // string and returns the drift type and delta
 // Major > Minor > Patch precedence is followed
-func Diff(base, head string) (SemverDrift, int64) {
+func Diff(base, head string) (SemverDrift, uint64) {
 	v1, err := mver.NewVersion(base)
 	if err != nil {
 		return UnknownDrift, 0

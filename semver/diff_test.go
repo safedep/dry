@@ -12,7 +12,7 @@ func TestDiff(t *testing.T) {
 		base  string
 		head  string
 		drift SemverDrift
-		delta int64
+		delta uint64
 	}{
 		{
 			"Both versions are same",

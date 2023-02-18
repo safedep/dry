@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
+	sig_yaml "sigs.k8s.io/yaml"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -50,4 +52,19 @@ func ToPbJson[T proto.Message](obj T, indent string) (string, error) {
 
 func FromPbJson[T proto.Message](reader io.Reader, obj T) error {
 	return jsonpb.Unmarshal(reader, obj)
+}
+
+func FromYamlToPb[T proto.Message](reader io.Reader, obj T) error {
+	buf := new(bytes.Buffer)
+	_, err := buf.ReadFrom(reader)
+	if err != nil {
+		return err
+	}
+
+	jsonData, err := sig_yaml.YAMLToJSON(buf.Bytes())
+	if err != nil {
+		return err
+	}
+
+	return jsonpb.Unmarshal(bytes.NewReader(jsonData), obj)
 }

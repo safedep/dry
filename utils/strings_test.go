@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"bufio"
+	"bytes"
 	"strings"
 	"testing"
 
@@ -55,6 +57,55 @@ func TestFromYamlToPb(t *testing.T) {
 				assert.Nil(t, err)
 				assert.Equal(t, test.pbMsg.GetSocketAddress().GetAddress(), obj.GetSocketAddress().GetAddress())
 				assert.Equal(t, test.pbMsg.GetSocketAddress().GetPortValue(), obj.GetSocketAddress().GetPortValue())
+			}
+		})
+	}
+}
+
+func TestFromPbToYAML(t *testing.T) {
+	cases := []struct {
+		name         string
+		pbMsg        *envoy_core_v3.Address
+		yamlContains string
+		errMsg       string
+	}{
+		{
+			"YAML contains address",
+			&envoy_core_v3.Address{
+				Address: &envoy_core_v3.Address_SocketAddress{
+					SocketAddress: &envoy_core_v3.SocketAddress{
+						Address:       "1.2.3.4",
+						PortSpecifier: &envoy_core_v3.SocketAddress_PortValue{PortValue: 1234},
+					},
+				},
+			},
+			"address: 1.2.3.4",
+			"",
+		},
+		{
+			"YAML does not contains address",
+			&envoy_core_v3.Address{
+				Address: &envoy_core_v3.Address_SocketAddress{},
+			},
+			"socket_address: {}",
+			"",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			buffer := bytes.Buffer{}
+			writer := bufio.NewWriter(&buffer)
+
+			err := FromPbToYaml(writer, test.pbMsg)
+			if test.errMsg != "" {
+				assert.NotNil(t, err)
+				assert.ErrorContains(t, err, test.errMsg)
+			} else {
+				writer.Flush()
+
+				assert.Nil(t, err)
+				assert.Contains(t, string(buffer.Bytes()), test.yamlContains)
 			}
 		})
 	}

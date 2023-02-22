@@ -68,3 +68,22 @@ func FromYamlToPb[T proto.Message](reader io.Reader, obj T) error {
 
 	return jsonpb.Unmarshal(bytes.NewReader(jsonData), obj)
 }
+
+func FromPbToYaml[T proto.Message](writer io.Writer, obj T) error {
+	jsonData, err := ToPbJson(obj, "")
+	if err != nil {
+		return err
+	}
+
+	yamlData, err := sig_yaml.JSONToYAML([]byte(jsonData))
+	if err != nil {
+		return err
+	}
+
+	_, err = writer.Write(yamlData)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

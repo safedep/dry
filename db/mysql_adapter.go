@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/context"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 type MySqlAdapter struct {
@@ -48,6 +50,10 @@ func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
 	})
 
 	if err != nil {
+		return nil, err
+	}
+
+	if err := db.Use(tracing.NewPlugin(tracing.WithoutMetrics())); err != nil {
 		return nil, err
 	}
 

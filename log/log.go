@@ -37,3 +37,14 @@ func (*nopLogger) Errorf(msg string, args ...any)    {}
 func (*nopLogger) Debugf(msg string, args ...any)    {}
 func (*nopLogger) Fatalf(msg string, args ...any)    {}
 func (n *nopLogger) With(args map[string]any) Logger { return n }
+
+// Constants to standardise logger keys
+const (
+	loggerKeyServiceName = "service"
+	loggerKeyLoggerType  = "l"
+)
+
+// Initialize logger for the given service name
+func Init(name string) {
+	InitZapLogger(name)
+}

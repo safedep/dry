@@ -20,7 +20,7 @@ func init() {
 
 // SetGlobal sets the global logger instance
 func SetGlobal(logger Logger) {
-	globalLogger = globalLogger
+	globalLogger = logger
 }
 
 // Nop logger for internal modules (default)

@@ -22,7 +22,11 @@ type zapLoggerWrapper struct {
 
 func newZapLogger(name string) (Logger, error) {
 	config := zap.NewDevelopmentConfig()
-	logger, err := config.Build(zap.AddCallerSkip(1))
+
+	// We add a caller stack skip of 2 because the host app will be accessing the
+	// zap logger through methods in utils, which in turn will invoke the global
+	// logger implementation
+	logger, err := config.Build(zap.AddCallerSkip(2))
 
 	if err != nil {
 		return nil, err

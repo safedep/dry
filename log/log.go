@@ -45,6 +45,8 @@ const (
 )
 
 // Initialize logger for the given service name
+// This is the contract for initializing logger. The actual implementation
+// of the logger may vary based on runtime environment
 func Init(name string) {
 	InitZapLogger(name)
 }

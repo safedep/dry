@@ -40,3 +40,47 @@ func TestFindInSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestFindAnyWith(t *testing.T) {
+	fn := func(item *map[string]string) bool {
+		if _, ok := (*item)["a"]; ok {
+			return true
+		}
+
+		return false
+	}
+
+	cases := []struct {
+		name  string
+		items []map[string]string
+		found bool
+	}{
+		{
+			"Item is found",
+			[]map[string]string{
+				{
+					"a": "a",
+				},
+			},
+			true,
+		},
+		{
+			"Item is not found",
+			[]map[string]string{
+				{
+					"b": "a",
+				},
+			},
+			false,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			x := FindAnyWith(test.items, fn)
+			found := x != nil
+
+			assert.Equal(t, found, test.found)
+		})
+	}
+}

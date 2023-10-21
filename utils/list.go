@@ -11,3 +11,16 @@ func FindInSlice[T comparable](items []T, x T) int {
 
 	return -1
 }
+
+func FindAnyWith[T any](items []T, matchFn func(item *T) bool) *T {
+	var t *T
+
+	for _, item := range items {
+		if matchFn(&item) {
+			t = &item
+			break
+		}
+	}
+
+	return t
+}

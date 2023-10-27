@@ -95,14 +95,16 @@ func ShutdownTracing() {
 }
 
 func Spanned(current context.Context, name string,
-	f func(context.Context) error) error {
+	tracedFn func(context.Context) error) error {
 	newCtx, span := globalTracer.Start(current, name)
 	defer span.End()
 
-	err := f(newCtx)
+	err := tracedFn(newCtx)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
 	}
 
 	return err

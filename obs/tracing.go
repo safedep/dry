@@ -110,6 +110,18 @@ func Spanned(current context.Context, name string,
 	return err
 }
 
+func SpannedT[T any](current context.Context, name string, tracedFn func(context.Context) (T, error)) (T, error) {
+	var ret T
+	var err error
+
+	err = Spanned(current, name, func(ctx context.Context) error {
+		ret, err = tracedFn(ctx)
+		return err
+	})
+
+	return ret, err
+}
+
 func SetSpanAttribute(ctx context.Context, key string, value string) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attribute.KeyValue{

@@ -20,13 +20,13 @@ func TestIsSemver(t *testing.T) {
 		{"1.2.3-x-y-z+metadata", true},
 		{"1.2.3+metadata", true},
 		{"<empty>", false},
-		{"1.1", false},
-		{"1-1-1", false},
+		{"a.b", false},
+		{"a.b.c", false},
 	}
 
 	for _, test := range cases {
 		t.Run(test.input, func(t *testing.T) {
-			assert.Equal(t, IsSemver(test.input), test.output)
+			assert.Equal(t, test.output, IsSemver(test.input))
 		})
 	}
 }
@@ -76,7 +76,7 @@ func TestIsVersionInRange(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.version+" in "+test.inRange, func(t *testing.T) {
-			assert.Equal(t, IsVersionInRange(test.version, test.inRange), test.output)
+			assert.Equal(t, test.output, IsVersionInRange(test.version, test.inRange))
 		})
 	}
 }

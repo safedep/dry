@@ -2,12 +2,12 @@ package db
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/retry"
 
-	"golang.org/x/net/context"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
@@ -15,6 +15,8 @@ import (
 )
 
 type MySqlAdapter struct {
+	*baseSqlAdapter
+
 	db     *gorm.DB
 	config MySqlAdapterConfig
 }
@@ -28,10 +30,14 @@ type MySqlAdapterConfig struct {
 }
 
 func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		config.Username, config.Password, config.Host, config.Port, config.Database)
-
-	log.Debugf("Connecting to MySQL database with %s@%s:%d", config.Username, config.Host, config.Port)
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+			config.Username, config.Password, config.Host, config.Port, config.Database)
+		log.Debugf("Connecting to MySQL database with %s@%s:%d", config.Username, config.Host, config.Port)
+	} else {
+		log.Debugf("Connecting to MySQL database with DSN from env")
+	}
 
 	var db *gorm.DB
 	var err error
@@ -57,28 +63,9 @@ func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
 		return nil, err
 	}
 
-	mysqlAdapter := &MySqlAdapter{db: db, config: config}
+	baseSqlAdapter := &baseSqlAdapter{db: db}
+	mysqlAdapter := &MySqlAdapter{db: db, config: config, baseSqlAdapter: baseSqlAdapter}
+
 	err = mysqlAdapter.Ping()
-
 	return mysqlAdapter, err
-}
-
-func (m *MySqlAdapter) GetDB() (*gorm.DB, error) {
-	return m.db, nil
-}
-
-func (m *MySqlAdapter) Migrate(tables ...interface{}) error {
-	return m.db.AutoMigrate(tables...)
-}
-
-func (m *MySqlAdapter) Ping() error {
-	sqlDB, err := m.db.DB()
-	if err != nil {
-		return err
-	}
-
-	ctx, cFunc := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cFunc()
-
-	return sqlDB.PingContext(ctx)
 }

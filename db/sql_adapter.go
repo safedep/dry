@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"time"
 
 	"golang.org/x/net/context"
@@ -10,6 +11,7 @@ import (
 // SqlDataAdapter represents a contract for implementing RDBMS data adapters
 type SqlDataAdapter interface {
 	GetDB() (*gorm.DB, error)
+	GetConn() (*sql.DB, error)
 	Migrate(...interface{}) error
 	Ping() error
 }
@@ -20,6 +22,15 @@ type baseSqlAdapter struct {
 
 func (m *baseSqlAdapter) GetDB() (*gorm.DB, error) {
 	return m.db, nil
+}
+
+func (m *baseSqlAdapter) GetConn() (*sql.DB, error) {
+	db, err := m.GetDB()
+	if err != nil {
+		return nil, err
+	}
+
+	return db.DB()
 }
 
 func (m *baseSqlAdapter) Migrate(tables ...interface{}) error {

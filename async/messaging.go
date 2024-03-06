@@ -1,6 +1,9 @@
 package async
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Application defined handler function for incoming messages
 type MessageHandler func(context.Context, []byte) error
@@ -18,5 +21,5 @@ type MessagingService interface {
 
 // Async request response service interface
 type AsyncRequestResponseService interface {
-	Request(ctx context.Context, topic string, data []byte) ([]byte, error)
+	Request(ctx context.Context, topic string, data []byte, timeout time.Duration) ([]byte, error)
 }

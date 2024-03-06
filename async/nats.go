@@ -11,9 +11,6 @@ import (
 
 type NatsMessagingConfig struct {
 	NatsURL string
-
-	// Timeout for async request / reply operations
-	RequestTimeout time.Duration
 }
 
 type natsMessaging struct {
@@ -28,10 +25,6 @@ func NewNatsMessagingService(config NatsMessagingConfig) (MessagingService, erro
 		if config.NatsURL == "" {
 			config.NatsURL = nats.DefaultURL
 		}
-	}
-
-	if config.RequestTimeout == 0 {
-		config.RequestTimeout = 5 * time.Second
 	}
 
 	log.Infof("Connecting to NATS server at %s", config.NatsURL)
@@ -85,8 +78,9 @@ func (n *natsMessaging) QueueSubscribe(topic string, queue string, callback Mess
 	})
 }
 
-func (n *natsMessaging) Request(_ context.Context, topic string, data []byte) ([]byte, error) {
-	res, err := n.conn.Request(topic, data, n.config.RequestTimeout)
+func (n *natsMessaging) Request(_ context.Context,
+	topic string, data []byte, timeout time.Duration) ([]byte, error) {
+	res, err := n.conn.Request(topic, data, timeout)
 	if err != nil {
 		return nil, err
 	}

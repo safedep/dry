@@ -52,6 +52,7 @@ func NewNatsMessagingService(config NatsMessagingConfig) (MessagingService, erro
 
 	return &natsMessaging{
 		config: config,
+		conn:   conn,
 	}, nil
 }
 

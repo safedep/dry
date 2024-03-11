@@ -31,7 +31,7 @@ func NewNatsMessagingService(config NatsMessagingConfig) (MessagingService, erro
 
 	conn, err := nats.Connect(config.NatsURL,
 		nats.RetryOnFailedConnect(true),
-		nats.MaxReconnects(10),
+		nats.MaxReconnects(-1),
 		nats.ReconnectWait(1*time.Second))
 
 	if err != nil {

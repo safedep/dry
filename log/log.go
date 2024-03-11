@@ -1,5 +1,12 @@
 package log
 
+const (
+	logLevelNameInfo  = "info"
+	logLevelNameDebug = "debug"
+	logLevelNameWarn  = "warn"
+	logLevelNameError = "error"
+)
+
 // Logger represents a contract for implementing a logging module
 type Logger interface {
 	Infof(msg string, args ...any)
@@ -40,8 +47,10 @@ func (n *nopLogger) With(args map[string]any) Logger { return n }
 
 // Constants to standardise logger keys
 const (
-	loggerKeyServiceName = "service"
-	loggerKeyLoggerType  = "l"
+	loggerKeyServiceName    = "service"
+	loggerKeyLoggerType     = "l"
+	loggerKeyEnvLogFileName = "APP_LOG_FILE"
+	loggerKeyEnvLogLevel    = "APP_LOG_LEVEL"
 )
 
 // Initialize logger for the given service name

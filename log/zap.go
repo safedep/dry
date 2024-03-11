@@ -1,7 +1,11 @@
 package log
 
 import (
+	"os"
+
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // InitZapLogger initializes a zap based logger
@@ -21,16 +25,55 @@ type zapLoggerWrapper struct {
 }
 
 func newZapLogger(name string) (Logger, error) {
-	config := zap.NewDevelopmentConfig()
+	// Start with the default log level
+	level := zap.NewAtomicLevelAt(zapcore.InfoLevel)
+
+	// Override based on env configuration
+	logLevelFromEnv := os.Getenv(loggerKeyEnvLogLevel)
+	switch logLevelFromEnv {
+	case logLevelNameDebug:
+		level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+	case logLevelNameWarn:
+		level = zap.NewAtomicLevelAt(zapcore.WarnLevel)
+	case logLevelNameError:
+		level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
+	}
+
+	// Our default console logger using development config
+	developmentConfig := zap.NewDevelopmentEncoderConfig()
+	developmentConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	consoleEncoder := zapcore.NewConsoleEncoder(developmentConfig)
+
+	// Create zap core using our default logger. This is required only in development
+	// mode. We should make this configurable i.e. skip the "costly" console log writer
+	// in production to avoid performance bottlenecks related to container console I/O
+	cores := []zapcore.Core{zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level)}
+
+	// Add the file core with production config only when enabled
+	logFile := os.Getenv(loggerKeyEnvLogFileName)
+	if logFile != "" {
+		productionConfig := zap.NewProductionEncoderConfig()
+		productionConfig.TimeKey = "timestamp"
+		productionConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+		file := zapcore.AddSync(&lumberjack.Logger{
+			Filename:   logFile,
+			MaxSize:    100,
+			MaxBackups: 3,
+			MaxAge:     7,
+		})
+
+		fileEncoder := zapcore.NewJSONEncoder(productionConfig)
+		cores = append(cores, zapcore.NewCore(fileEncoder, zapcore.AddSync(file), level))
+	}
+
+	core := zapcore.NewTee(cores...)
 
 	// We add a caller stack skip of 2 because the host app will be accessing the
 	// zap logger through methods in utils, which in turn will invoke the global
 	// logger implementation
-	logger, err := config.Build(zap.AddCallerSkip(2))
-
-	if err != nil {
-		return nil, err
-	}
+	logger := zap.New(core, zap.AddCallerSkip(2))
 
 	logger = logger.With(zap.String(loggerKeyServiceName, name))
 	logger = logger.With(zap.String(loggerKeyLoggerType, "zap"))

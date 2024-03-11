@@ -24,6 +24,7 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/net v0.21.0
 	google.golang.org/grpc v1.62.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.5.4
 	gorm.io/driver/postgres v1.5.6
 	gorm.io/gorm v1.25.7

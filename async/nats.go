@@ -66,6 +66,11 @@ func NewNatsRequestResponseService(config NatsMessagingConfig) (AsyncRequestResp
 	return natsMessagingService, nil
 }
 
+func (n *natsMessaging) Close() error {
+	n.conn.Close()
+	return nil
+}
+
 func (n *natsMessaging) Publish(_ context.Context, topic string, data []byte) error {
 	return n.conn.Publish(topic, data)
 }

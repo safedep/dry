@@ -17,6 +17,7 @@ type MessagingQueueSubscription interface {
 type MessagingService interface {
 	Publish(ctx context.Context, topic string, data []byte) error
 	QueueSubscribe(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error)
+	Close() error
 }
 
 // Async request response service interface

@@ -16,6 +16,10 @@ type EchoRouterConfig struct {
 	ServiceName         string
 	SkipHealthEndpoint  bool
 	SkipMetricsEndpoint bool
+
+	// Used to configure prometheus middleware
+	MetricsNamespace string
+	MetricsSubsystem string
 }
 
 type EchoRouter struct {
@@ -40,15 +44,22 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 
 	if !config.SkipMetricsEndpoint {
 		// https://prometheus.io/docs/concepts/data_model/
-		serviceNameRegex := regexp.MustCompile("^[a-zA-Z_:][a-zA-Z0-9_:]*$")
-		if !serviceNameRegex.MatchString(config.ServiceName) {
+		metricsNameRegex := regexp.MustCompile("^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+		if config.MetricsSubsystem != "" && !metricsNameRegex.MatchString(config.MetricsSubsystem) {
 			return nil,
-				fmt.Errorf("service name %s is invalid. Must match regex %s", config.ServiceName,
-					serviceNameRegex.String())
+				fmt.Errorf("subsystem name %s is invalid. Must match regex %s", config.ServiceName,
+					metricsNameRegex.String())
+		}
+
+		if config.MetricsNamespace != "" && !metricsNameRegex.MatchString(config.MetricsNamespace) {
+			return nil,
+				fmt.Errorf("namespace name %s is invalid. Must match regex %s", config.ServiceName,
+					metricsNameRegex.String())
 		}
 
 		router.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
-			Subsystem: config.ServiceName,
+			Subsystem: config.MetricsSubsystem,
+			Namespace: config.MetricsNamespace,
 			Skipper: func(c echo.Context) bool {
 				if c.Path() == MetricsPath {
 					return true

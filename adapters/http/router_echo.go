@@ -1,7 +1,9 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
+	"regexp"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	echo "github.com/labstack/echo/v4"
@@ -37,6 +39,14 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 	}
 
 	if !config.SkipMetricsEndpoint {
+		// https://prometheus.io/docs/concepts/data_model/
+		serviceNameRegex := regexp.MustCompile("^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+		if !serviceNameRegex.MatchString(config.ServiceName) {
+			return nil,
+				fmt.Errorf("service name %s is invalid. Must match regex %s", config.ServiceName,
+					serviceNameRegex.String())
+		}
+
 		router.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
 			Subsystem: config.ServiceName,
 			Skipper: func(c echo.Context) bool {

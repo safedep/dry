@@ -24,10 +24,19 @@ func TestEchoRouterHealthCheck(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestMetricsWithInvalidServiceName(t *testing.T) {
+	_, err := NewEchoRouter(EchoRouterConfig{
+		ServiceName: "test$",
+	})
+
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, "service name test$ is invalid. Must match regex ^[a-zA-Z_:][a-zA-Z0-9_:]*$")
+}
+
 // Need to be careful. Can't register prometheus metrics multiple times.
 func TestEchoRouterMetrics(t *testing.T) {
 	router, err := NewEchoRouter(EchoRouterConfig{
-		ServiceName: "test",
+		ServiceName: "test_sample_service",
 	})
 
 	assert.NoError(t, err)

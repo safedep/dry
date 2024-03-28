@@ -9,6 +9,7 @@ import (
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+	drylog "github.com/safedep/dry/log"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -75,6 +76,19 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 
 		router.GET(MetricsPath, echoprometheus.NewHandler())
 	}
+
+	// This must be to the end of the middleware chain
+	router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			logger := drylog.With(map[string]interface{}{"request_id": c.Response().Header().Get(echo.HeaderXRequestID)})
+			c.Set("dry_logger", logger)
+
+			// TODO: Figure out a way to pass the logger trasparently
+			// to the business logic layer. We can also switch to a context logger
+			// which flushes the log at the end of the request.
+			return next(c)
+		}
+	})
 
 	return &EchoRouter{
 		config: config,

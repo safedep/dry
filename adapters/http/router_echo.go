@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 
+	"github.com/labstack/echo-contrib/echoprometheus"
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
@@ -10,8 +11,9 @@ import (
 )
 
 type EchoRouterConfig struct {
-	ServiceName        string
-	SkipHealthEndpoint bool
+	ServiceName         string
+	SkipHealthEndpoint  bool
+	SkipMetricsEndpoint bool
 }
 
 type EchoRouter struct {
@@ -32,6 +34,25 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 		router.GET(HealthPath, func(c echo.Context) error {
 			return c.String(200, "OK")
 		})
+	}
+
+	if !config.SkipMetricsEndpoint {
+		router.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
+			Subsystem: config.ServiceName,
+			Skipper: func(c echo.Context) bool {
+				if c.Path() == MetricsPath {
+					return true
+				}
+
+				if c.Path() == HealthPath {
+					return true
+				}
+
+				return false
+			},
+		}))
+
+		router.GET(MetricsPath, echoprometheus.NewHandler())
 	}
 
 	return &EchoRouter{

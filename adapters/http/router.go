@@ -14,7 +14,8 @@ const (
 	OPTIONS RouteMethod = "OPTIONS"
 	ANY     RouteMethod = "ANY"
 
-	HealthPath = "/health"
+	HealthPath  = "/health"
+	MetricsPath = "/metrics"
 )
 
 type Router interface {

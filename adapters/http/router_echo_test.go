@@ -10,12 +10,29 @@ import (
 
 func TestEchoRouterHealthCheck(t *testing.T) {
 	router, err := NewEchoRouter(EchoRouterConfig{
-		ServiceName: "test",
+		ServiceName:         "test",
+		SkipMetricsEndpoint: true,
 	})
 
 	assert.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, HealthPath, nil)
+	rec := httptest.NewRecorder()
+
+	router.Handler().ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+// Need to be careful. Can't register prometheus metrics multiple times.
+func TestEchoRouterMetrics(t *testing.T) {
+	router, err := NewEchoRouter(EchoRouterConfig{
+		ServiceName: "test",
+	})
+
+	assert.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, MetricsPath, nil)
 	rec := httptest.NewRecorder()
 
 	router.Handler().ServeHTTP(rec, req)

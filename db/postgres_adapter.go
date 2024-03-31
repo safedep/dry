@@ -9,6 +9,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
+	"gorm.io/plugin/prometheus"
 )
 
 // GORM internally uses pgx as the default driver for PostgreSQL. The DSN
@@ -19,6 +20,9 @@ type PostgreSqlAdapterConfig struct {
 
 	// A name to report as part of the tracer plugin
 	TracingDBName string
+
+	EnableTracing bool
+	EnableMetrics bool
 }
 
 type PostgreSqlAdapter struct {
@@ -60,8 +64,21 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 
 	log.Debugf("PostgreSQL database connection established")
 
-	if err := db.Use(tracing.NewPlugin(tracing.WithDBName(config.TracingDBName))); err != nil {
-		return nil, err
+	if config.EnableTracing {
+		if err := db.Use(tracing.NewPlugin(tracing.WithDBName(config.TracingDBName))); err != nil {
+			return nil, err
+		}
+	}
+
+	if config.EnableMetrics {
+		metricsMiddleware := prometheus.New(prometheus.Config{
+			DBName:          config.TracingDBName,
+			RefreshInterval: 15,
+		})
+
+		if err := db.Use(metricsMiddleware); err != nil {
+			return nil, err
+		}
 	}
 
 	baseSqlAdapter := &baseSqlAdapter{db}

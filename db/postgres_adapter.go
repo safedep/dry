@@ -24,7 +24,9 @@ type PostgreSqlAdapterConfig struct {
 	EnableTracing bool
 	EnableMetrics bool
 
-	SqlAdapterConfig SqlAdapterConfig
+	// This is an optional pointer to the SqlAdapterConfig struct.
+	// If not supplied, we will use the defaultSqlAdapterConfig.
+	SqlAdapterConfig *SqlAdapterConfig
 }
 
 type PostgreSqlAdapter struct {
@@ -85,7 +87,7 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 
 	baseSqlAdapter := &baseSqlAdapter{
 		db:     db,
-		config: &config.SqlAdapterConfig,
+		config: config.SqlAdapterConfig,
 	}
 
 	err = baseSqlAdapter.SetupConnectionPool()

@@ -23,6 +23,8 @@ type PostgreSqlAdapterConfig struct {
 
 	EnableTracing bool
 	EnableMetrics bool
+
+	SqlAdapterConfig SqlAdapterConfig
 }
 
 type PostgreSqlAdapter struct {
@@ -81,7 +83,16 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 		}
 	}
 
-	baseSqlAdapter := &baseSqlAdapter{db}
+	baseSqlAdapter := &baseSqlAdapter{
+		db:     db,
+		config: &config.SqlAdapterConfig,
+	}
+
+	err = baseSqlAdapter.SetupConnectionPool()
+	if err != nil {
+		return nil, err
+	}
+
 	postgreSqlAdapter := &PostgreSqlAdapter{db: db, config: config, baseSqlAdapter: baseSqlAdapter}
 
 	err = postgreSqlAdapter.Ping()

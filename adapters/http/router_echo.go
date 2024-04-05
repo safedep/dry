@@ -48,13 +48,13 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 		metricsNameRegex := regexp.MustCompile("^[a-zA-Z_:][a-zA-Z0-9_:]*$")
 		if config.MetricsSubsystem != "" && !metricsNameRegex.MatchString(config.MetricsSubsystem) {
 			return nil,
-				fmt.Errorf("subsystem name %s is invalid. Must match regex %s", config.ServiceName,
+				fmt.Errorf("subsystem name %s is invalid. Must match regex %s", config.MetricsSubsystem,
 					metricsNameRegex.String())
 		}
 
 		if config.MetricsNamespace != "" && !metricsNameRegex.MatchString(config.MetricsNamespace) {
 			return nil,
-				fmt.Errorf("namespace name %s is invalid. Must match regex %s", config.ServiceName,
+				fmt.Errorf("namespace name %s is invalid. Must match regex %s", config.MetricsNamespace,
 					metricsNameRegex.String())
 		}
 

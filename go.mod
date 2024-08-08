@@ -1,12 +1,13 @@
 module github.com/safedep/dry
 
-go 1.21
+go 1.22
 
-toolchain go1.21.5
+toolchain go1.22.6
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/envoyproxy/go-control-plane v0.12.0
+	github.com/goark/go-cvss v1.6.7
 	github.com/golang/protobuf v1.5.4
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/labstack/echo-contrib v0.16.0
@@ -47,6 +48,7 @@ require (
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.7.1 // indirect
+	github.com/goark/errs v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

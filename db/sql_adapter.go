@@ -27,6 +27,10 @@ var defaultSqlAdapterConfig SqlAdapterConfig = SqlAdapterConfig{
 	MaxOpenConnections: 50,
 }
 
+func DefaultSqlAdapterConfig() SqlAdapterConfig {
+	return defaultSqlAdapterConfig
+}
+
 type baseSqlAdapter struct {
 	db     *gorm.DB
 	config *SqlAdapterConfig

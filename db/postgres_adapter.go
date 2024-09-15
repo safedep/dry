@@ -1,7 +1,7 @@
 package db
 
 import (
-	"os"
+	"fmt"
 	"time"
 
 	"github.com/safedep/dry/log"
@@ -37,12 +37,17 @@ type PostgreSqlAdapter struct {
 }
 
 func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error) {
-	dsn := os.Getenv("DATABASE_URL")
+	dsn := config.DSN
 	if dsn == "" {
-		dsn = config.DSN
-		log.Debugf("Connecting to PostgreSQL database with DSN from config")
-	} else {
+		dsnFromEnv, err := DatabaseURL()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get database URL from env: %w", err)
+		}
+
 		log.Debugf("Connecting to PostgreSQL database with DSN from env")
+		dsn = dsnFromEnv
+	} else {
+		log.Debugf("Connecting to PostgreSQL database with DSN from config")
 	}
 
 	var db *gorm.DB

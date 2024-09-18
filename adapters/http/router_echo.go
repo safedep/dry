@@ -37,6 +37,21 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 	router.Use(middleware.RequestID())
 	router.Use(otelecho.Middleware(config.ServiceName))
 
+	// Copy the request id from response header to the request
+	// header so that downstream services can use it. This should
+	// come after echo's requestID middleware.
+	router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			requestID := c.Request().Header.Get(echo.HeaderXRequestID)
+			if requestID == "" {
+				requestID = c.Response().Header().Get(echo.HeaderXRequestID)
+				c.Request().Header.Set(echo.HeaderXRequestID, requestID)
+			}
+
+			return next(c)
+		}
+	})
+
 	if !config.SkipHealthEndpoint {
 		router.GET(HealthPath, func(c echo.Context) error {
 			return c.String(200, "OK")

@@ -9,6 +9,7 @@ import (
 
 const (
 	databaseDSNEnvKey          = "DATABASE_URL"
+	databaseTestDSNEnvKey      = "DATABASE_TEST_URL"
 	databaseMigrationDSNEnvKey = "SCHEMA_MIGRATION_DATABASE_URL"
 )
 
@@ -22,6 +23,12 @@ var (
 // using a conventional environment variable.
 func DatabaseURL() (string, error) {
 	return getDSNFromEnv(databaseDSNEnvKey)
+}
+
+// DatabaseTestURL returns the DSN to connect to the test database
+// using a conventional environment variable.
+func DatabaseTestURL() (string, error) {
+	return getDSNFromEnv(databaseTestDSNEnvKey)
 }
 
 // DatabaseMigrationURL returns the DSN to connect to the database

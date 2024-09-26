@@ -1,8 +1,11 @@
 package adapters
 
 import (
+	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"os"
 	"time"
 
 	"github.com/safedep/dry/adapters"
@@ -83,13 +86,59 @@ func GrpcMtlsClient(name, serverName, host, port string, dopts []grpc.DialOption
 	return grpcClient(name, host, port, dopts, configurer)
 }
 
-func GrpcInsecureClient(name, host, port string, dopts []grpc.DialOption, configurer GrpcClientConfigurer) (*grpc.ClientConn, error) {
+type tokenCredential struct {
+	token                    string
+	requireTransportSecurity bool
+}
+
+func (t *tokenCredential) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": t.token,
+	}, nil
+}
+
+func (t *tokenCredential) RequireTransportSecurity() bool {
+	return t.requireTransportSecurity
+}
+
+func GrpcClient(name, host, port string, token string, dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
+	if os.Getenv("INSECURE_GRPC_CLIENT_USE_INSECURE_TRANSPORT") == "true" {
+		return GrpcInsecureClient(name, host, port, token, dopts, NoGrpcConfigurer)
+	} else {
+		return GrpcSecureClient(name, host, port, token, dopts, configurer...)
+	}
+}
+
+func GrpcInsecureClient(name, host, port string, token string, dopts []grpc.DialOption, configurer GrpcClientConfigurer) (*grpc.ClientConn, error) {
 	tc := grpc.WithTransportCredentials(insecure.NewCredentials())
 	dopts = append(dopts, tc)
+
+	if token != "" {
+		dopts = append(dopts, grpc.WithPerRPCCredentials(&tokenCredential{
+			token:                    token,
+			requireTransportSecurity: false,
+		}))
+	}
+
 	return grpcClient(name, host, port, dopts, configurer)
 }
 
-func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer GrpcClientConfigurer) (*grpc.ClientConn, error) {
+func GrpcSecureClient(name, host, port string, token string, dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
+	creds := []grpc.DialOption{}
+	creds = append(creds, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
+
+	if token != "" {
+		creds = append(creds, grpc.WithPerRPCCredentials(&tokenCredential{
+			token:                    token,
+			requireTransportSecurity: true,
+		}))
+	}
+
+	dopts = append(dopts, creds...)
+	return grpcClient(name, host, port, dopts, configurer...)
+}
+
+func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
 	log.Infof("[%s] Connecting to gRPC server %s:%s", name, host, port)
 
 	dopts = append(dopts, grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()))
@@ -115,7 +164,10 @@ func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer Grp
 		return nil, err
 	}
 
-	configurer(conn)
+	for _, c := range configurer {
+		c(conn)
+	}
+
 	return conn, nil
 }
 

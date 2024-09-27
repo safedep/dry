@@ -96,10 +96,15 @@ type tokenCredential struct {
 func (t *tokenCredential) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	h := map[string]string{}
 	for k, v := range t.headers {
-		h[k] = v[0]
+		if len(v) > 0 && v[0] != "" {
+			h[k] = v[0]
+		}
 	}
 
-	h["authorization"] = t.token
+	if t.token != "" {
+		h["authorization"] = t.token
+	}
+
 	return h, nil
 }
 
@@ -120,14 +125,11 @@ func GrpcInsecureClient(name, host, port string, token string, headers http.Head
 	dopts []grpc.DialOption, configurer GrpcClientConfigurer) (*grpc.ClientConn, error) {
 	tc := grpc.WithTransportCredentials(insecure.NewCredentials())
 	dopts = append(dopts, tc)
-
-	if token != "" {
-		dopts = append(dopts, grpc.WithPerRPCCredentials(&tokenCredential{
-			token:                    token,
-			headers:                  headers,
-			requireTransportSecurity: false,
-		}))
-	}
+	dopts = append(dopts, grpc.WithPerRPCCredentials(&tokenCredential{
+		token:                    token,
+		headers:                  headers,
+		requireTransportSecurity: false,
+	}))
 
 	return grpcClient(name, host, port, dopts, configurer)
 }
@@ -136,14 +138,11 @@ func GrpcSecureClient(name, host, port string, token string, headers http.Header
 	dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
 	creds := []grpc.DialOption{}
 	creds = append(creds, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{})))
-
-	if token != "" {
-		creds = append(creds, grpc.WithPerRPCCredentials(&tokenCredential{
-			token:                    token,
-			headers:                  headers,
-			requireTransportSecurity: true,
-		}))
-	}
+	creds = append(creds, grpc.WithPerRPCCredentials(&tokenCredential{
+		token:                    token,
+		headers:                  headers,
+		requireTransportSecurity: true,
+	}))
 
 	dopts = append(dopts, creds...)
 	return grpcClient(name, host, port, dopts, configurer...)

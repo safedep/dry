@@ -6,11 +6,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+
+	"golang.org/x/crypto/scrypt"
 )
 
 const (
-	aesKeySize = 32
-	aesNonce   = 12
+	aesKDFSaltSize = 8
+	aesKeySize     = 32
+	aesNonce       = 12
 )
 
 // This is a simple encryptor interface that does not support crypto configuration
@@ -26,12 +29,23 @@ type aesEncryptor struct {
 }
 
 // Based on: https://go.dev/src/crypto/cipher/example_test.go
-func NewAesEncryptor(key []byte) (SimpleEncryptor, error) {
-	if len(key) != aesKeySize {
+// https://pkg.go.dev/golang.org/x/crypto/scrypt
+func NewAesEncryptor(salt, key string) (SimpleEncryptor, error) {
+	if len(salt) != aesKDFSaltSize {
+		return nil, fmt.Errorf("salt size must be %d", aesKDFSaltSize)
+	}
+
+	sb := []byte(salt)
+	kb, err := scrypt.Key([]byte(key), sb, 1<<15, 8, 1, aesKeySize)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(kb) != aesKeySize {
 		return nil, fmt.Errorf("key size must be %d", aesKeySize)
 	}
 
-	return &aesEncryptor{key: key}, nil
+	return &aesEncryptor{key: kb}, nil
 }
 
 func (a *aesEncryptor) Encrypt(data []byte) ([]byte, error) {

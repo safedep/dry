@@ -1,19 +1,16 @@
 package crypto
 
 import (
-	"crypto/rand"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAesEncryptDecrypt(t *testing.T) {
-	key := make([]byte, 32)
-	_, err := io.ReadFull(rand.Reader, key)
-	assert.NoError(t, err)
+	salt := "saltsalt"
+	key := "keykeykeykey"
 
-	encryptor, err := NewAesEncryptor(key)
+	encryptor, err := NewAesEncryptor(salt, key)
 	assert.NoError(t, err)
 
 	data := []byte("hello world")

@@ -14,6 +14,9 @@ type ManagementClient interface {
 	// Create a key in the API Guard. We will also generate a custom key and
 	// not depend on API Guard's key generation.
 	CreateKey(context.Context, KeyArgs) (ApiKey, error)
+
+	// List policies in the API Guard
+	ListPolicies(context.Context) ([]Policy, error)
 }
 
 type managementClient struct {
@@ -106,4 +109,43 @@ func (c *managementClient) CreateKey(ctx context.Context, args KeyArgs) (ApiKey,
 		KeyId:     apiRes.KeyHash,
 		ExpiresAt: args.ExpiresAt,
 	}, nil
+}
+
+func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {
+	policies, res, err := c.tykClient.PoliciesApi.ListPolicies(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	var result []Policy
+	for _, p := range policies {
+		policy := Policy{
+			ID:                 p.Id,
+			Name:               p.Name,
+			QuotaMax:           p.QuotaMax,
+			QuotaRenewalRate:   p.QuotaRenewalRate,
+			Rate:               p.Rate,
+			RateInterval:       p.Per,
+			ThrottleInterval:   p.ThrottleInterval,
+			ThrottleRetryLimit: p.ThrottleRetryLimit,
+			Active:             p.Active,
+			AccessRights:       make([]PolicyAccess, 0, len(p.AccessRights)),
+		}
+
+		for apiID, access := range p.AccessRights {
+			policy.AccessRights = append(policy.AccessRights, PolicyAccess{
+				ApiID:   apiID,
+				ApiName: access.ApiName,
+			})
+		}
+
+		result = append(result, policy)
+	}
+
+	return result, nil
 }

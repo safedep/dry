@@ -25,6 +25,7 @@ type aesEncryptor struct {
 	key []byte
 }
 
+// Based on: https://go.dev/src/crypto/cipher/example_test.go
 func NewAesEncryptor(key []byte) (SimpleEncryptor, error) {
 	if len(key) != aesKeySize {
 		return nil, fmt.Errorf("key size must be %d", aesKeySize)

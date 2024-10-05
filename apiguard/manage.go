@@ -125,6 +125,7 @@ func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {
 	var result []Policy
 	for _, p := range policies {
 		policy := Policy{
+			InternalID:         p.InternalId,
 			ID:                 p.Id,
 			Name:               p.Name,
 			QuotaMax:           p.QuotaMax,

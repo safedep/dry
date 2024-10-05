@@ -6,8 +6,9 @@ type PolicyAccess struct {
 }
 
 type Policy struct {
-	ID   string
-	Name string
+	InternalID string
+	ID         string
+	Name       string
 
 	Rate         float64
 	RateInterval float64

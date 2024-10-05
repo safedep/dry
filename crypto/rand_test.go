@@ -8,7 +8,7 @@ import (
 
 func BenchmarkRandomBytes(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		RandomBytes(128)
+		_, _ = RandomBytes(128)
 	}
 }
 

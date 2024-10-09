@@ -24,6 +24,10 @@ const (
 	headerMetaKeyId          = "X-Key-Id"
 )
 
+func EmailFromTokenHeaderName() string {
+	return headerTokenEmail
+}
+
 // SecurelyBuildFromHeader builds a context from the header and validates
 // the trust token. Multiple tokens can be passed to allow zero downtime
 // token rotation at the API Guard.

@@ -2,8 +2,10 @@ package apiguard
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/antihax/optional"
 	swagger "github.com/safedep/dry/apiguard/tykgen"
@@ -28,6 +30,37 @@ type managementClient struct {
 }
 
 type ManagementClientOpts func(*managementClient)
+
+// Helper to standardize the creation of a management client from environment
+// based configuration
+func NewManagementClientFromEnvConfig() (ManagementClient, error) {
+	baseUrl := os.Getenv("APIGUARD_BASE_URL")
+	if baseUrl == "" {
+		return nil, fmt.Errorf("APIGUARD_BASE_URL is not set")
+	}
+
+	token := os.Getenv("APIGUARD_TOKEN")
+	if token == "" {
+		return nil, fmt.Errorf("APIGUARD_TOKEN is not set")
+	}
+
+	skipTlsVerify := os.Getenv("INSECURE_APIGUARD_SKIP_TLS_VERIFY") == "true"
+
+	httpClient := http.Client{}
+	if skipTlsVerify {
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTlsVerify},
+		}
+	}
+
+	client, err := NewManagementClient(baseUrl, token,
+		WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create management client: %v", err)
+	}
+
+	return client, nil
+}
 
 // NewManagementClient creates a new management client for the API Guard.
 func NewManagementClient(baseUrl, token string, opts ...ManagementClientOpts) (ManagementClient, error) {

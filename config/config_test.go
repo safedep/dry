@@ -8,7 +8,7 @@ import (
 )
 
 func TestDefaultConfigFromEnvironment(t *testing.T) {
-	log.Init("config-test")
+	log.Init("config-test", "test")
 
 	t.Run("APP_SERVICE_NAME", func(t *testing.T) {
 		t.Setenv("APP_SERVICE_NAME", "test-service")

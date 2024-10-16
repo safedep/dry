@@ -10,8 +10,8 @@ import (
 
 // InitZapLogger initializes a zap based logger
 // and sets it as the default logger using SetGlobal
-func InitZapLogger(name string) {
-	logger, err := newZapLogger(name)
+func InitZapLogger(name, env string) {
+	logger, err := newZapLogger(name, env)
 	if err != nil {
 		panic(err)
 	}
@@ -24,7 +24,7 @@ type zapLoggerWrapper struct {
 	sugaredLogger *zap.SugaredLogger
 }
 
-func newZapLogger(name string) (Logger, error) {
+func newZapLogger(name, env string) (Logger, error) {
 	// Start with the default log level
 	level := zap.NewAtomicLevelAt(zapcore.InfoLevel)
 
@@ -76,6 +76,7 @@ func newZapLogger(name string) (Logger, error) {
 	logger := zap.New(core, zap.AddCallerSkip(2))
 
 	logger = logger.With(zap.String(loggerKeyServiceName, name))
+	logger = logger.With(zap.String(loggerKeyServiceEnv, env))
 	logger = logger.With(zap.String(loggerKeyLoggerType, "zap"))
 
 	return &zapLoggerWrapper{

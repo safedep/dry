@@ -48,6 +48,7 @@ func (n *nopLogger) With(args map[string]any) Logger { return n }
 // Constants to standardise logger keys
 const (
 	loggerKeyServiceName    = "service"
+	loggerKeyServiceEnv     = "env"
 	loggerKeyLoggerType     = "l"
 	loggerKeyEnvLogFileName = "APP_LOG_FILE"
 	loggerKeyEnvLogLevel    = "APP_LOG_LEVEL"
@@ -56,6 +57,6 @@ const (
 // Initialize logger for the given service name
 // This is the contract for initializing logger. The actual implementation
 // of the logger may vary based on runtime environment
-func Init(name string) {
-	InitZapLogger(name)
+func Init(name, env string) {
+	InitZapLogger(name, env)
 }

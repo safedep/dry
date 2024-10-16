@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewZapLogger(t *testing.T) {
-	logger, err := newZapLogger("TestSvc")
+	logger, err := newZapLogger("TestSvc", "test")
 
 	assert.Nil(t, err)
 	assert.NotNil(t, logger)
@@ -37,7 +37,7 @@ func TestProductionLoggerToFile(t *testing.T) {
 		t.Setenv(loggerKeyEnvLogFileName, path)
 		t.Setenv(loggerKeyEnvLogLevel, logLevelNameDebug)
 
-		l, err := newZapLogger("TestSvc")
+		l, err := newZapLogger("TestSvc", "test")
 		assert.NoError(t, err)
 
 		l.Infof("Test info log message")

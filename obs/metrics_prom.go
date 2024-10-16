@@ -1,6 +1,10 @@
 package obs
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 type promMetricReceiver struct {
 	counter prometheus.Counter
@@ -47,30 +51,36 @@ func (r *promHistogramReceiver) Observe(value float64) {
 // Go SDK to create metrics.
 func NewPrometheusMetricsProvider(namespace, subsystem string) Provider {
 	return &prometheusMetricsProvider{
-		namespace: namespace,
-		subsystem: subsystem,
+		namespace: strings.ReplaceAll(namespace, "-", "_"),
+		subsystem: strings.ReplaceAll(subsystem, "-", "_"),
 	}
 }
 
 func (p *prometheusMetricsProvider) NewCounter(name, desc string) Counter {
+	c := prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: p.namespace,
+		Subsystem: p.subsystem,
+		Name:      name,
+		Help:      desc,
+	})
+
+	prometheus.MustRegister(c)
 	return &promMetricReceiver{
-		counter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: p.namespace,
-			Subsystem: p.subsystem,
-			Name:      name,
-			Help:      desc,
-		}),
+		counter: c,
 	}
 }
 
 func (p *prometheusMetricsProvider) NewGauge(name, desc string) Gauge {
+	g := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: p.namespace,
+		Subsystem: p.subsystem,
+		Name:      name,
+		Help:      desc,
+	})
+
+	prometheus.MustRegister(g)
 	return &promGaugeReceiver{
-		gauge: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: p.namespace,
-			Subsystem: p.subsystem,
-			Name:      name,
-			Help:      desc,
-		}),
+		gauge: g,
 	}
 }
 

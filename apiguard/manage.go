@@ -19,6 +19,9 @@ type ManagementClient interface {
 
 	// List policies in the API Guard
 	ListPolicies(context.Context) ([]Policy, error)
+
+	// Delete an API key by key hash
+	DeleteKey(context.Context, string) error
 }
 
 type managementClient struct {
@@ -142,6 +145,21 @@ func (c *managementClient) CreateKey(ctx context.Context, args KeyArgs) (ApiKey,
 		KeyId:     apiRes.KeyHash,
 		ExpiresAt: args.ExpiresAt,
 	}, nil
+}
+
+func (c *managementClient) DeleteKey(ctx context.Context, keyHash string) error {
+	_, res, err := c.tykClient.KeysApi.DeleteKey(ctx, keyHash,
+		&swagger.KeysApiDeleteKeyOpts{Hashed: optional.NewBool(true)})
+	if err != nil {
+		return err
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	return nil
 }
 
 func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {

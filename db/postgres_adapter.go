@@ -58,7 +58,9 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 		Sleep: 1 * time.Second,
 	}, func(arg retry.RetryFuncArg) error {
 		// https://gorm.io/docs/connecting_to_the_database.html#PostgreSQL
-		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
+			TranslateError: true,
+		})
 		if err != nil {
 			log.Debugf("[%d/%d] Failed to connect to PostgreSQL server: %v",
 				arg.Current, arg.Total, err)

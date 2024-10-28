@@ -21,6 +21,9 @@ type PostgreSqlAdapterConfig struct {
 	// A name to report as part of the tracer plugin
 	TracingDBName string
 
+	// Translate errors to gorms internal error types
+	TranslateError bool
+
 	EnableTracing bool
 	EnableMetrics bool
 
@@ -59,7 +62,7 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 	}, func(arg retry.RetryFuncArg) error {
 		// https://gorm.io/docs/connecting_to_the_database.html#PostgreSQL
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-			TranslateError: true,
+			TranslateError: config.TranslateError,
 		})
 		if err != nil {
 			log.Debugf("[%d/%d] Failed to connect to PostgreSQL server: %v",

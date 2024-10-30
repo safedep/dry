@@ -62,6 +62,10 @@ func (p *prometheusMetricsProvider) NewCounter(name, desc string) Counter {
 		Subsystem: p.subsystem,
 		Name:      name,
 		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
 	})
 
 	prometheus.MustRegister(c)
@@ -76,6 +80,10 @@ func (p *prometheusMetricsProvider) NewGauge(name, desc string) Gauge {
 		Subsystem: p.subsystem,
 		Name:      name,
 		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
 	})
 
 	prometheus.MustRegister(g)
@@ -91,6 +99,10 @@ func (p *prometheusMetricsProvider) NewHistogram(name, desc string,
 		Subsystem: p.subsystem,
 		Name:      name,
 		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
 	}
 
 	for _, editor := range opts {

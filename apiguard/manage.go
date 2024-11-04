@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/antihax/optional"
 	swagger "github.com/safedep/dry/apiguard/tykgen"
@@ -160,6 +161,24 @@ func (c *managementClient) DeleteKey(ctx context.Context, keyHash string) error 
 	}
 
 	return nil
+}
+
+func (c *managementClient) GetKey(ctx context.Context, keyHash string) (ApiKey, error) {
+	key, res, err := c.tykClient.KeysApi.GetKey(ctx, keyHash,
+		&swagger.KeysApiGetKeyOpts{Hashed: optional.NewBool(true)})
+	if err != nil {
+		return ApiKey{}, err
+	}
+
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return ApiKey{}, fmt.Errorf("unexpected status code: %d", res.StatusCode)
+	}
+
+	return ApiKey{
+		KeyId:     keyHash,
+		ExpiresAt: time.Unix(key.Expires, 0),
+	}, nil
 }
 
 func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {

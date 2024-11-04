@@ -18,6 +18,9 @@ type ManagementClient interface {
 	// not depend on API Guard's key generation.
 	CreateKey(context.Context, KeyArgs) (ApiKey, error)
 
+	// Create a key with a custom supplied key string
+	CreateCustomKey(context.Context, string, KeyArgs) (ApiKey, error)
+
 	// Get a key by Key Hash. The actual API key is NOT included in the response
 	GetKey(context.Context, string) (ApiKey, error)
 
@@ -108,6 +111,15 @@ func WithKeyGen(keyGen KeyGen) ManagementClientOpts {
 }
 
 func (c *managementClient) CreateKey(ctx context.Context, args KeyArgs) (ApiKey, error) {
+	key, err := c.keyGen()
+	if err != nil {
+		return ApiKey{}, fmt.Errorf("failed to generate key: %w", err)
+	}
+
+	return c.CreateCustomKey(ctx, key, args)
+}
+
+func (c *managementClient) CreateCustomKey(ctx context.Context, key string, args KeyArgs) (ApiKey, error) {
 	sessionState := swagger.SessionState{
 		Tags:          args.Tags,
 		Alias:         args.Alias,
@@ -120,11 +132,6 @@ func (c *managementClient) CreateKey(ctx context.Context, args KeyArgs) (ApiKey,
 			"user_id": args.Info.UserID,
 			"key_id":  args.Info.KeyID,
 		},
-	}
-
-	key, err := c.keyGen()
-	if err != nil {
-		return ApiKey{}, fmt.Errorf("failed to generate key: %w", err)
 	}
 
 	apiRes, res, err := c.tykClient.KeysApi.CreateCustomKey(ctx, key, &swagger.KeysApiCreateCustomKeyOpts{

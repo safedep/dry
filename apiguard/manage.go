@@ -18,6 +18,9 @@ type ManagementClient interface {
 	// not depend on API Guard's key generation.
 	CreateKey(context.Context, KeyArgs) (ApiKey, error)
 
+	// Get a key by Key Hash. The actual API key is NOT included in the response
+	GetKey(context.Context, string) (ApiKey, error)
+
 	// List policies in the API Guard
 	ListPolicies(context.Context) ([]Policy, error)
 

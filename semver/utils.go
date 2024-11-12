@@ -22,3 +22,19 @@ func IsVersionInRange(v, r string) bool {
 
 	return r1.Check(v1)
 }
+
+// IsAhead checks if head version is ahead of
+// base version in terms of semver
+func IsAhead(base, head string) bool {
+	v1, err := mver.NewVersion(base)
+	if err != nil {
+		return false
+	}
+
+	v2, err := mver.NewVersion(head)
+	if err != nil {
+		return false
+	}
+
+	return v2.GreaterThan(v1)
+}

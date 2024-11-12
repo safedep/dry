@@ -80,3 +80,73 @@ func TestIsVersionInRange(t *testing.T) {
 		})
 	}
 }
+
+func TestIsAhead(t *testing.T) {
+	cases := []struct {
+		name   string
+		base   string
+		ahead  string
+		output bool
+	}{
+		{
+			"major version is ahead",
+			"1.2.3",
+			"2.0.0",
+			true,
+		},
+		{
+			"major version is behind",
+			"2.0.0",
+			"1.2.3",
+			false,
+		},
+		{
+			"minor version is ahead",
+			"1.2.3",
+			"1.3.0",
+			true,
+		},
+		{
+			"minor version is behind",
+			"1.3.0",
+			"1.2.3",
+			false,
+		},
+		{
+			"patch version is ahead",
+			"1.2.3",
+			"1.2.4",
+			true,
+		},
+		{
+			"patch version is behind",
+			"1.2.4",
+			"1.2.3",
+			false,
+		},
+		{
+			"versions are same",
+			"1.2.3",
+			"1.2.3",
+			false,
+		},
+		{
+			"versions have pre-release",
+			"1.2.3-alpha",
+			"1.2.3-beta",
+			true,
+		},
+		{
+			"alpha version is not ahead",
+			"1.2.3",
+			"1.2.3-alpha",
+			false,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.output, IsAhead(test.base, test.ahead))
+		})
+	}
+}

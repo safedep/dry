@@ -15,7 +15,7 @@ type filesystemStorageDriver struct {
 	config FilesystemStorageDriverConfig
 }
 
-func NewFilesystemStorageDriver(config FilesystemStorageDriverConfig) (Storage, error) {
+func NewFilesystemStorageDriver(config FilesystemStorageDriverConfig) (StorageWriter, error) {
 	_, err := os.Stat(config.Root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -56,4 +56,9 @@ func (d *filesystemStorageDriver) Get(key string) (io.ReadCloser, error) {
 	}
 
 	return file, nil
+}
+
+func (d *filesystemStorageDriver) Writer(key string) (io.WriteCloser, error) {
+	path := filepath.Join(d.config.Root, key)
+	return os.Create(path)
 }

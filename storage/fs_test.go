@@ -45,4 +45,28 @@ func TestFilesystemStorageDriver(t *testing.T) {
 		assert.Equal(t, "Hello, World!", string(content))
 		reader.Close()
 	})
+
+	t.Run("Writer", func(t *testing.T) {
+		writer, err := driver.Writer("file2.txt")
+		assert.NoError(t, err)
+		assert.NotNil(t, writer)
+
+		_, err = writer.Write([]byte("Hello, World!"))
+		assert.NoError(t, err)
+		writer.Close()
+
+		fileShouldExist := filepath.Join(tmpDir, "file2.txt")
+		_, err = os.Stat(fileShouldExist)
+		assert.NoError(t, err)
+
+		reader, err := driver.Get("file2.txt")
+		assert.NoError(t, err)
+		assert.NotNil(t, reader)
+
+		content, err := io.ReadAll(reader)
+		assert.NoError(t, err)
+
+		assert.Equal(t, "Hello, World!", string(content))
+		reader.Close()
+	})
 }

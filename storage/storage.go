@@ -10,3 +10,11 @@ type Storage interface {
 	Put(key string, reader io.Reader) error
 	Get(key string) (io.ReadCloser, error)
 }
+
+// StorageReader is a storage interface that supports a special writer
+// method that returns a writer for a given key.
+type StorageWriter interface {
+	Storage
+
+	Writer(key string) (io.WriteCloser, error)
+}

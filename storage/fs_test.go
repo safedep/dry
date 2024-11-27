@@ -34,6 +34,15 @@ func TestFilesystemStorageDriver(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("Put with parent dirs", func(t *testing.T) {
+		err := driver.Put("dir1/dir2/file.txt", strings.NewReader("Hello, World!"))
+		assert.NoError(t, err)
+
+		fileShouldExist := filepath.Join(tmpDir, "dir1", "dir2", "file.txt")
+		_, err = os.Stat(fileShouldExist)
+		assert.NoError(t, err)
+	})
+
 	t.Run("Get", func(t *testing.T) {
 		reader, err := driver.Get("file.txt")
 		assert.NoError(t, err)

@@ -33,6 +33,11 @@ func NewFilesystemStorageDriver(config FilesystemStorageDriverConfig) (StorageWr
 
 func (d *filesystemStorageDriver) Put(key string, reader io.Reader) error {
 	path := filepath.Join(d.config.Root, key)
+	err := d.createParentDirs(path)
+	if err != nil {
+		return err
+	}
+
 	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("fs storage adapter: failed to create file: %w", err)
@@ -60,5 +65,24 @@ func (d *filesystemStorageDriver) Get(key string) (io.ReadCloser, error) {
 
 func (d *filesystemStorageDriver) Writer(key string) (io.WriteCloser, error) {
 	path := filepath.Join(d.config.Root, key)
+	err := d.createParentDirs(path)
+	if err != nil {
+		return nil, err
+	}
+
 	return os.Create(path)
+}
+
+func (d *filesystemStorageDriver) createParentDirs(path string) error {
+	parent := filepath.Dir(path)
+	err := os.MkdirAll(parent, 0755)
+	if err != nil {
+		if os.IsExist(err) {
+			return nil
+		}
+
+		return fmt.Errorf("fs storage adapter: failed to create parent directories: %w", err)
+	}
+
+	return nil
 }

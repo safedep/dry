@@ -66,6 +66,22 @@ func NewNatsRequestResponseService(config NatsMessagingConfig) (AsyncRequestResp
 	return natsMessagingService, nil
 }
 
+func NewNatsRpcClient(config NatsMessagingConfig) (AsyncRpcClient, error) {
+	messagingService, err := NewNatsMessagingService(config)
+	if err != nil {
+		return nil, err
+	}
+
+	natsMessagingService := messagingService.(*natsMessaging)
+	return natsMessagingService, nil
+}
+
+func (n *natsMessaging) Call(ctx context.Context, method string, service string,
+	data []byte, timeout time.Duration) ([]byte, error) {
+	topicName := RpcTopicName(service, method)
+	return n.Request(ctx, topicName, data, timeout)
+}
+
 func (n *natsMessaging) Close() error {
 	n.conn.Close()
 	return nil

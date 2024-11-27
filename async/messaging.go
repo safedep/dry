@@ -31,3 +31,14 @@ type AsyncRequestResponseService interface {
 
 	Request(ctx context.Context, topic string, data []byte, timeout time.Duration) ([]byte, error)
 }
+
+// Async request response RPC client interface
+// This is our opinionated way of calling a gRPC service
+// over an async channel using conventional topic names
+type AsyncRpcClient interface {
+	AsyncRequestResponseService
+
+	// Call a remote service method
+	Call(ctx context.Context, method string, service string,
+		data []byte, timeout time.Duration) ([]byte, error)
+}

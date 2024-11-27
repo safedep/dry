@@ -93,9 +93,14 @@ func (n *natsMessaging) Publish(_ context.Context, topic string, data []byte) er
 
 func (n *natsMessaging) QueueSubscribe(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error) {
 	return n.conn.QueueSubscribe(topic, queue, func(m *nats.Msg) {
-		err := callback(context.Background(), m.Data)
+		err := callback(context.Background(), m.Data, MessageExtra{
+			Subject: m.Subject,
+			ReplyTo: m.Reply,
+			Headers: m.Header,
+		})
+
 		if err != nil {
-			log.Errorf("Error processing message: %v", err)
+			log.Errorf("Error processing message by callback handler: %v", err)
 		}
 	})
 }

@@ -5,8 +5,16 @@ import (
 	"time"
 )
 
+// MessageExtra contains additional metadata for a message
+// depending on the messaging service
+type MessageExtra struct {
+	Subject string
+	ReplyTo string
+	Headers map[string][]string
+}
+
 // Application defined handler function for incoming messages
-type MessageHandler func(context.Context, []byte) error
+type MessageHandler func(context.Context, []byte, MessageExtra) error
 
 type ClosableMessagingService interface {
 	Close() error

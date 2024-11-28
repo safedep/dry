@@ -47,6 +47,6 @@ type AsyncRpcClient interface {
 	AsyncRequestResponseService
 
 	// Call a remote service method
-	Call(ctx context.Context, method string, service string,
+	Call(ctx context.Context, topic string,
 		data []byte, timeout time.Duration) ([]byte, error)
 }

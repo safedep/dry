@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 func RpcTopicName(serviceName, methodName string) string {

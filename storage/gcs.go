@@ -9,11 +9,17 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/option"
 )
+
+type GoogleCloudStorageDriverConfig struct {
+	BucketName     string
+	CredentialFile string
+}
 
 type googleCloudStorageDriver struct {
 	client          *storage.Client
-	bucket          string
+	config          GoogleCloudStorageDriverConfig
 	writeTimeout    time.Duration
 	partitionByDate bool
 }
@@ -40,14 +46,21 @@ func WithGoogleStoragePartitionByDate() googleCloudStorageDriverOpts {
 
 var _ StorageWriter = (*googleCloudStorageDriver)(nil)
 
-func NewGoogleCloudStorageDriver(bucket string, opts ...googleCloudStorageDriverOpts) (*googleCloudStorageDriver, error) {
-	client, err := storage.NewClient(context.Background())
+func NewGoogleCloudStorageDriver(config GoogleCloudStorageDriverConfig,
+	opts ...googleCloudStorageDriverOpts) (*googleCloudStorageDriver, error) {
+	clientOpts := []option.ClientOption{}
+
+	if config.CredentialFile != "" {
+		clientOpts = append(clientOpts, option.WithCredentialsFile(config.CredentialFile))
+	}
+
+	client, err := storage.NewClient(context.Background(), clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create google cloud storage client: %w", err)
 	}
 
 	d := &googleCloudStorageDriver{
-		bucket:          bucket,
+		config:          config,
 		client:          client,
 		writeTimeout:    10 * time.Second,
 		partitionByDate: true,
@@ -83,7 +96,7 @@ func (d *googleCloudStorageDriver) Get(key string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("failed to prefix key: %w", err)
 	}
 
-	object := d.client.Bucket(d.bucket).Object(keyName)
+	object := d.client.Bucket(d.config.BucketName).Object(keyName)
 	reader, err := object.NewReader(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create google cloud storage reader: %w", err)
@@ -98,7 +111,7 @@ func (d *googleCloudStorageDriver) Writer(key string) (io.WriteCloser, error) {
 		return nil, fmt.Errorf("failed to prefix key: %w", err)
 	}
 
-	object := d.client.Bucket(d.bucket).Object(keyName)
+	object := d.client.Bucket(d.config.BucketName).Object(keyName)
 	writer := object.NewWriter(context.Background())
 
 	return writer, nil

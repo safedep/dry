@@ -1,10 +1,12 @@
 package cvss
 
 import (
+	"errors"
 	"fmt"
 
 	v2_metric "github.com/goark/go-cvss/v2/metric"
 	v3_metric "github.com/goark/go-cvss/v3/metric"
+	gocvss40 "github.com/pandatix/go-cvss/40"
 )
 
 type CvssVersion string
@@ -100,6 +102,38 @@ func (c *cvssV3) Severity() CvssRisk {
 	}
 }
 
+// Implementation of v4
+type cvssV4 struct {
+	base *gocvss40.CVSS40
+}
+
+func newBaseCvssV4(base string) (CVSS, error) {
+	vector, err := gocvss40.ParseVector(base)
+	if err != nil {
+		// Manually return the error string "invalid vector" to maintain consistency
+		return nil, errors.New("invalid vector")
+	}
+	return &cvssV4{
+		base: vector,
+	}, nil
+}
+
+func (c *cvssV4) Severity() CvssRisk {
+	score := c.base.Score()
+	switch {
+	case score >= 9.0 && score <= 10.0:
+		return CRITICAL
+	case score >= 7.0 && score < 9.0:
+		return HIGH
+	case score >= 4.0 && score < 7.0:
+		return MEDIUM
+	case score > 0.0 && score < 4.0:
+		return LOW
+	default:
+		return NONE
+	}
+}
+
 // Factory
 func NewCvssBaseString(raw string, version CvssVersion) (CVSS, error) {
 	switch version {
@@ -107,6 +141,8 @@ func NewCvssBaseString(raw string, version CvssVersion) (CVSS, error) {
 		return newBaseCvssV2(raw)
 	case CVSS_V3:
 		return newBaseCvssV3(raw)
+	case CVSS_V4:
+		return newBaseCvssV4(raw)
 	default:
 		return nil, fmt.Errorf("unsupported CVSS version: %s", version)
 	}

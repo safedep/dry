@@ -45,15 +45,18 @@ func IsEmptyString(s string) bool {
 	return s == ""
 }
 
+// Deprecated: Use `api/pb` package instead
 func ToPbJson[T proto.Message](obj T, indent string) (string, error) {
 	m := jsonpb.Marshaler{Indent: indent, OrigName: true}
 	return m.MarshalToString(obj)
 }
 
+// Deprecated: Use `api/pb` package instead
 func FromPbJson[T proto.Message](reader io.Reader, obj T) error {
 	return jsonpb.Unmarshal(reader, obj)
 }
 
+// Deprecated: Use `api/pb` package instead
 func FromYamlToPb[T proto.Message](reader io.Reader, obj T) error {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(reader)
@@ -69,6 +72,7 @@ func FromYamlToPb[T proto.Message](reader io.Reader, obj T) error {
 	return jsonpb.Unmarshal(bytes.NewReader(jsonData), obj)
 }
 
+// Deprecated: Use `api/pb` package instead
 func FromPbToYaml[T proto.Message](writer io.Writer, obj T) error {
 	jsonData, err := ToPbJson(obj, "")
 	if err != nil {

@@ -119,14 +119,6 @@ func (n *natsMessaging) Publish(_ context.Context, topic string, data []byte) er
 	return n.conn.Publish(topic, data)
 }
 
-func (n *natsMessaging) QueueSubscribe(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error) {
-	if n.config.StreamListener {
-		return n.queueSubscribeJetStream(topic, queue, callback)
-	} else {
-		return n.queueSubscribeNats(topic, queue, callback)
-	}
-}
-
 func (n *natsMessaging) Request(_ context.Context,
 	topic string, data []byte, timeout time.Duration) ([]byte, error) {
 	res, err := n.conn.Request(topic, data, timeout)
@@ -137,8 +129,16 @@ func (n *natsMessaging) Request(_ context.Context,
 	return res.Data, nil
 }
 
-func (n *natsMessaging) queueSubscribeNats(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error) {
-	return n.conn.QueueSubscribe(topic, queue, func(m *nats.Msg) {
+func (n *natsMessaging) QueueSubscribe(ctx context.Context, topic string, queue string, callback MessageHandler) error {
+	if n.config.StreamListener {
+		return n.queueSubscribeJetStream(ctx, topic, queue, callback)
+	} else {
+		return n.queueSubscribeNats(ctx, topic, queue, callback)
+	}
+}
+
+func (n *natsMessaging) queueSubscribeNats(ctx context.Context, topic string, queue string, callback MessageHandler) error {
+	sub, err := n.conn.QueueSubscribe(topic, queue, func(m *nats.Msg) {
 		err := callback(context.Background(), m.Data, MessageExtra{
 			Subject: m.Subject,
 			ReplyTo: m.Reply,
@@ -149,23 +149,35 @@ func (n *natsMessaging) queueSubscribeNats(topic string, queue string, callback 
 			log.Errorf("Error processing message by callback handler: %v", err)
 		}
 	})
+
+	if err != nil {
+		return fmt.Errorf("error subscribing to NATS queue: %v", err)
+	}
+
+	defer func() {
+		err := sub.Unsubscribe()
+		if err != nil {
+			log.Errorf("Error unsubscribing from NATS queue: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	return fmt.Errorf("context cancelled: %v", ctx.Err())
 }
 
-func (n *natsMessaging) queueSubscribeJetStream(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error) {
+func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic string, queue string, callback MessageHandler) error {
 	if n.config.StreamName == "" {
-		return nil, fmt.Errorf("StreamName is required when StreamListener is enabled")
+		return fmt.Errorf("StreamName is required when StreamListener is enabled")
 	}
 
 	if n.config.StreamMaxMessages > natsJetStreamMaxMessagesHardLimit {
-		return nil, fmt.Errorf("StreamMaxMessages cannot exceed %d", natsJetStreamMaxMessagesHardLimit)
+		return fmt.Errorf("StreamMaxMessages cannot exceed %d", natsJetStreamMaxMessagesHardLimit)
 	}
 
 	js, err := jetstream.New(n.conn)
 	if err != nil {
-		return nil, fmt.Errorf("error creating JetStream context: %v", err)
+		return fmt.Errorf("error creating JetStream context: %v", err)
 	}
-
-	ctx := context.Background()
 
 	// We will set limits to ensure we do not end up using unbounded
 	// storage for the stream
@@ -187,10 +199,10 @@ func (n *natsMessaging) queueSubscribeJetStream(topic string, queue string, call
 		if err == jetstream.ErrStreamNameAlreadyInUse {
 			stream, err = js.Stream(ctx, n.config.StreamName)
 			if err != nil {
-				return nil, fmt.Errorf("error loading JetStream stream: %v", err)
+				return fmt.Errorf("error loading JetStream stream: %v", err)
 			}
 		} else {
-			return nil, fmt.Errorf("error creating JetStream stream: %v", err)
+			return fmt.Errorf("error creating JetStream stream: %v", err)
 		}
 	}
 
@@ -205,13 +217,19 @@ func (n *natsMessaging) queueSubscribeJetStream(topic string, queue string, call
 		AckWait: ackWait,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("error creating JetStream consumer: %v", err)
+		return fmt.Errorf("error creating JetStream consumer: %v", err)
 	}
 
 	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled: %v", ctx.Err())
+		default:
+		}
+
 		mc, err := consumer.Fetch(1)
 		if err != nil {
-			return nil, fmt.Errorf("error reading JetStream message: %v", err)
+			return fmt.Errorf("error reading JetStream message: %v", err)
 		}
 
 		for msg := range mc.Messages() {

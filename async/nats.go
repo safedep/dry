@@ -213,7 +213,7 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 
 	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		Name:    n.config.StreamListenerName,
-		Durable: fmt.Sprintf("durable-%s", queue),
+		Durable: n.config.StreamListenerName,
 		AckWait: ackWait,
 	})
 	if err != nil {

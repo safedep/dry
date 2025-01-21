@@ -20,17 +20,12 @@ type ClosableMessagingService interface {
 	Close() error
 }
 
-// Interface for a subscribed queue
-type MessagingQueueSubscription interface {
-	Unsubscribe() error
-}
-
 // Low level messaging service interface
 type MessagingService interface {
 	ClosableMessagingService
 
 	Publish(ctx context.Context, topic string, data []byte) error
-	QueueSubscribe(topic string, queue string, callback MessageHandler) (MessagingQueueSubscription, error)
+	QueueSubscribe(ctx context.Context, topic string, queue string, callback MessageHandler) error
 }
 
 // Async request response service interface

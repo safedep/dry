@@ -165,7 +165,7 @@ func (n *natsMessaging) queueSubscribeNats(ctx context.Context, topic string, qu
 	return fmt.Errorf("context cancelled: %v", ctx.Err())
 }
 
-func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic string, queue string, callback MessageHandler) error {
+func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic string, _ string, callback MessageHandler) error {
 	if n.config.StreamName == "" {
 		return fmt.Errorf("StreamName is required when StreamListener is enabled")
 	}
@@ -235,6 +235,11 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 		for msg := range mc.Messages() {
 			var wg sync.WaitGroup
 
+			err := msg.InProgress()
+			if err != nil {
+				log.Errorf("Error marking message as in progress: %v", err)
+			}
+
 			wg.Add(1)
 			go func(ctx context.Context) {
 				defer wg.Done()
@@ -249,8 +254,8 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 				}
 
 				err = callback(ctx, msg.Data(), MessageExtra{
-					Subject: msg.Headers().Get("subject"),
-					ReplyTo: msg.Headers().Get("reply"),
+					Subject: msg.Subject(),
+					ReplyTo: msg.Reply(),
 					Headers: msg.Headers(),
 				})
 				if err != nil {
@@ -260,7 +265,7 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 
 			wg.Wait()
 
-			err := msg.Ack()
+			err = msg.Ack()
 			if err != nil {
 				log.Errorf("Error acknowledging message: %v", err)
 			}

@@ -17,3 +17,11 @@ func TestPrometheusMetricsProvider(t *testing.T) {
 	h := p.NewHistogram("test_h_1", "test")
 	h.Observe(1)
 }
+
+func TestPrometheusCounterVec(t *testing.T) {
+	p := NewPrometheusMetricsProvider("test", "test")
+	c := p.NewCounterVec("test_vec_a_1", "test", []string{"label1", "label2"})
+
+	c.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Inc()
+	c.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Add(1)
+}

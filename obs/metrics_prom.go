@@ -18,6 +18,16 @@ func (r *promMetricReceiver) Add(delta float64) {
 	r.counter.Add(delta)
 }
 
+type promCounterVecReceiver struct {
+	counter *prometheus.CounterVec
+}
+
+func (r *promCounterVecReceiver) WithLabels(labels map[string]string) Counter {
+	return &promMetricReceiver{
+		counter: r.counter.With(labels),
+	}
+}
+
 type promGaugeReceiver struct {
 	gauge prometheus.Gauge
 }
@@ -70,6 +80,20 @@ func (p *prometheusMetricsProvider) NewCounter(name, desc string) Counter {
 
 	prometheus.MustRegister(c)
 	return &promMetricReceiver{
+		counter: c,
+	}
+}
+
+func (p *prometheusMetricsProvider) NewCounterVec(name, desc string, labels []string) CounterVec {
+	c := prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: p.namespace,
+		Subsystem: p.subsystem,
+		Name:      name,
+		Help:      desc,
+	}, labels)
+
+	prometheus.MustRegister(c)
+	return &promCounterVecReceiver{
 		counter: c,
 	}
 }

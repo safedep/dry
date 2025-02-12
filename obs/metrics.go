@@ -7,6 +7,11 @@ type Counter interface {
 	Add(float64)
 }
 
+// CounterVec is a metric that represents a values with labels.
+type CounterVec interface {
+	WithLabels(map[string]string) Counter
+}
+
 // Gauge is a metric that represents a single numerical value that can
 // arbitrarily go up and down.
 type Gauge interface {
@@ -31,15 +36,17 @@ type Provider interface {
 	NewCounter(name, desc string) Counter
 	NewGauge(name, desc string) Gauge
 	NewHistogram(name, desc string, opts ...ProviderSpecificOptsEditor) Histogram
+	NewCounterVec(name, desc string, labels []string) CounterVec
 }
 
 type dummyReceiver struct{}
 
-func (d *dummyReceiver) Inc()            {}
-func (d *dummyReceiver) Set(float64)     {}
-func (d *dummyReceiver) Add(float64)     {}
-func (d *dummyReceiver) Sub(float64)     {}
-func (d *dummyReceiver) Observe(float64) {}
+func (d *dummyReceiver) Inc()                                 {}
+func (d *dummyReceiver) Set(float64)                          {}
+func (d *dummyReceiver) Add(float64)                          {}
+func (d *dummyReceiver) Sub(float64)                          {}
+func (d *dummyReceiver) Observe(float64)                      {}
+func (d *dummyReceiver) WithLabels(map[string]string) Counter { return d }
 
 type dummyProvider struct{}
 
@@ -58,12 +65,21 @@ func (d *dummyProvider) NewHistogram(_, _ string, _ ...ProviderSpecificOptsEdito
 	return &dummyReceiver{}
 }
 
+// NewCounterVec creates a new CounterVec.
+func (d *dummyProvider) NewCounterVec(_, _ string, _ []string) CounterVec {
+	return &dummyReceiver{}
+}
+
 var (
 	__provider Provider = &dummyProvider{}
 )
 
 func NewCounter(name, desc string) Counter {
 	return __provider.NewCounter(name, desc)
+}
+
+func NewCounterVec(name, desc string, labels []string) CounterVec {
+	return __provider.NewCounterVec(name, desc, labels)
 }
 
 func NewGauge(name, desc string) Gauge {

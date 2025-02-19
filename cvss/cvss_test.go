@@ -33,6 +33,12 @@ func TestBaseStringParsing(t *testing.T) {
 			err:     nil,
 		},
 		{
+			name:    "valid v4 - GHSA-4pwp-cx67-5cpx",
+			version: CVSS_V4,
+			base:    "CVSS:4.0/AV:N/AC:L/AT:N/PR:L/UI:N/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N/E:P",
+			err:     nil,
+		},
+		{
 			name:    "invalid v2",
 			version: CVSS_V2,
 			base:    "<invalid>",

@@ -60,6 +60,20 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "6.1.3",
 		},
 		{
+			name:          "vscode extensions - vscode",
+			purl:          "pkg:vscode/pub.ext@1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_VSCODE,
+			wantName:      "pub.ext",
+			wantVersion:   "1.0.0",
+		},
+		{
+			name:          "vscode extensions - vsx",
+			purl:          "pkg:vsx/pub.ext@1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_VSCODE,
+			wantName:      "pub.ext",
+			wantVersion:   "1.0.0",
+		},
+		{
 			name: "invalid purl",
 			purl: "pkg:invalid",
 			err:  errors.New("invalid purl"),

@@ -67,6 +67,9 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 		return packagev1.Ecosystem_ECOSYSTEM_PACKAGIST
 	case packageurl.TypeGithub, "actions":
 		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
+	// https://github.com/package-url/purl-spec/issues/287
+	case "vscode", "vsix", "vsx":
+		return packagev1.Ecosystem_ECOSYSTEM_VSCODE
 	default:
 		return packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED
 	}

@@ -27,10 +27,6 @@ func RpcTopicName(serviceName, methodName string) string {
 // RpcNamespacedTopicName returns the topic name for a namespaced RPC procedure.
 // If the namspace is empty, the behaviour is exactly same as RpcTopicName.
 func RpcNamespacedTopicName(serviceName, methodName, namespace string) string {
-	if len(namespace) == 0 {
-		return RpcTopicName(serviceName, methodName)
-	}
-
 	return rpcNamespacedTopicName(RpcTopicName(serviceName, methodName), namespace)
 }
 

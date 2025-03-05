@@ -24,6 +24,16 @@ func RpcTopicName(serviceName, methodName string) string {
 	return fixer(serviceName) + "." + fixer(methodName)
 }
 
+// RpcNamespacedTopicName returns the topic name for a namespaced RPC procedure.
+// If the namspace is empty, the behaviour is exactly same as RpcTopicName.
+func RpcNamespacedTopicName(serviceName, methodName, namespace string) string {
+	if len(namespace) == 0 {
+		return RpcTopicName(serviceName, methodName)
+	}
+
+	return rpcNamespacedTopicName(RpcTopicName(serviceName, methodName), namespace)
+}
+
 func RpcTopicNameFromFullProcedureName(fullProcedureName string) string {
 	if len(fullProcedureName) == 0 {
 		return ""
@@ -54,6 +64,24 @@ func RpcInvoke[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
 		return fmt.Errorf("invalid full procedure name: %s", fullProcedureName)
 	}
 
+	return rpcInvokeWithTopicName(ctx, client, topicName, input, output, options)
+}
+
+// RpcInvokeWithNamespace invokes an RPC procedure over an AsyncRpcClient using a namespaced
+// topic name. If the namespace is empty, the behaviour is exactly same as RpcInvoke.
+func RpcInvokeWithNamespace[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
+	namespace, fullProcedureName string, input I, output O, options RpcCallOptions) error {
+	topicName := RpcTopicNameFromFullProcedureName(fullProcedureName)
+	if len(topicName) == 0 {
+		return fmt.Errorf("invalid full procedure name: %s", fullProcedureName)
+	}
+
+	topicName = rpcNamespacedTopicName(topicName, namespace)
+	return rpcInvokeWithTopicName(ctx, client, topicName, input, output, options)
+}
+
+func rpcInvokeWithTopicName[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
+	topicName string, input I, output O, options RpcCallOptions) error {
 	data, err := proto.Marshal(input)
 	if err != nil {
 		return fmt.Errorf("failed to serialize protobuf message: %w", err)
@@ -69,4 +97,12 @@ func RpcInvoke[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
 	}
 
 	return nil
+}
+
+func rpcNamespacedTopicName(topicName, namespace string) string {
+	if len(namespace) == 0 {
+		return topicName
+	}
+
+	return fmt.Sprintf("namespaced.%s.%s", namespace, topicName)
 }

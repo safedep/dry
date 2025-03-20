@@ -1,8 +1,8 @@
 module github.com/safedep/dry
 
-go 1.22.7
+go 1.23.0
 
-toolchain go1.23.2
+toolchain go1.23.4
 
 require (
 	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.5-20250301021737-c36547045930.1
@@ -12,6 +12,7 @@ require (
 	github.com/envoyproxy/go-control-plane v0.13.1
 	github.com/goark/go-cvss v1.6.7
 	github.com/golang/protobuf v1.5.4
+	github.com/google/go-github/v70 v70.0.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/labstack/echo-contrib v0.17.1
 	github.com/labstack/echo/v4 v4.12.0
@@ -74,6 +75,7 @@ require (
 	github.com/goark/errs v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect

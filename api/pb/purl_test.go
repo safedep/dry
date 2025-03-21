@@ -95,3 +95,91 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 		})
 	}
 }
+
+func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
+	cases := []struct {
+		name        string
+		githubUrl   string
+		wantName    string
+		wantVersion string
+		err         error
+	}{
+		{
+			name:        "github repository without branch",
+			githubUrl:   "https://github.com/safedep/vet",
+			wantName:    "safedep/vet",
+			wantVersion: "",
+		},
+		{
+			name:        "github repository with branch",
+			githubUrl:   "https://github.com/safedep/vet/tree/main",
+			wantName:    "safedep/vet",
+			wantVersion: "main",
+		},
+		{
+			name:        "github repository with tag",
+			githubUrl:   "https://github.com/safedep/vet/tree/v1.0.0",
+			wantName:    "safedep/vet",
+			wantVersion: "v1.0.0",
+		},
+		{
+			name:        "github repository with ciommit sha",
+			githubUrl:   "https://github.com/safedep/vet/tree/5387a395a3b052670a35abfd937037963094d5b3",
+			wantName:    "safedep/vet",
+			wantVersion: "5387a395a3b052670a35abfd937037963094d5b3",
+		},
+		{
+			name:        "github repository with short ciommit sha",
+			githubUrl:   "https://github.com/safedep/vet/tree/5387a39",
+			wantName:    "safedep/vet",
+			wantVersion: "5387a39",
+		},
+		{
+			name:        "github repository with enterprise url",
+			githubUrl:   "https://github.yourdomain.com/safedep/vet/tree/main",
+			wantName:    "safedep/vet",
+			wantVersion: "main",
+		},
+		{
+			name:        "http protocol",
+			githubUrl:   "http://github.com/safedep/vet",
+			wantName:    "safedep/vet",
+			wantVersion: "",
+		},
+		{
+			name:      "invalid github url",
+			githubUrl: "https://example.com/safedep/dry",
+			err:       errors.New("invalid GitHub repository URL host"),
+		},
+		{
+			name:      "invalid github url",
+			githubUrl: "https://github.com",
+			err:       errors.New("invalid GitHub repository URL format"),
+		},
+		{
+			name:      "invalid github url",
+			githubUrl: "https://githubcom/safedep/vet",
+			err:       errors.New("invalid GitHub repository URL host"),
+		},
+		{
+			name:      "invalid github url",
+			githubUrl: "https://github.com/safedep/vet/blob/5387a395a3b052670a35abfd937037963094d5b3/api/exceptions_spec.proto",
+			err:       errors.New("invalid GitHub repository URL format"),
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			h, err := NewPurlPackageVersionFromGithubUrl(test.githubUrl)
+			if test.err != nil {
+				assert.Error(t, err)
+				assert.ErrorContains(t, err, test.err.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, h.Ecosystem())
+				assert.Equal(t, test.wantName, h.Name())
+				assert.Equal(t, test.wantVersion, h.Version())
+			}
+		})
+	}
+}

@@ -56,7 +56,7 @@ func NewPurlPackageVersionFromGithubUrl(githubUrl string) (*purlPackageVersionHe
 
 	ref := ""
 	if len(parts) > 3 {
-		ref = parts[3]
+		ref = strings.Join(parts[3:], "/")
 	}
 
 	pv := &packagev1.PackageVersion{

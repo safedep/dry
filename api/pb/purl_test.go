@@ -111,10 +111,28 @@ func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
 			wantVersion: "",
 		},
 		{
+			name:        "github repository with trailing slash",
+			githubUrl:   "https://github.com/safedep/vet/",
+			wantName:    "safedep/vet",
+			wantVersion: "",
+		},
+		{
 			name:        "github repository with branch",
 			githubUrl:   "https://github.com/safedep/vet/tree/main",
 			wantName:    "safedep/vet",
 			wantVersion: "main",
+		},
+		{
+			name:        "github repository with grouped branches",
+			githubUrl:   "https://github.com/safedep/vet/tree/feat/branch",
+			wantName:    "safedep/vet",
+			wantVersion: "feat/branch",
+		},
+		{
+			name:        "github repository with multi-grouped branches",
+			githubUrl:   "https://github.com/safedep/vet/tree/feat/sub/branch",
+			wantName:    "safedep/vet",
+			wantVersion: "feat/sub/branch",
 		},
 		{
 			name:        "github repository with tag",
@@ -123,16 +141,28 @@ func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
 			wantVersion: "v1.0.0",
 		},
 		{
-			name:        "github repository with ciommit sha",
+			name:        "github repository with commit sha",
 			githubUrl:   "https://github.com/safedep/vet/tree/5387a395a3b052670a35abfd937037963094d5b3",
 			wantName:    "safedep/vet",
 			wantVersion: "5387a395a3b052670a35abfd937037963094d5b3",
 		},
 		{
-			name:        "github repository with short ciommit sha",
+			name:        "github repository with short commit sha",
 			githubUrl:   "https://github.com/safedep/vet/tree/5387a39",
 			wantName:    "safedep/vet",
 			wantVersion: "5387a39",
+		},
+		{
+			name:        "github url with other tabs",
+			githubUrl:   "https://github.com/safedep/vet/projects?query=is%3Aopen",
+			wantName:    "safedep/vet",
+			wantVersion: "",
+		},
+		{
+			name:        "github url with fragments",
+			githubUrl:   "https://github.com/safedep/vet#readme",
+			wantName:    "safedep/vet",
+			wantVersion: "",
 		},
 		{
 			name:        "github repository with enterprise url",
@@ -165,6 +195,16 @@ func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
 			name:      "invalid github url",
 			githubUrl: "https://github.com/safedep/vet/blob/5387a395a3b052670a35abfd937037963094d5b3/api/exceptions_spec.proto",
 			err:       errors.New("invalid GitHub repository URL format"),
+		},
+		{
+			name:      "malformed url",
+			githubUrl: "://github.com/safedep/vet",
+			err:       errors.New("missing protocol scheme"),
+		},
+		{
+			name:      "empty url",
+			githubUrl: "",
+			err:       errors.New("invalid GitHub repository URL host"),
 		},
 	}
 

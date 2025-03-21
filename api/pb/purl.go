@@ -2,6 +2,9 @@ package pb
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
+	"strings"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/package-url/packageurl-go"
@@ -26,6 +29,42 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 			Name:      name,
 		},
 		Version: p.Version,
+	}
+
+	return &purlPackageVersionHelper{pv: pv}, nil
+}
+
+var githubHostRegexp = regexp.MustCompile(`^github(\.[a-zA-Z0-9-]+)?\.com$`)
+
+func NewPurlPackageVersionFromGithubUrl(githubUrl string) (*purlPackageVersionHelper, error) {
+	parsedUrl, err := url.Parse(githubUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	if !githubHostRegexp.MatchString(parsedUrl.Host) {
+		return nil, fmt.Errorf("invalid GitHub repository URL host")
+	}
+
+	parts := strings.Split(strings.Trim(parsedUrl.Path, "/"), "/")
+	if len(parts) < 2 || (len(parts) > 3 && parts[2] != "tree") {
+		return nil, fmt.Errorf("invalid GitHub repository URL format")
+	}
+
+	owner := parts[0]
+	repo := parts[1]
+
+	ref := ""
+	if len(parts) > 3 {
+		ref = parts[3]
+	}
+
+	pv := &packagev1.PackageVersion{
+		Package: &packagev1.Package{
+			Ecosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
+			Name:      owner + "/" + repo,
+		},
+		Version: ref,
 	}
 
 	return &purlPackageVersionHelper{pv: pv}, nil

@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.23.4
 
 require (
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.5-20250301021737-c36547045930.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.5-20250320113722-f16f868058c9.1
 	cloud.google.com/go/storage v1.47.0
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/antihax/optional v1.0.0

@@ -42,7 +42,8 @@ func newZapLogger(name, env string) (Logger, error) {
 	// Create zap cores that will be populated based on env configuration
 	cores := []zapcore.Core{}
 
-	if os.Getenv(loggerKeySkipStdoutLogger) == "" {
+	skipStdoutLogger, err := strconv.ParseBool(os.Getenv(loggerKeySkipStdoutLogger))
+	if err != nil || !skipStdoutLogger {
 		// Our default console logger using development config
 		developmentConfig := zap.NewDevelopmentEncoderConfig()
 		developmentConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder

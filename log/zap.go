@@ -39,16 +39,17 @@ func newZapLogger(name, env string) (Logger, error) {
 		level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
 	}
 
-	// Our default console logger using development config
-	developmentConfig := zap.NewDevelopmentEncoderConfig()
-	developmentConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	// Create zap cores that will be populated based on env configuration
+	cores := []zapcore.Core{}
 
-	consoleEncoder := zapcore.NewConsoleEncoder(developmentConfig)
+	if os.Getenv(loggerKeySkipStdoutLogger) == "" {
+		// Our default console logger using development config
+		developmentConfig := zap.NewDevelopmentEncoderConfig()
+		developmentConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
-	// Create zap core using our default logger. This is required only in development
-	// mode. We should make this configurable i.e. skip the "costly" console log writer
-	// in production to avoid performance bottlenecks related to container console I/O
-	cores := []zapcore.Core{zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level)}
+		consoleEncoder := zapcore.NewConsoleEncoder(developmentConfig)
+		cores = append(cores, zapcore.NewCore(consoleEncoder, zapcore.AddSync(os.Stdout), level))
+	}
 
 	// Add the file core with production config only when enabled
 	logFile := os.Getenv(loggerKeyEnvLogFileName)

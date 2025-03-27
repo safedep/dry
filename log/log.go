@@ -47,11 +47,12 @@ func (n *nopLogger) With(args map[string]any) Logger { return n }
 
 // Constants to standardise logger keys
 const (
-	loggerKeyServiceName    = "service"
-	loggerKeyServiceEnv     = "env"
-	loggerKeyLoggerType     = "l"
-	loggerKeyEnvLogFileName = "APP_LOG_FILE"
-	loggerKeyEnvLogLevel    = "APP_LOG_LEVEL"
+	loggerKeyServiceName      = "service"
+	loggerKeyServiceEnv       = "env"
+	loggerKeyLoggerType       = "l"
+	loggerKeyEnvLogFileName   = "APP_LOG_FILE"
+	loggerKeyEnvLogLevel      = "APP_LOG_LEVEL"
+	loggerKeySkipStdoutLogger = "APP_LOG_SKIP_STDOUT_LOGGER"
 )
 
 // Initialize logger for the given service name

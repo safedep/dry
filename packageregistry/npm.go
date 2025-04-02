@@ -12,6 +12,10 @@ type npmAdapter struct{}
 type npmPublisherDiscovery struct{}
 type npmPackageDiscovery struct{}
 
+// Verify that npmAdapter implements the Client interface
+var _ Client = (*npmAdapter)(nil)
+
+// NewNpmAdapter creates a new NPM registry adapter
 func NewNpmAdapter() (Client, error) {
 	return &npmAdapter{}, nil
 }
@@ -117,7 +121,7 @@ func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) 
 
 	defer res.Body.Close()
 
-	var npmpkg npmPackageInfo
+	var npmpkg npmPackage
 	err = json.NewDecoder(res.Body).Decode(&npmpkg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode JSON response in npm registry adapter %w", err)

@@ -4,8 +4,10 @@ import (
 	"time"
 )
 
-// NpmPackage represents the structure of the package metadata
+// npmPackage represents a package in the NPM registry
+// We convert the npm package to our own Package struct
 type npmPackage struct {
+	Name   string `json:"name"`
 	Author struct {
 		Name string `json:"name"`
 	} `json:"author"`

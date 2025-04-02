@@ -7,13 +7,13 @@ import (
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
 
-// Holds package registry specific information about verification
+// PublisherVerificationStatus holds package registry specific information about verification
 // status of a publisher in the registry.
 type PublisherVerificationStatus struct {
 	IsVerified bool `json:"is_verified"`
 }
 
-// Represents an individual or an organization having an account with
+// Publisher represents an individual or an organization having an account with
 // a package registry for publishing package artifacts.
 type Publisher struct {
 	Name  string `json:"name"`
@@ -31,15 +31,15 @@ type PackagePublisherInfo struct {
 	Publishers []*Publisher `json:"publishers"`
 }
 
-// Represents a version of a package in a package registry.
+// PackageVersionInfo represents a version of a package in a package registry.
 type PackageVersionInfo struct {
 	// The version of the project.
 	Version string `json:"version"`
 
 	// The release & update date of the version
 	// Both can be same if the version is immutable.
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// CreatedAt time.Time `json:"created_at"`
+	// UpdatedAt time.Time `json:"updated_at"`
 
 	// Other version related metrics. May not be available
 	// for all package registries.
@@ -53,6 +53,7 @@ type PackageInfo struct {
 	Downloads int `json:"downloads"`
 }
 
+// Package represents a package in a package registry.
 // Example: `requests` in PyPI, `rails` in RubyGems.
 type Package struct {
 	// The name of the project.
@@ -65,7 +66,7 @@ type Package struct {
 	PackageUrl string `json:"package_url"`
 
 	// Homepage Url for the package
-	HomepageUrl string `json:"homepage_url"`
+	HomepageUrl string `json:"homepage"`
 
 	// The project description.
 	Description string `json:"description"`
@@ -111,6 +112,21 @@ type Client interface {
 	PackageDiscovery() (PackageDiscovery, error)
 }
 
+// NewRegistryAdapter creates and returns a new registry adapter for the specified ecosystem.
+//
+// Parameters:
+//   - ecosystem: The package ecosystem to create an adapter for (e.g., NPM, PyPI, RubyGems)
+//
+// Returns:
+//   - Client: The registry adapter implementing the Client interface
+//   - error: An error if the ecosystem is not supported or adapter creation fails
+//
+// Example:
+//
+//	client, err := packageregistry.NewRegistryAdapter(packagev1.Ecosystem_ECOSYSTEM_NPM)
+//	if err != nil {
+//		log.Fatalf("failed to create registry adapter: %v", err)
+//	}
 func NewRegistryAdapter(ecosystem packagev1.Ecosystem) (Client, error) {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_NPM:

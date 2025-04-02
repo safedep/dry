@@ -48,6 +48,8 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 		return nil, ErrFailedToFetchPackage
 	}
 
+	// Publishers in case of NPM are all the Maintainers of the package
+	// Hense we only need to extract the Maintainers from the response
 	var npmpkg npmPackageMaintainerInfo
 	err = json.NewDecoder(res.Body).Decode(&npmpkg)
 	if err != nil {

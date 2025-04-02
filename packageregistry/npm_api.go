@@ -72,7 +72,7 @@ type npmPackageMaintainerInfo struct {
 	Maintainers []npmPackageAuthor `json:"maintainers"`
 }
 
-// npmPublisherRecord represents the response from the NPM publisher API
+// npmPublisherRecord represents the response from the NPM API for packages with author
 // Endpoint:
 // - GET: https://registry.npmjs.org/-/v1/search?text=author:<publisherName>
 type npmPublisherRecord struct {
@@ -81,16 +81,19 @@ type npmPublisherRecord struct {
 }
 
 type npmPublisherRecordPackage struct {
-	Package     npmPackage          `json:"package"`
-	Downloads   npmPackageDownloads `json:"downloads"`
-	Dependents  uint32              `json:"dependents"`
-	UpdatedAt   time.Time           `json:"updated"`
-	SearchScore float64             `json:"searchScore"`
-	Score       npmPackageScore     `json:"score"`
-	Flags       npmPackageFlags     `json:"flags"`
+	Package     npmPublisherRecordPackageDetails `json:"package"`
+	Downloads   npmPackageDownloads              `json:"downloads"`
+	Dependents  uint32                           `json:"dependents"`
+	UpdatedAt   time.Time                        `json:"updated"`
+	SearchScore float64                          `json:"searchScore"`
+	Score       npmPackageScore                  `json:"score"`
+	Flags       npmPackageFlags                  `json:"flags"`
 }
 
-type npmPublisherRecordPackagePackage struct {
+// npmPublisherRecordPackageDetails represents the details of a package in the NPM publisher API
+// But This only contains the name of the package, since we are going to fetch the details from the package API
+// Beause current data only contains the latest version of the package, we want all version
+type npmPublisherRecordPackageDetails struct {
 	Name string `json:"name"`
 }
 

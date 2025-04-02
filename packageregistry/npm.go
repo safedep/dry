@@ -68,28 +68,43 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	return &PackagePublisherInfo{Publishers: publishers}, nil
 }
 
+// GetPublisherPackages returns all the packages published by a given publisher
 func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	publisherURL := fmt.Sprintf("https://registry.npmjs.org/-/v1/search?text=author:%s", publisher.Name)
 
 	res, err := http.Get(publisherURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch npm publisher metadata %w", err)
+		return nil, ErrFailedToFetchPackage
 	}
-
 	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, ErrFailedToFetchPackage
+	}
 
 	var pubRecord npmPublisherRecord
 	err = json.NewDecoder(res.Body).Decode(&pubRecord)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding JSON in npm registry adapter: %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
-	// for _, obj := range pubRecord.Objects {
-	// }
-	return nil, nil
+	packages := make([]*Package, len(pubRecord.Objects))
+	for i, obj := range pubRecord.Objects {
+		pkg, err := getPackageDetails(obj.Package.Name)
+		if err != nil {
+			return nil, err
+		}
+		packages[i] = pkg
+	}
+
+	return packages, nil
 }
 
 func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) {
+	return getPackageDetails(packageName)
+}
+
+func getPackageDetails(packageName string) (*Package, error) {
 	packageURL := fmt.Sprintf("https://registry.npmjs.org/%s", packageName)
 
 	res, err := http.Get(packageURL)

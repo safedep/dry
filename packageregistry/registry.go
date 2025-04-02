@@ -24,7 +24,7 @@ type Publisher struct {
 	VerificationStatus *PublisherVerificationStatus `json:"verification_status"`
 }
 
-// Publisher information for a given package in a registry
+// PackagePublisherInfo represents the publisher of a package in a package registry.
 type PackagePublisherInfo struct {
 	Publishers []*Publisher `json:"publishers"`
 }

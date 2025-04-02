@@ -28,6 +28,7 @@ func (na *npmAdapter) PackageDiscovery() (PackageDiscovery, error) {
 	return &npmPackageDiscovery{}, nil
 }
 
+// GetPackagePublisher returns the publisher of a package
 func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.PackageVersion) (*PackagePublisherInfo, error) {
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
@@ -35,31 +36,31 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	packageURL := fmt.Sprintf("https://registry.npmjs.org/%s/%s", packageName, version)
 	res, err := http.Get(packageURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch npm package metadata %w", err)
+		return nil, ErrFailedToFetchPackage
 	}
-
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unable to fetch npm package metadata, statusCode: %d", res.StatusCode)
-	}
-
 	defer res.Body.Close()
 
-	var npmpkg npmPackage
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrPackageNotFound
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	var npmpkg npmPackageMaintainerInfo
 	err = json.NewDecoder(res.Body).Decode(&npmpkg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response in npm registry adapter %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
-	if npmpkg.Maintainers == nil {
-		return nil, fmt.Errorf("no maintainers found for package %s", packageName)
-	}
+	publishers := make([]*Publisher, len(npmpkg.Maintainers))
 
-	publishers := make([]*Publisher, 0, len(npmpkg.Maintainers))
-	for _, maintainer := range npmpkg.Maintainers {
-		publishers = append(publishers, &Publisher{
+	for i, maintainer := range npmpkg.Maintainers {
+		publishers[i] = &Publisher{
 			Name:  maintainer.Name,
 			Email: maintainer.Email,
-		})
+		}
 	}
 
 	return &PackagePublisherInfo{Publishers: publishers}, nil
@@ -91,15 +92,22 @@ func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) 
 
 	res, err := http.Get(packageURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch npm package metadata %w", err)
+		return nil, ErrFailedToFetchPackage
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrPackageNotFound
 	}
 
-	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, ErrFailedToFetchPackage
+	}
 
 	var npmpkg npmPackage
 	err = json.NewDecoder(res.Body).Decode(&npmpkg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response in npm registry adapter %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
 	pkgVerions := make([]PackageVersionInfo, 0)

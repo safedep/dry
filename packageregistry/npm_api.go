@@ -68,6 +68,10 @@ type npmPackageBugs struct {
 	Url string `json:"url"`
 }
 
+type npmPackageMaintainerInfo struct {
+	Maintainers []npmPackageAuthor `json:"maintainers"`
+}
+
 // npmPublisherRecord represents the response from the NPM publisher API
 // Endpoint:
 // - GET: https://registry.npmjs.org/-/v1/search?text=author:<publisherName>

@@ -73,7 +73,7 @@ func TestNpmGetPublisher(t *testing.T) {
 
 }
 
-func TestNpmGetPackages(t *testing.T) {
+func TestNpmGetPackagesByPublisher(t *testing.T) {
 	cases := []struct {
 		name           string
 		publishername  string
@@ -115,6 +115,46 @@ func TestNpmGetPackages(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
 				assert.GreaterOrEqual(t, len(pkgs), test.minPackages)
+			}
+		})
+	}
+}
+
+func TestNpmGetPackage(t *testing.T) {
+	cases := []struct {
+		pkgName string
+		err     error
+	}{
+		{
+			pkgName: "express",
+			err:     nil,
+		},
+		{
+			pkgName: "random-package-name-that-does-not-exist-1246890",
+			err:     ErrPackageNotFound,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewNpmAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry npm adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in npm adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.err != nil {
+				assert.ErrorIs(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, pkg)
 			}
 		})
 	}

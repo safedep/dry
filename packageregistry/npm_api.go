@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -8,33 +9,33 @@ import (
 // Endpoint:
 // - GET https://registry.npmjs.org/<packageName>
 type npmPackage struct {
-	Name         string               `json:"name"`
-	Versions     []npmPackageVersion  `json:"versions"`
-	Time         npmPackageTime       `json:"time"`
-	Bugs         npmPackageBugs       `json:"bugs"`
-	Author       npmPackageAuthor     `json:"author"`
-	License      string               `json:"license"`
-	Homepage     string               `json:"homepage"`
-	Keywords     []string             `json:"keywords"`
-	Repository   npmPackageRepository `json:"repository"`
-	Description  string               `json:"description"`
-	Contributors []npmPackageAuthor   `json:"contributors"`
-	Maintainers  []npmPackageAuthor   `json:"maintainers"`
-	Users        []string             `json:"users"`
+	Name         string                `json:"name"`
+	Versions     []npmPackageVersion   `json:"versions"`
+	Time         npmPackageTime        `json:"time"` // Time is always present
+	Bugs         *npmPackageBugs       `json:"bugs"`
+	Author       *npmPackageAuthor     `json:"author"`
+	License      *string               `json:"license"`
+	Homepage     *string               `json:"homepage"`
+	Keywords     []string              `json:"keywords"`
+	Repository   *npmPackageRepository `json:"repository"` // Can be string or object
+	Description  *string               `json:"description"`
+	Contributors []npmPackageAuthor    `json:"contributors"`
+	Maintainers  []npmPackageAuthor    `json:"maintainers"`
+	Users        []string              `json:"users"`
 }
 
 type npmPackageVersion struct {
-	Name            string               `json:"name"`
-	Version         string               `json:"version"`
-	Description     string               `json:"description"`
-	Deprecated      string               `json:"deprecated"`
-	Keywords        []string             `json:"keywords"`
-	Author          npmPackageAuthor     `json:"author"`
-	Contributors    []npmPackageAuthor   `json:"contributors"`
-	Dist            npmPackageDist       `json:"dist"`
-	Dependencies    map[string]string    `json:"dependencies"`
-	DevDependencies map[string]string    `json:"devDependencies"`
-	Repository      npmPackageRepository `json:"repository"`
+	Name            string                `json:"name"`
+	Version         string                `json:"version"`
+	Description     *string               `json:"description"`
+	Deprecated      *string               `json:"deprecated"`
+	Keywords        []string              `json:"keywords"`
+	Author          *npmPackageAuthor     `json:"author"`
+	Contributors    []npmPackageAuthor    `json:"contributors"`
+	Dist            *npmPackageDist       `json:"dist"`
+	Dependencies    map[string]string     `json:"dependencies"`
+	DevDependencies map[string]string     `json:"devDependencies"`
+	Repository      *npmPackageRepository `json:"repository"`
 }
 
 type npmPackageAuthor struct {
@@ -43,8 +44,32 @@ type npmPackageAuthor struct {
 }
 
 type npmPackageRepository struct {
-	Url  string `json:"url"`
-	Type string `json:"type"`
+	// Internally, we use url as a string
+	url string
+}
+
+// Custom unmarshal for npmPackageRepository, because the type can be string or object
+func (r *npmPackageRepository) UnmarshalJSON(data []byte) error {
+	type npmPackageRepositoryType struct {
+		Url  string `json:"url"`
+		Type string `json:"type"`
+	}
+
+	// Try to string first
+	var stringValue string
+	if err := json.Unmarshal(data, &stringValue); err == nil {
+		r.url = stringValue
+		return nil
+	}
+
+	// Try to object next
+	var objectValue npmPackageRepositoryType
+	if err := json.Unmarshal(data, &objectValue); err == nil {
+		r.url = objectValue.Url
+		return nil
+	}
+
+	return ErrFailedToParseNpmPackage
 }
 
 type npmPackageDist struct {

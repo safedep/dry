@@ -34,17 +34,16 @@ type PackageVersionInfo struct {
 	// The version of the project.
 	Version string `json:"version"`
 	// Depricated Information (is version depricated)
-	Depricated bool `json:"depricated"`
+	Depricated *bool `json:"depricated"`
 	// Author of the version
-	Author Publisher `json:"author"`
+	Author *Publisher `json:"author"`
 }
 
-// PackageInfo contains stats and metadata of the package
-type PackageInfo struct {
-	Stars     int    `json:"stars"`
-	Forks     int    `json:"forks"`
-	License   string `json:"license"`
-	Downloads int    `json:"downloads"`
+// PackageStats contains stats and numbers of the package
+type PackageStats struct {
+	Stars     *int `json:"stars"`
+	Forks     *int `json:"forks"`
+	Downloads *int `json:"downloads"`
 }
 
 // Package represents a package in a package registry.
@@ -52,25 +51,39 @@ type PackageInfo struct {
 type Package struct {
 	// The name of the project.
 	Name string `json:"name"`
+
 	// The project description.
-	Description string `json:"description"`
+	Description *string `json:"description"`
+
 	// The source repository URL for the project.
-	SourceRepositoryUrl string `json:"source_repository_url"`
+	SourceRepositoryUrl *string `json:"source_repository_url"`
+
 	// The registry url for the Package
-	PackageUrl string `json:"package_url"`
+	PackageUrl *string `json:"package_url"`
+
 	// Homepage Url for the package
-	HomepageUrl string `json:"homepage"`
+	HomepageUrl *string `json:"homepage"`
+
 	// Publisher of the package
 	Publisher Publisher `json:"publisher"`
+
 	// Maintainers of the package
 	Maintainers []Publisher `json:"maintainers"`
+
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
+
 	// Package metadata
-	PackageInfo PackageInfo `json:"package_info"`
-	// Important timestamps
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	License *string `json:"license"`
+
+	// Package stats
+	Stats *PackageStats `json:"stats"`
+
+	// Package creation timestamps
+	CreatedAt *time.Time `json:"created_at"`
+
+	// Package update timestamps
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 // PackageDiscovery is a contract for implementing package discovery for a package registry.

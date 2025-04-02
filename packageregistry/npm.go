@@ -129,10 +129,13 @@ func getPackageDetails(packageName string) (*Package, error) {
 
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
+		// In NPM, a package can be depricated by setting the deprecated field to a non-empty string
+		depricated := version.Deprecated != nil && *version.Deprecated != ""
+
 		pkgVerions = append(pkgVerions, PackageVersionInfo{
 			Version:    version.Version,
-			Depricated: version.Deprecated != "",
-			Author: Publisher{
+			Depricated: &depricated,
+			Author: &Publisher{
 				Name:  version.Author.Name,
 				Email: version.Author.Email,
 			},
@@ -147,23 +150,28 @@ func getPackageDetails(packageName string) (*Package, error) {
 		})
 	}
 
+	sourceRepositoryURL := new(string)
+	if npmpkg.Repository != nil && npmpkg.Repository.url != "" {
+		*sourceRepositoryURL = npmpkg.Repository.url
+	}
+
+	publicPakcageURL := fmt.Sprintf("https://www.npmjs.com/package/%s", npmpkg.Name)
+
 	pkg := Package{
 		Name:                npmpkg.Name,
 		Description:         npmpkg.Description,
-		SourceRepositoryUrl: npmpkg.Repository.Url,
-		PackageUrl:          fmt.Sprintf("https://www.npmjs.com/package/%s", npmpkg.Name),
+		SourceRepositoryUrl: sourceRepositoryURL,
+		PackageUrl:          &publicPakcageURL,
 		HomepageUrl:         npmpkg.Homepage,
 		Versions:            pkgVerions,
-		CreatedAt:           npmpkg.Time.Created,
-		UpdatedAt:           npmpkg.Time.Modified,
+		CreatedAt:           &npmpkg.Time.Created,
+		UpdatedAt:           &npmpkg.Time.Modified,
 		Publisher: Publisher{
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
 		},
 		Maintainers: pkgMaintainers,
-		PackageInfo: PackageInfo{
-			License: npmpkg.License,
-		},
+		License:     npmpkg.License,
 	}
 
 	return &pkg, nil

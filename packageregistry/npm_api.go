@@ -39,8 +39,8 @@ type npmPackageVersion struct {
 }
 
 type npmPackageAuthor struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
+	Name  *string `json:"name"`
+	Email *string `json:"email"`
 }
 
 type npmPackageRepository struct {

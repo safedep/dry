@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"fmt"
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -10,7 +9,7 @@ import (
 
 func TestNpmGetPublisher(t *testing.T) {
 	cases := []struct {
-		name       string
+		testName   string
 		pkgName    string
 		pkgVersion string
 		err        error
@@ -18,13 +17,13 @@ func TestNpmGetPublisher(t *testing.T) {
 		assertFunc func(t *testing.T, publisherInfo *PackagePublisherInfo, err error)
 	}{
 		{
-			name:       "npm package dnr-rulesets",
+			testName:   "Correct Npm publisher for package",
 			pkgName:    "@adguard/dnr-rulesets",
 			pkgVersion: "1.2.20250128090114",
 			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
 				assert.NoError(t, err)
 				assert.NotNil(t, publisherInfo)
-				assert.Equal(t, 3, len(publisherInfo.Publishers))
+				assert.Equal(t, 3, len(publisherInfo.Publishers)) // 3 Maintainers
 
 				// The name and email are public data available from the npm registry
 				assert.ElementsMatch(t, []*Publisher{
@@ -35,20 +34,19 @@ func TestNpmGetPublisher(t *testing.T) {
 			},
 		},
 		{
-			name:       "Incorrect package version",
+			testName:   "Failed to fetch package",
 			pkgName:    "@adguard/dnr-rulesets",
 			pkgVersion: "0.0.0",
-			err:        fmt.Errorf("unable to fetch npm package metadata"),
+			err:        ErrFailedToFetchPackage,
 			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
-				assert.Error(t, err)
-				assert.ErrorContains(t, err, "unable to fetch npm package metadata")
+				assert.ErrorIs(t, err, ErrFailedToFetchPackage)
 				assert.Nil(t, publisherInfo)
 			},
 		},
 	}
 
 	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.testName, func(t *testing.T) {
 			adapter, err := NewNpmAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
@@ -75,28 +73,36 @@ func TestNpmGetPublisher(t *testing.T) {
 
 func TestNpmGetPackagesByPublisher(t *testing.T) {
 	cases := []struct {
-		name           string
+		testName       string
 		publishername  string
 		publisherEmail string
 		minPackages    int
 		err            error
 	}{
 		{
-			name:           "Correct Npm publisher",
+			testName:       "Correct Npm publisher",
 			publishername:  "maximtop",
 			publisherEmail: "maximtop@gmail.com",
-			minPackages:    20,
+			minPackages:    23, // he might add some package, so we need to update value here
+			err:            nil,
 		},
 		{
-			name:           "incorrect publisher info",
+			testName:       "Correct Npm publisher",
+			publishername:  "kunalsin9h", // :)
+			publisherEmail: "kunalsin9h@gmail.com",
+			minPackages:    2,
+			err:            nil,
+		},
+		{
+			testName:       "incorrect publisher info",
 			publishername:  "randomguyyssssss",
-			publisherEmail: "rndom.com",
-			err:            fmt.Errorf("Packages not found for author"),
+			publisherEmail: "randomguyyssssss@gmail.com",
+			err:            ErrNoPackagesFound,
 		},
 	}
 
 	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(test.testName, func(t *testing.T) {
 			adapter, err := NewNpmAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
@@ -109,8 +115,7 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 
 			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: test.publisherEmail})
 			if test.err != nil {
-				assert.Error(t, err)
-				assert.ErrorContains(t, err, test.err.Error())
+				assert.ErrorIs(t, err, test.err)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
@@ -137,8 +142,6 @@ func TestNpmGetPackage(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.pkgName, func(t *testing.T) {
-			t.Parallel()
-
 			adapter, err := NewNpmAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)

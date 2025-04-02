@@ -60,8 +60,8 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 
 	for i, maintainer := range npmpkg.Maintainers {
 		publishers[i] = &Publisher{
-			Name:  maintainer.Name,
-			Email: maintainer.Email,
+			Name:  *maintainer.Name,
+			Email: *maintainer.Email,
 		}
 	}
 
@@ -86,6 +86,10 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 	err = json.NewDecoder(res.Body).Decode(&pubRecord)
 	if err != nil {
 		return nil, ErrFailedToParsePackage
+	}
+
+	if len(pubRecord.Objects) == 0 {
+		return nil, ErrNoPackagesFound
 	}
 
 	packages := make([]*Package, len(pubRecord.Objects))
@@ -136,8 +140,8 @@ func getPackageDetails(packageName string) (*Package, error) {
 			Version:    version.Version,
 			Depricated: &depricated,
 			Author: &Publisher{
-				Name:  version.Author.Name,
-				Email: version.Author.Email,
+				Name:  *version.Author.Name,
+				Email: *version.Author.Email,
 			},
 		})
 	}
@@ -145,8 +149,8 @@ func getPackageDetails(packageName string) (*Package, error) {
 	pkgMaintainers := make([]Publisher, 0)
 	for _, maintainer := range npmpkg.Maintainers {
 		pkgMaintainers = append(pkgMaintainers, Publisher{
-			Name:  maintainer.Name,
-			Email: maintainer.Email,
+			Name:  *maintainer.Name,
+			Email: *maintainer.Email,
 		})
 	}
 
@@ -157,6 +161,16 @@ func getPackageDetails(packageName string) (*Package, error) {
 
 	publicPakcageURL := fmt.Sprintf("https://www.npmjs.com/package/%s", npmpkg.Name)
 
+	var author Publisher
+	if npmpkg.Author != nil {
+		if npmpkg.Author.Name != nil {
+			author.Name = *npmpkg.Author.Name
+		}
+		if npmpkg.Author.Email != nil {
+			author.Email = *npmpkg.Author.Email
+		}
+	}
+
 	pkg := Package{
 		Name:                npmpkg.Name,
 		Description:         npmpkg.Description,
@@ -166,12 +180,9 @@ func getPackageDetails(packageName string) (*Package, error) {
 		Versions:            pkgVerions,
 		CreatedAt:           &npmpkg.Time.Created,
 		UpdatedAt:           &npmpkg.Time.Modified,
-		Publisher: Publisher{
-			Name:  npmpkg.Author.Name,
-			Email: npmpkg.Author.Email,
-		},
-		Maintainers: pkgMaintainers,
-		License:     npmpkg.License,
+		Publisher:           author,
+		Maintainers:         pkgMaintainers,
+		License:             npmpkg.License,
 	}
 
 	return &pkg, nil

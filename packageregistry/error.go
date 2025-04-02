@@ -9,4 +9,5 @@ var (
 	ErrFailedToFetchPackage    = errors.New("failed to fetch package")
 	ErrFailedToParsePackage    = errors.New("failed to parse package")
 	ErrFailedToParseNpmPackage = errors.New("failed to parse npm package")
+	ErrNoPackagesFound         = errors.New("no packages found")
 )

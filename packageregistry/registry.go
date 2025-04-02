@@ -22,8 +22,6 @@ type Publisher struct {
 	// Verification may or may not be supported by all
 	// package registries. Hence its optional
 	VerificationStatus *PublisherVerificationStatus `json:"verification_status"`
-
-	// Any other relevant information for a publisher
 }
 
 // Publisher information for a given package in a registry
@@ -35,22 +33,18 @@ type PackagePublisherInfo struct {
 type PackageVersionInfo struct {
 	// The version of the project.
 	Version string `json:"version"`
-
-	// The release & update date of the version
-	// Both can be same if the version is immutable.
-	// CreatedAt time.Time `json:"created_at"`
-	// UpdatedAt time.Time `json:"updated_at"`
-
-	// Other version related metrics. May not be available
-	// for all package registries.
-	Downloads int `json:"downloads"`
+	// Depricated Information (is version depricated)
+	Depricated bool `json:"depricated"`
+	// Author of the version
+	Author Publisher `json:"author"`
 }
 
 // PackageInfo contains stats and metadata of the package
 type PackageInfo struct {
-	Stars     int `json:"stars"`
-	Forks     int `json:"forks"`
-	Downloads int `json:"downloads"`
+	Stars     int    `json:"stars"`
+	Forks     int    `json:"forks"`
+	License   string `json:"license"`
+	Downloads int    `json:"downloads"`
 }
 
 // Package represents a package in a package registry.
@@ -58,25 +52,22 @@ type PackageInfo struct {
 type Package struct {
 	// The name of the project.
 	Name string `json:"name"`
-
-	// The source repository URL for the project.
-	SourceRepositoryUrl string `json:"source_repository_url"`
-
-	// The registry url for the Package
-	PackageUrl string `json:"package_url"`
-
-	// Homepage Url for the package
-	HomepageUrl string `json:"homepage"`
-
 	// The project description.
 	Description string `json:"description"`
-
+	// The source repository URL for the project.
+	SourceRepositoryUrl string `json:"source_repository_url"`
+	// The registry url for the Package
+	PackageUrl string `json:"package_url"`
+	// Homepage Url for the package
+	HomepageUrl string `json:"homepage"`
+	// Publisher of the package
+	Publisher Publisher `json:"publisher"`
+	// Maintainers of the package
+	Maintainers []Publisher `json:"maintainers"`
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
-
 	// Package metadata
 	PackageInfo PackageInfo `json:"package_info"`
-
 	// Important timestamps
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

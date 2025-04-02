@@ -5,7 +5,8 @@ import (
 )
 
 // npmPackage represents a package in the NPM registry
-// We convert the npm package to our own Package struct
+// Endpoint:
+// - GET https://registry.npmjs.org/<packageName>
 type npmPackage struct {
 	Name         string               `json:"name"`
 	Versions     []npmPackageVersion  `json:"versions"`
@@ -67,34 +68,44 @@ type npmPackageBugs struct {
 	Url string `json:"url"`
 }
 
-type npmPublisherObject struct {
-	Objects []struct {
-		Downloads struct {
-			Monthly int `json:"monthly"`
-			Weekly  int `json:"weekly"`
-		} `json:"downloads"`
-		Updated time.Time             `json:"updated"`
-		Package npmPackageVersionInfo `json:"package"`
-	} `json:"objects"`
+// npmPublisherRecord represents the response from the NPM publisher API
+// Endpoint:
+// - GET: https://registry.npmjs.org/-/v1/search?text=author:<publisherName>
+type npmPublisherRecord struct {
+	Objects []npmPublisherRecordPackage `json:"objects"`
+	Total   uint32                      `json:"total"`
 }
 
-type npmPackageVersionInfo struct {
-	Name        string           `json:"name"`
-	Version     string           `json:"version"`
-	Description string           `json:"description"`
-	Publisher   maintainerInfo   `json:"publisher"`
-	Maintainers []maintainerInfo `json:"maintainers"`
-	License     string           `json:"license"`
-	Date        time.Time        `json:"date"`
-	Links       struct {
-		Bugs             string `json:"bugs"`
-		Npm              string `json:"npm"`
-		SourceRepository string `json:"repository"`
-		Homepage         string `json:"homepage"`
-	} `json:"links"`
+type npmPublisherRecordPackage struct {
+	Package     npmPackage          `json:"package"`
+	Downloads   npmPackageDownloads `json:"downloads"`
+	Dependents  uint32              `json:"dependents"`
+	UpdatedAt   time.Time           `json:"updated"`
+	SearchScore float64             `json:"searchScore"`
+	Score       npmPackageScore     `json:"score"`
+	Flags       npmPackageFlags     `json:"flags"`
 }
 
-type maintainerInfo struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
+type npmPublisherRecordPackagePackage struct {
+	Name string `json:"name"`
+}
+
+type npmPackageDownloads struct {
+	Monthly uint32 `json:"monthly"`
+	Weekly  uint32 `json:"weekly"`
+}
+
+type npmPackageScore struct {
+	Final  float64        `json:"final"`
+	Detail npmScoreDetail `json:"detail"`
+}
+
+type npmScoreDetail struct {
+	Quality     float64 `json:"quality"`
+	Popularity  float64 `json:"popularity"`
+	Maintenance float64 `json:"maintenance"`
+}
+
+type npmPackageFlags struct {
+	Insecure bool `json:"insecure"`
 }

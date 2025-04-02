@@ -75,40 +75,15 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 
 	defer res.Body.Close()
 
-	var pubObject npmPublisherObject
-	err = json.NewDecoder(res.Body).Decode(&pubObject)
+	var pubRecord npmPublisherRecord
+	err = json.NewDecoder(res.Body).Decode(&pubRecord)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding JSON in npm registry adapter: %w", err)
 	}
 
-	publisherPackages := []*Package{}
-	for _, obj := range pubObject.Objects {
-		pkg := Package{
-			Name:                obj.Package.Name,
-			SourceRepositoryUrl: obj.Package.Links.SourceRepository,
-			PackageUrl:          obj.Package.Links.Npm,
-			HomepageUrl:         obj.Package.Links.Homepage,
-			Description:         obj.Package.Description,
-			Versions: []PackageVersionInfo{
-				{
-					Version: obj.Package.Version,
-				},
-			},
-			CreatedAt: obj.Package.Date,
-			UpdatedAt: obj.Updated,
-			PackageInfo: PackageInfo{
-				Downloads: obj.Downloads.Monthly,
-			},
-		}
-
-		publisherPackages = append(publisherPackages, &pkg)
-	}
-
-	if len(publisherPackages) < 1 {
-		return nil, fmt.Errorf("Packages not found for author :%s", publisher.Name)
-	}
-
-	return publisherPackages, nil
+	// for _, obj := range pubRecord.Objects {
+	// }
+	return nil, nil
 }
 
 func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) {
@@ -127,8 +102,43 @@ func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) 
 		return nil, fmt.Errorf("failed to decode JSON response in npm registry adapter %w", err)
 	}
 
+	pkgVerions := make([]PackageVersionInfo, 0)
+	for _, version := range npmpkg.Versions {
+		pkgVerions = append(pkgVerions, PackageVersionInfo{
+			Version:    version.Version,
+			Depricated: version.Deprecated != "",
+			Author: Publisher{
+				Name:  version.Author.Name,
+				Email: version.Author.Email,
+			},
+		})
+	}
+
+	pkgMaintainers := make([]Publisher, 0)
+	for _, maintainer := range npmpkg.Maintainers {
+		pkgMaintainers = append(pkgMaintainers, Publisher{
+			Name:  maintainer.Name,
+			Email: maintainer.Email,
+		})
+	}
+
 	pkg := Package{
-		Name: npmpkg.Name,
+		Name:                npmpkg.Name,
+		Description:         npmpkg.Description,
+		SourceRepositoryUrl: npmpkg.Repository.Url,
+		PackageUrl:          fmt.Sprintf("https://www.npmjs.com/package/%s", npmpkg.Name),
+		HomepageUrl:         npmpkg.Homepage,
+		Versions:            pkgVerions,
+		CreatedAt:           npmpkg.Time.Created,
+		UpdatedAt:           npmpkg.Time.Modified,
+		Publisher: Publisher{
+			Name:  npmpkg.Author.Name,
+			Email: npmpkg.Author.Email,
+		},
+		Maintainers: pkgMaintainers,
+		PackageInfo: PackageInfo{
+			License: npmpkg.License,
+		},
 	}
 
 	return &pkg, nil

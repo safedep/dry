@@ -83,7 +83,7 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 			testName:       "Correct Npm publisher",
 			publishername:  "maximtop",
 			publisherEmail: "maximtop@gmail.com",
-			minPackages:    23, // he might add some package, so we need to update value here
+			minPackages:    23, // he might add some package, thats why we will do >= 23
 			err:            nil,
 		},
 		{

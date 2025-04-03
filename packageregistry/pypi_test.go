@@ -26,10 +26,18 @@ func TestPypiGetPublisher(t *testing.T) {
 			},
 		},
 		{
+			name:       "pypi package numpy",
+			pkgName:    "numpy",
+			pkgVersion: "1.2.0",
+			publishers: []*Publisher{
+				{Name: "NumPy Developers", Email: "numpy-discussion@scipy.org"},
+			},
+		},
+		{
 			name:       "Incorrect package version",
 			pkgName:    "@adguard/dnr-rulesets",
 			pkgVersion: "0.0.0",
-			err:        fmt.Errorf("unable to fetch pypi package metadata"),
+			err:        ErrPackageNotFound,
 		},
 	}
 
@@ -45,11 +53,13 @@ func TestPypiGetPublisher(t *testing.T) {
 				t.Fatalf("failed to create publisher discovery client in npm adapter")
 			}
 			pkgVersion := packagev1.PackageVersion{
+
 				Version: test.pkgVersion,
 				Package: &packagev1.Package{
 					Name: test.pkgName,
 				},
 			}
+
 			publisherInfo, err := pd.GetPackagePublisher(&pkgVersion)
 
 			if test.err != nil {

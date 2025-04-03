@@ -13,33 +13,50 @@ func TestNpmGetPublisher(t *testing.T) {
 		pkgName    string
 		pkgVersion string
 		err        error
-		publishers []*Publisher
 		assertFunc func(t *testing.T, publisherInfo *PackagePublisherInfo, err error)
 	}{
 		{
 			testName:   "Correct Npm publisher for package",
-			pkgName:    "@adguard/dnr-rulesets",
-			pkgVersion: "1.2.20250128090114",
+			pkgName:    "@kunalsin9h/load-gql",
+			pkgVersion: "1.0.2",
 			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
 				assert.NoError(t, err)
 				assert.NotNil(t, publisherInfo)
-				assert.Equal(t, 3, len(publisherInfo.Publishers)) // 3 Maintainers
+				assert.Equal(t, 1, len(publisherInfo.Publishers))
 
-				// The name and email are public data available from the npm registry
-				assert.ElementsMatch(t, []*Publisher{
-					{Name: "ameshkov", Email: "am@adguard.com"},
-					{Name: "maximtop", Email: "maximtop@gmail.com"},
-					{Name: "blakhard", Email: "vlad.abdulmianov@gmail.com"},
-				}, publisherInfo.Publishers)
+				validPublishersName := []string{"kunalsin9h"}
+				validPublishersEmail := []string{"kunalsin9h@gmail.com"}
+
+				for _, publisher := range publisherInfo.Publishers {
+					assert.Contains(t, validPublishersName, publisher.Name)
+					assert.Contains(t, validPublishersEmail, publisher.Email)
+				}
+			},
+		},
+		{
+			testName:   "Correct NPM publisher for package express",
+			pkgName:    "express",
+			pkgVersion: "5.1.0",
+			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, publisherInfo)
+				assert.Equal(t, 4, len(publisherInfo.Publishers))
+
+				validPublishersName := []string{"wesleytodd", "jonchurch", "ctcpip", "sheplu"}
+				validPublishersEmail := []string{"wes@wesleytodd.com", "npm@jonchurch.com", "c@labsector.com", "jean.burellier@gmail.com"}
+
+				for _, publisher := range publisherInfo.Publishers {
+					assert.Contains(t, validPublishersName, publisher.Name)
+					assert.Contains(t, validPublishersEmail, publisher.Email)
+				}
 			},
 		},
 		{
 			testName:   "Failed to fetch package",
 			pkgName:    "@adguard/dnr-rulesets",
 			pkgVersion: "0.0.0",
-			err:        ErrFailedToFetchPackage,
 			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
-				assert.ErrorIs(t, err, ErrFailedToFetchPackage)
+				assert.ErrorIs(t, err, ErrPackageNotFound)
 				assert.Nil(t, publisherInfo)
 			},
 		},

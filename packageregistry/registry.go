@@ -49,7 +49,7 @@ type Package struct {
 	SourceRepositoryUrl string `json:"source_repository_url"`
 
 	// Publisher of the package
-	Publisher Publisher `json:"publisher"`
+	Author Publisher `json:"author"`
 
 	// Maintainers of the package
 	Maintainers []Publisher `json:"maintainers"`

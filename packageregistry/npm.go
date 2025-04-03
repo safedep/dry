@@ -164,7 +164,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,
 		Downloads:           OptionalInt{Value: downloads, Valid: true},
-		Publisher: Publisher{
+		Author: Publisher{
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
 			Url:   npmpkg.Author.Url,

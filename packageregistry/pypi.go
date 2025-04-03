@@ -56,7 +56,7 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 		return nil, ErrAuthorNotFound
 	}
 
-	publishers := []*Publisher{
+	publishers := []Publisher{
 		{
 			Name:  pypipkg.Info.Author,
 			Email: pypipkg.Info.AuthorEmail,

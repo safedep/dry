@@ -54,9 +54,9 @@ func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 		return nil, ErrAuthorNotFound
 	}
 
-	publishers := make([]*Publisher, 0, len(owners))
+	publishers := make([]Publisher, 0, len(owners))
 	for _, author := range owners {
-		publishers = append(publishers, &Publisher{
+		publishers = append(publishers, Publisher{
 			Name:  author.Handle,
 			Email: author.Email,
 		})

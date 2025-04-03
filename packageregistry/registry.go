@@ -27,7 +27,7 @@ type Publisher struct {
 
 // PackagePublisherInfo represents the publisher of a package in a package registry.
 type PackagePublisherInfo struct {
-	Publishers []*Publisher `json:"publishers"`
+	Publishers []Publisher `json:"publishers"`
 }
 
 // PackageVersionInfo represents a version of a package in a package registry.

@@ -59,10 +59,10 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 		return nil, ErrAuthorNotFound
 	}
 
-	publishers := make([]*Publisher, len(npmpkg.Maintainers))
+	publishers := make([]Publisher, len(npmpkg.Maintainers))
 
 	for i, maintainer := range npmpkg.Maintainers {
-		publishers[i] = &Publisher{
+		publishers[i] = Publisher{
 			Name:  maintainer.Name,
 			Email: maintainer.Email,
 			Url:   maintainer.Url,

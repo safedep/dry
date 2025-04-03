@@ -7,24 +7,7 @@ import (
 	giturls "github.com/whilp/git-urls"
 )
 
-// // getNormalizedGitURL normalizes the git URL
-// func getNormalizedGitURL(gitURL string) (string, error) {
-// 	//Check if its even a git URL
-// 	if gitURL == "" {
-// 		return "", nil
-// 	}
-
-// 	// go-git-url doesn't support git+ prefix, else all good
-// 	gitURL = strings.TrimPrefix(gitURL, "git+")
-
-// 	url, err := giturl.NewGitURL(gitURL)
-// 	if err != nil {
-// 		return "", err
-// 	}
-// 	return url.GetURL().String(), nil
-// }
-
-// NormalizeGitURL normalizes different Git URL formats to a standardized form
+// getNormalizedGitURL normalizes different Git URL formats to a standardized form
 // Supports self-hosted Git repositories as well as popular services
 func getNormalizedGitURL(inputURL string) (string, error) {
 	//Check if its even a git URL

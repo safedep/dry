@@ -86,5 +86,82 @@ func (np *rubyPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*
 }
 
 func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error) {
-	return nil, nil
+	packageURL := rubyAPIEndpointPackageURL(packageName)
+
+	res, err := http.Get(packageURL)
+	if err != nil {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	if res.StatusCode == 404 {
+		return nil, ErrPackageNotFound
+	}
+
+	if res.StatusCode != 200 {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	defer res.Body.Close()
+
+	var gemObject gemObject
+	err = json.NewDecoder(res.Body).Decode(&gemObject)
+	if err != nil {
+		return nil, ErrFailedToParsePackage
+	}
+
+	pkgVersions, err := np.GetPackageVersions(packageName)
+	if err != nil {
+		return nil, err
+	}
+
+	pkg := &Package{
+		Name:                gemObject.Name,
+		Description:         gemObject.Description,
+		SourceRepositoryUrl: gemObject.SourceCodeURL,
+		Versions:            pkgVersions,
+		Downloads: OptionalInt{
+			Value: gemObject.TotalDownloads,
+			Valid: gemObject.TotalDownloads > 0,
+		},
+		CreatedAt: gemObject.CreatedAt,
+		Author: Publisher{
+			Name: gemObject.Authors,
+		},
+	}
+
+	return pkg, nil
+}
+
+func (np *rubyPackageDiscovery) GetPackageVersions(packageName string) ([]PackageVersionInfo, error) {
+	packageURL := rubyAPIEndpointAllVersionsURL(packageName)
+
+	res, err := http.Get(packageURL)
+	if err != nil {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode == 404 {
+		return nil, ErrPackageNotFound
+	}
+
+	if res.StatusCode != 200 {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	var versions []rubyVersion
+	err = json.NewDecoder(res.Body).Decode(&versions)
+	if err != nil {
+		return nil, ErrFailedToParsePackage
+	}
+
+	pkgVersions := make([]PackageVersionInfo, 0, len(versions))
+	for _, version := range versions {
+		pkgVersions = append(pkgVersions, PackageVersionInfo{
+			Version: version.Number,
+		})
+	}
+
+	return pkgVersions, nil
 }

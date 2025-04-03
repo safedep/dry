@@ -160,10 +160,15 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		return nil, err
 	}
 
+	sourceGitURL, err := getNormalizedGitURL(npmpkg.Repository.Url)
+	if err != nil {
+		return nil, err
+	}
+
 	pkg := Package{
 		Name:                npmpkg.Name,
 		Description:         npmpkg.Description,
-		SourceRepositoryUrl: npmpkg.Repository.Url,
+		SourceRepositoryUrl: sourceGitURL,
 		Versions:            pkgVerions,
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,

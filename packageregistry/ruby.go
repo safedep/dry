@@ -136,10 +136,15 @@ func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 		return nil, err
 	}
 
+	sourceGitURL, err := getNormalizedGitURL(gemObject.SourceCodeURL)
+	if err != nil {
+		return nil, err
+	}
+
 	pkg := &Package{
 		Name:                gemObject.Name,
 		Description:         gemObject.Description,
-		SourceRepositoryUrl: gemObject.SourceCodeURL,
+		SourceRepositoryUrl: sourceGitURL,
 		Versions:            pkgVersions,
 		Downloads: OptionalInt{
 			Value: gemObject.TotalDownloads,

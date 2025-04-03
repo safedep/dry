@@ -45,7 +45,8 @@ type Package struct {
 	// The project description.
 	Description string `json:"description"`
 
-	// The source repository URL for the project.
+	// Normalized Git source URL for the project.
+	// It will be in the format of https://github.com/owner/repo
 	SourceRepositoryUrl string `json:"source_repository_url"`
 
 	// Author is the creator of the package

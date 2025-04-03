@@ -15,13 +15,13 @@ func TestPypiGetPublisher(t *testing.T) {
 		pkgName    string
 		pkgVersion string
 		err        error
-		publishers []*Publisher
+		publishers []Publisher
 	}{
 		{
 			name:       "pypi package django",
 			pkgName:    "django",
 			pkgVersion: "5.1.5",
-			publishers: []*Publisher{
+			publishers: []Publisher{
 				{Name: "", Email: "Django Software Foundation <foundation@djangoproject.com>"},
 			},
 		},
@@ -29,7 +29,7 @@ func TestPypiGetPublisher(t *testing.T) {
 			name:       "pypi package numpy",
 			pkgName:    "numpy",
 			pkgVersion: "1.2.0",
-			publishers: []*Publisher{
+			publishers: []Publisher{
 				{Name: "NumPy Developers", Email: "numpy-discussion@scipy.org"},
 			},
 		},

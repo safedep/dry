@@ -117,10 +117,15 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		author.Email = pypipkg.Info.AuthorEmail
 	}
 
+	sourceGitURL, err := getNormalizedGitURL(pypipkg.Info.ProjectURLs.Source)
+	if err != nil {
+		return nil, err
+	}
+
 	pkg := Package{
 		Name:                pypipkg.Info.Name,
 		Description:         pypipkg.Info.Description,
-		SourceRepositoryUrl: pypipkg.Info.ProjectURLs.Source,
+		SourceRepositoryUrl: sourceGitURL,
 		Author:              author,
 		Maintainers:         maintainers,
 		Versions:            pkgVersions,

@@ -156,7 +156,7 @@ func TestNpmGetPackage(t *testing.T) {
 			pkgName:   "express",
 			err:       nil,
 			downloads: 1658725727, // express downoads on last year, we will check >= this
-			repoURL:   "git+https://github.com/expressjs/express.git",
+			repoURL:   "https://github.com/expressjs/express",
 			publishers: Publisher{
 				Name:  "TJ Holowaychuk",
 				Email: "tj@vision-media.ca",
@@ -166,7 +166,7 @@ func TestNpmGetPackage(t *testing.T) {
 			pkgName:   "@kunalsin9h/load-gql",
 			err:       nil,
 			downloads: 90,
-			repoURL:   "git+https://github.com/kunalsin9h/load-gql.git",
+			repoURL:   "https://github.com/kunalsin9h/load-gql",
 			publishers: Publisher{
 				Name:  "Kunal Singh",
 				Email: "kunal@kunalsin9h.com",

@@ -14,12 +14,12 @@ func TestRubyGetPublisher(t *testing.T) {
 		pkgName    string
 		pkgVersion string
 		err        error
-		publishers []*Publisher
+		publishers []Publisher
 	}{
 		{
 			name:    "ruby gem gemcutter",
 			pkgName: "gemcutter",
-			publishers: []*Publisher{
+			publishers: []Publisher{
 				{Name: "qrush", Email: ""},
 				{Name: "sferik", Email: "sferik@gmail.com"},
 				{Name: "gemcutter", Email: ""},
@@ -131,7 +131,7 @@ func TestRubyGetPackage(t *testing.T) {
 			assert: func(t *testing.T, pkg *Package) {
 				assert.Equal(t, pkg.Name, "rails")
 				assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
-				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/rails/rails/tree/v8.0.2")
+				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/rails/rails")
 				assert.GreaterOrEqual(t, pkg.Downloads.Value, uint64(600000000))
 				assert.Equal(t, pkg.Author.Name, "David Heinemeier Hansson")
 				assert.GreaterOrEqual(t, len(pkg.Versions), 100) // There are more than 100 versions

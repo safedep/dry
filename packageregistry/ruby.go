@@ -63,26 +63,41 @@ func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 }
 
 func (np *rubyPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	publisherURL := fmt.Sprintf("https://rubygems.org/api/v1/owners/%s/gems.json", publisher.Name)
+	publisherURL := rubyAPIEndpointPackageByAuthorURL(publisher.Name)
 
 	res, err := http.Get(publisherURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch ruby publisher metadata %w", err)
+		return nil, ErrFailedToFetchPackage
+	}
+
+	if res.StatusCode == 404 {
+		return nil, ErrAuthorNotFound
+	}
+
+	if res.StatusCode != 200 {
+		return nil, ErrFailedToFetchPackage
 	}
 
 	defer res.Body.Close()
 
-	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("packages not found for author %w", err)
-	}
-
 	var gemObjects []gemObject
 	err = json.NewDecoder(res.Body).Decode(&gemObjects)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding JSON in ruby registry adapter: %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
-	return nil, nil
+	packages := make([]*Package, 0, len(gemObjects))
+
+	for _, gemObject := range gemObjects {
+		pkg, err := convertGemObjectToPackage(gemObject)
+		if err != nil {
+			return nil, err
+		}
+
+		packages = append(packages, pkg)
+	}
+
+	return packages, nil
 }
 
 func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error) {
@@ -109,7 +124,11 @@ func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		return nil, ErrFailedToParsePackage
 	}
 
-	pkgVersions, err := np.GetPackageVersions(packageName)
+	return convertGemObjectToPackage(gemObject)
+}
+
+func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
+	pkgVersions, err := getPackageVersions(gemObject.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +151,7 @@ func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	return pkg, nil
 }
 
-func (np *rubyPackageDiscovery) GetPackageVersions(packageName string) ([]PackageVersionInfo, error) {
+func getPackageVersions(packageName string) ([]PackageVersionInfo, error) {
 	packageURL := rubyAPIEndpointAllVersionsURL(packageName)
 
 	res, err := http.Get(packageURL)

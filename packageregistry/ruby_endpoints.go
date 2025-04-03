@@ -20,3 +20,7 @@ func rubyAPIEndpointPackageWithVersionURL(packageName, version string) string {
 func rubyAPIEndpointAllVersionsURL(packageName string) string {
 	return fmt.Sprintf("https://rubygems.org/api/v1/versions/%s.json", packageName)
 }
+
+func rubyAPIEndpointPackageByAuthorURL(author string) string {
+	return fmt.Sprintf("https://rubygems.org/api/v1/owners/%s/gems.json", author)
+}

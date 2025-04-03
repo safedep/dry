@@ -33,17 +33,6 @@ type PackagePublisherInfo struct {
 type PackageVersionInfo struct {
 	// The version of the project.
 	Version string `json:"version"`
-	// Depricated Information (is version depricated)
-	Depricated *bool `json:"depricated"`
-	// Author of the version
-	Author *Publisher `json:"author"`
-}
-
-// PackageStats contains stats and numbers of the package
-type PackageStats struct {
-	Stars     *int `json:"stars"`
-	Forks     *int `json:"forks"`
-	Downloads *int `json:"downloads"`
 }
 
 // Package represents a package in a package registry.
@@ -53,16 +42,13 @@ type Package struct {
 	Name string `json:"name"`
 
 	// The project description.
-	Description *string `json:"description"`
+	Description string `json:"description"`
 
 	// The source repository URL for the project.
-	SourceRepositoryUrl *string `json:"source_repository_url"`
+	SourceRepositoryUrl string `json:"source_repository_url"`
 
 	// The registry url for the Package
-	PackageUrl *string `json:"package_url"`
-
-	// Homepage Url for the package
-	HomepageUrl *string `json:"homepage"`
+	PackageUrl string `json:"package_url"`
 
 	// Publisher of the package
 	Publisher Publisher `json:"publisher"`
@@ -73,17 +59,14 @@ type Package struct {
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
 
-	// Package metadata
-	License *string `json:"license"`
-
-	// Package stats
-	Stats *PackageStats `json:"stats"`
+	// Number of downloads of the package
+	Downloads OptionalInt `json:"downloads"`
 
 	// Package creation timestamps
-	CreatedAt *time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// Package update timestamps
-	UpdatedAt *time.Time `json:"updated_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // PackageDiscovery is a contract for implementing package discovery for a package registry.

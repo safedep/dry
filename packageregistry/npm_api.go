@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// Npm API
+// Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md
+
 // npmPackage represents a package in the NPM registry
 // Endpoint:
 // - GET https://registry.npmjs.org/<packageName>

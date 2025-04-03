@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 

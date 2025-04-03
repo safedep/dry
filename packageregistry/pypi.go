@@ -10,6 +10,10 @@ import (
 
 type pypiAdapter struct{}
 type pypiPublisherDiscovery struct{}
+type pypiPackageDiscovery struct{}
+
+// Verify that pypiAdapter implements the Client interface
+var _ Client = (*pypiAdapter)(nil)
 
 func NewPypiAdapter() (Client, error) {
 	return &pypiAdapter{}, nil
@@ -17,6 +21,10 @@ func NewPypiAdapter() (Client, error) {
 
 func (na *pypiAdapter) PublisherDiscovery() (PublisherDiscovery, error) {
 	return &pypiPublisherDiscovery{}, nil
+}
+
+func (na *pypiAdapter) PackageDiscovery() (PackageDiscovery, error) {
+	return &pypiPackageDiscovery{}, nil
 }
 
 func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.PackageVersion) (*PackagePublisherInfo, error) {
@@ -55,11 +63,25 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	return &PackagePublisherInfo{Publishers: publishers}, nil
 }
 
-// NOTE: This API is not functional
 func (np *pypiPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	// TODO: Find a way to get packages from author name
-
 	publisherPackages := []*Package{}
 
 	return publisherPackages, nil
+}
+
+func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error) {
+	url := pypiPackageURL(packageName)
+
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch pypi package metadata %w", err)
+	}
+
+	if res.StatusCode == 404 {
+		return nil, ErrPackageNotFound
+	}
+
+	defer res.Body.Close()
+
+	return nil, nil
 }

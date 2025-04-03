@@ -10,9 +10,16 @@ import (
 
 type rubyAdapter struct{}
 type rubyPublisherDiscovery struct{}
+type rubyPackageDiscovery struct{}
+
+var _ Client = (*rubyAdapter)(nil)
 
 func NewRubyAdapter() (Client, error) {
 	return &rubyAdapter{}, nil
+}
+
+func (na *rubyAdapter) PackageDiscovery() (PackageDiscovery, error) {
+	return &rubyPackageDiscovery{}, nil
 }
 
 func (na *rubyAdapter) PublisherDiscovery() (PublisherDiscovery, error) {
@@ -75,32 +82,9 @@ func (np *rubyPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*
 		return nil, fmt.Errorf("error decoding JSON in ruby registry adapter: %w", err)
 	}
 
-	publisherPackages := []*Package{}
-	for _, obj := range gemObjects {
-		pkg := Package{
-			Name:                obj.Name,
-			SourceRepositoryUrl: obj.SourceUrl,
-			HomepageUrl:         obj.HomepageUrl,
-			Description:         obj.Description,
-			Versions: []PackageVersionInfo{
-				{
-					Version:   obj.Version,
-					Downloads: obj.VersionDownloads,
-					CreatedAt: obj.VersionCreatedAt,
-				},
-			},
-			CreatedAt: obj.CreatedAt,
-			PackageInfo: PackageInfo{
-				Downloads: obj.Downloads,
-			},
-		}
+	return nil, nil
+}
 
-		publisherPackages = append(publisherPackages, &pkg)
-	}
-
-	if len(publisherPackages) < 1 {
-		return nil, fmt.Errorf("packages not found for author :%s", publisher.Name)
-	}
-
-	return publisherPackages, nil
+func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error) {
+	return nil, nil
 }

@@ -6,7 +6,7 @@ import (
 
 // OptionalInt represents an optional integer value
 type OptionalInt struct {
-	Value int
+	Value uint64
 	Valid bool
 }
 
@@ -27,7 +27,7 @@ func (o *OptionalInt) UnmarshalJSON(data []byte) error {
 	}
 
 	// Try to unmarshal as int
-	var value int
+	var value uint64
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
 	}

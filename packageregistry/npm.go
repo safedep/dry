@@ -2,7 +2,6 @@ package packageregistry
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -33,8 +32,8 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
 
-	packageURL := fmt.Sprintf(string(npmEndpointPackageWithVersion), packageName, version)
-	res, err := http.Get(packageURL)
+	url := npmPackageWithVersionURL(packageName, version)
+	res, err := http.Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -71,9 +70,9 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 
 // GetPublisherPackages returns all the packages published by a given publisher
 func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	publisherURL := fmt.Sprintf(string(npmEndpointSearchWithAuthor), publisher.Name)
+	url := npmPackageSearchWithAuthorURL(publisher.Name)
 
-	res, err := http.Get(publisherURL)
+	res, err := http.Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -95,7 +94,7 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 
 	packages := make([]*Package, len(pubRecord.Objects))
 	for i, obj := range pubRecord.Objects {
-		pkg, err := getPackageDetails(obj.Package.Name)
+		pkg, err := npmGetPackageDetails(obj.Package.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -106,13 +105,13 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 }
 
 func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) {
-	return getPackageDetails(packageName)
+	return npmGetPackageDetails(packageName)
 }
 
-func getPackageDetails(packageName string) (*Package, error) {
-	packageURL := fmt.Sprintf(string(npmEndpointPackage), packageName)
+func npmGetPackageDetails(packageName string) (*Package, error) {
+	url := npmPackageURL(packageName)
 
-	res, err := http.Get(packageURL)
+	res, err := http.Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -148,6 +147,11 @@ func getPackageDetails(packageName string) (*Package, error) {
 		})
 	}
 
+	downloads, err := npmGetPackageDownloads(packageName)
+	if err != nil {
+		return nil, err
+	}
+
 	pkg := Package{
 		Name:                npmpkg.Name,
 		Description:         npmpkg.Description,
@@ -155,6 +159,7 @@ func getPackageDetails(packageName string) (*Package, error) {
 		Versions:            pkgVerions,
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,
+		Downloads:           OptionalInt{Value: downloads, Valid: true},
 		Publisher: Publisher{
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
@@ -164,4 +169,30 @@ func getPackageDetails(packageName string) (*Package, error) {
 	}
 
 	return &pkg, nil
+}
+
+func npmGetPackageDownloads(packageName string) (uint64, error) {
+	url := npmPackageDownloadsURL(packageName)
+
+	res, err := http.Get(url)
+	if err != nil {
+		return 0, ErrFailedToFetchPackage
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return 0, ErrFailedToFetchPackage
+	}
+
+	if res.StatusCode == http.StatusNotFound {
+		return 0, ErrPackageNotFound
+	}
+
+	var downloadObject npmDownloadObject
+	err = json.NewDecoder(res.Body).Decode(&downloadObject)
+	if err != nil {
+		return 0, ErrFailedToParsePackage
+	}
+
+	return downloadObject.Downloads, nil
 }

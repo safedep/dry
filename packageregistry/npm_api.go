@@ -5,17 +5,6 @@ import (
 	"time"
 )
 
-// Npm API
-// Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md
-
-type npmEndpoint string
-
-const (
-	npmEndpointPackage            npmEndpoint = "https://registry.npmjs.org/%s"
-	npmEndpointSearchWithAuthor   npmEndpoint = "https://registry.npmjs.org/-/v1/search?text=author:%s"
-	npmEndpointPackageWithVersion npmEndpoint = "https://registry.npmjs.org/%s/%s"
-)
-
 // npmPackage represents a package in the NPM registry
 // Endpoint:
 // - GET https://registry.npmjs.org/<packageName>
@@ -98,4 +87,9 @@ type npmPublisherRecordPackage struct {
 // Beause current data only contains the latest version of the package, we want all version
 type npmPublisherRecordPackageDetails struct {
 	Name string `json:"name"`
+}
+
+// https://api.npmjs.org/downloads/point/last-year/react
+type npmDownloadObject struct {
+	Downloads uint64 `json:"downloads"`
 }

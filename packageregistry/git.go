@@ -16,6 +16,15 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 	}
 
 	inputURL = strings.TrimPrefix(inputURL, "git+")
+	inputURL = strings.TrimSuffix(inputURL, ".git")
+
+	// Remove /tree/{version} from GitHub URLs
+	if strings.Contains(inputURL, "/tree/") {
+		parts := strings.Split(inputURL, "/tree/")
+		if len(parts) > 1 {
+			inputURL = parts[0]
+		}
+	}
 
 	// Special handling for SCP-style SSH URLs with port numbers
 	// e.g. git@host:port/path.git -> ssh://git@host:port/path.git
@@ -35,8 +44,6 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 			}
 		}
 	}
-
-	inputURL = strings.TrimSuffix(inputURL, ".git")
 
 	// Parse the Git URL using the git-urls library
 	u, err := giturls.Parse(inputURL)

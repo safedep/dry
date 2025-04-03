@@ -78,6 +78,11 @@ func TestGetNormalizedGitURL(t *testing.T) {
 			expected: "https://mypersonalserver.com:5454/something",
 		},
 		{
+			name:     "git url with specific branch",
+			gitURL:   "https://github.com/rails/rails/tree/v8.0.2",
+			expected: "https://github.com/rails/rails",
+		},
+		{
 			name:     "empty url",
 			gitURL:   "",
 			expected: "",

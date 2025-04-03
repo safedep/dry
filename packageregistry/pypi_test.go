@@ -60,7 +60,6 @@ func TestPypiGetPublisher(t *testing.T) {
 			}
 
 			publisherInfo, err := pd.GetPackagePublisher(&pkgVersion)
-
 			if test.err != nil {
 				assert.Error(t, err)
 				assert.ErrorContains(t, err, test.err.Error())

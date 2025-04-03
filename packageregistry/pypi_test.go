@@ -90,7 +90,6 @@ func TestPypiGetPackage(t *testing.T) {
 				assert.Equal(t, pkg.Name, "requests")
 				assert.Equal(t, pkg.Author.Name, "Kenneth Reitz")
 				assert.Equal(t, pkg.Author.Email, "me@kennethreitz.org")
-				fmt.Printf("pkg.Maintainers: %+v\n", pkg.Maintainers)
 				assert.Equal(t, len(pkg.Maintainers), 0) // No maintainer for requests package
 				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/psf/requests")
 				assert.GreaterOrEqual(t, len(pkg.Versions), 30) // requests has more than 30 versions

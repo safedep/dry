@@ -78,6 +78,10 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 	}
 	defer res.Body.Close()
 
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrNoPackagesFound
+	}
+
 	if res.StatusCode != http.StatusOK {
 		return nil, ErrFailedToFetchPackage
 	}

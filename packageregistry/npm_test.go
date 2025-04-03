@@ -47,6 +47,8 @@ func TestNpmGetPublisher(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.testName, func(t *testing.T) {
+			t.Parallel()
+
 			adapter, err := NewNpmAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
@@ -78,20 +80,15 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 		publisherEmail string
 		minPackages    int
 		err            error
+		pkgNames       []string
 	}{
 		{
 			testName:       "Correct Npm publisher",
-			publishername:  "maximtop",
-			publisherEmail: "maximtop@gmail.com",
-			minPackages:    23, // he might add some package, thats why we will do >= 23
-			err:            nil,
-		},
-		{
-			testName:       "Correct Npm publisher",
-			publishername:  "kunalsin9h", // :)
-			publisherEmail: "kunalsin9h@gmail.com",
+			publishername:  "kunalsin9h",
+			publisherEmail: "kunal@kunalsin9h.com",
 			minPackages:    2,
 			err:            nil,
+			pkgNames:       []string{"@kunalsin9h/load-gql", "instant-solid"},
 		},
 		{
 			testName:       "incorrect publisher info",
@@ -103,6 +100,8 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.testName, func(t *testing.T) {
+			t.Parallel()
+
 			adapter, err := NewNpmAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
@@ -120,6 +119,9 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
 				assert.GreaterOrEqual(t, len(pkgs), test.minPackages)
+				for _, pkg := range pkgs {
+					assert.Contains(t, test.pkgNames, pkg.Name)
+				}
 			}
 		})
 	}
@@ -162,6 +164,8 @@ func TestNpmGetPackage(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
 			adapter, err := NewNpmAdapter()
 
 			if err != nil {

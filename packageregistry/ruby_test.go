@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -31,7 +30,7 @@ func TestRubyGetPublisher(t *testing.T) {
 			name:       "Incorrect package name",
 			pkgName:    "railsii",
 			pkgVersion: "0.0.0",
-			err:        fmt.Errorf("unable to fetch ruby package metadata"),
+			err:        ErrPackageNotFound,
 		},
 	}
 

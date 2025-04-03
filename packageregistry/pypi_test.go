@@ -48,7 +48,6 @@ func TestPypiGetPublisher(t *testing.T) {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
 			}
 			pd, err := adapter.PublisherDiscovery()
-
 			if err != nil {
 				t.Fatalf("failed to create publisher discovery client in npm adapter")
 			}

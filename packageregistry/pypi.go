@@ -99,29 +99,29 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		})
 	}
 
-	latestVersion := pkgVersions[len(pkgVersions)-1]
+	maintainers := make([]Publisher, 0)
+	if pypipkg.Info.Maintainer != "" || pypipkg.Info.MaintainerEmail != "" {
+		maintainers = append(maintainers, Publisher{
+			Name:  pypipkg.Info.Maintainer,
+			Email: pypipkg.Info.MaintainerEmail,
+		})
+	}
 
-	// verify latest version is the same as the latest version in the pypi packageo
-	// Just to make sure we are not missing anything
-	if latestVersion.Version != pypipkg.Info.LatestVersion {
-		return nil, fmt.Errorf("latest version is not the same as the latest version in the pypi package")
+	author := Publisher{}
+	if pypipkg.Info.Author != "" {
+		author.Name = pypipkg.Info.Author
+	}
+	if pypipkg.Info.AuthorEmail != "" {
+		author.Email = pypipkg.Info.AuthorEmail
 	}
 
 	pkg := Package{
 		Name:                pypipkg.Info.Name,
 		Description:         pypipkg.Info.Description,
 		SourceRepositoryUrl: pypipkg.Info.ProjectURLs.Source,
-		Author: Publisher{
-			Name:  pypipkg.Info.Author,
-			Email: pypipkg.Info.AuthorEmail,
-		},
-		Maintainers: []Publisher{
-			{
-				Name:  pypipkg.Info.Maintainer,
-				Email: pypipkg.Info.MaintainerEmail,
-			},
-		},
-		Versions: pkgVersions,
+		Author:              author,
+		Maintainers:         maintainers,
+		Versions:            pkgVersions,
 		// Do offical way to get downloads
 		// Thought we can use pypi.tech
 		// https://api.pepy.tech/api/v2/projects/requests

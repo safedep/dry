@@ -68,3 +68,65 @@ func TestPypiGetPublisher(t *testing.T) {
 	}
 
 }
+
+func TestPypiGetPackage(t *testing.T) {
+	cases := []struct {
+		pkgName string
+		err     error
+		assert  func(t *testing.T, pkg *Package)
+	}{
+		{
+			pkgName: "requests",
+			assert: func(t *testing.T, pkg *Package) {
+				assert.Equal(t, pkg.Name, "requests")
+				assert.Equal(t, pkg.Author.Name, "Kenneth Reitz")
+				assert.Equal(t, pkg.Author.Email, "me@kennethreitz.org")
+				fmt.Printf("pkg.Maintainers: %+v\n", pkg.Maintainers)
+				assert.Equal(t, len(pkg.Maintainers), 0) // No maintainer for requests pakcage
+				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/psf/requests")
+				assert.GreaterOrEqual(t, len(pkg.Versions), 30) // requests has more than 30 versions
+			},
+		},
+		{
+			pkgName: "django",
+			assert: func(t *testing.T, pkg *Package) {
+				assert.Equal(t, pkg.Name, "Django")
+				assert.Equal(t, pkg.Author.Name, "") // No author for django package
+				assert.Equal(t, pkg.Author.Email, "Django Software Foundation <foundation@djangoproject.com>")
+				assert.Equal(t, len(pkg.Maintainers), 0) // No maintainer for django package
+				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/django/django")
+				assert.GreaterOrEqual(t, len(pkg.Versions), 50) // django has more than 50 versions
+			},
+		},
+		{
+			pkgName: "nonexistent",
+			err:     ErrPackageNotFound,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewPypiAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry pypi adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in pypi adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.err != nil {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, pkg)
+				test.assert(t, pkg)
+			}
+		})
+	}
+}

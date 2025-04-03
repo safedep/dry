@@ -2,10 +2,10 @@ package packageregistry
 
 import "fmt"
 
-func pypiPackageURL(packageName string) string {
+func pypiAPIEndpointPackageURL(packageName string) string {
 	return fmt.Sprintf("https://pypi.org/pypi/%s/json", packageName)
 }
 
-func pypiPackageWithVersionURL(packageName, version string) string {
+func pypiAPIEndpointPackageWithVersionURL(packageName, version string) string {
 	return fmt.Sprintf("https://pypi.org/pypi/%s/%s/json", packageName, version)
 }

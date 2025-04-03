@@ -130,3 +130,40 @@ func TestPypiGetPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestPypiGetPublisherPackages(t *testing.T) {
+	cases := []struct {
+		publisher Publisher
+		err       error
+	}{
+		{
+			publisher: Publisher{Name: "Kenneth"},
+			err:       ErrNoPackagesFound,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.publisher.Name, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewPypiAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry pypi adapter: %v", err)
+			}
+
+			pd, err := adapter.PublisherDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in pypi adapter")
+			}
+
+			packages, err := pd.GetPublisherPackages(test.publisher)
+			if test.err != nil {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, packages)
+			}
+		})
+	}
+}

@@ -32,7 +32,7 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
 
-	url := npmPackageWithVersionURL(packageName, version)
+	url := npmAPIEndpointPackageWithVersionURL(packageName, version)
 	res, err := http.Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
@@ -55,6 +55,10 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 		return nil, ErrFailedToParsePackage
 	}
 
+	if len(npmpkg.Maintainers) == 0 {
+		return nil, ErrAuthorNotFound
+	}
+
 	publishers := make([]*Publisher, len(npmpkg.Maintainers))
 
 	for i, maintainer := range npmpkg.Maintainers {
@@ -70,7 +74,7 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 
 // GetPublisherPackages returns all the packages published by a given publisher
 func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	url := npmPackageSearchWithAuthorURL(publisher.Name)
+	url := npmAPIEndpointPackageSearchWithAuthorURL(publisher.Name)
 
 	res, err := http.Get(url)
 	if err != nil {
@@ -113,7 +117,7 @@ func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) 
 }
 
 func npmGetPackageDetails(packageName string) (*Package, error) {
-	url := npmPackageURL(packageName)
+	url := npmAPIEndpointPackageURL(packageName)
 
 	res, err := http.Get(url)
 	if err != nil {
@@ -179,7 +183,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 }
 
 func npmGetPackageDownloads(packageName string) (uint64, error) {
-	url := npmPackageDownloadsURL(packageName)
+	url := npmAPIEndpointPackageDownloadsURL(packageName)
 
 	res, err := http.Get(url)
 	if err != nil {

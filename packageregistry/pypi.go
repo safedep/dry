@@ -2,7 +2,6 @@ package packageregistry
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -31,14 +30,18 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
 
-	packageURL := fmt.Sprintf("https://pypi.org/pypi/%s/%s/json", packageName, version)
+	packageURL := pypiAPIEndpointPackageWithVersionURL(packageName, version)
 	res, err := http.Get(packageURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch pypi package metadata %w", err)
+		return nil, ErrFailedToFetchPackage
+	}
+
+	if res.StatusCode == 404 {
+		return nil, ErrPackageNotFound
 	}
 
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unable to fetch pypi package metadata, statusCode: %d", res.StatusCode)
+		return nil, ErrFailedToFetchPackage
 	}
 
 	defer res.Body.Close()
@@ -46,13 +49,13 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	var pypipkg pypiPackage
 	err = json.NewDecoder(res.Body).Decode(&pypipkg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response in pypi registry adapter %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
 	if pypipkg.Info.Author == "" && pypipkg.Info.AuthorEmail == "" {
-		return nil, fmt.Errorf("no maintainers found for package %s", packageName)
+		return nil, ErrAuthorNotFound
 	}
-	// TODO: Sometimes AuthorEmail does not have proper email in that case email needs to parsed and retrieved
+
 	publishers := []*Publisher{
 		{
 			Name:  pypipkg.Info.Author,
@@ -63,14 +66,13 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	return &PackagePublisherInfo{Publishers: publishers}, nil
 }
 
+// Pypi does not support getting packages by publisher
 func (np *pypiPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	publisherPackages := []*Package{}
-
-	return publisherPackages, nil
+	return nil, ErrNoPackagesFound
 }
 
 func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error) {
-	url := pypiPackageURL(packageName)
+	url := pypiAPIEndpointPackageURL(packageName)
 
 	res, err := http.Get(url)
 	if err != nil {

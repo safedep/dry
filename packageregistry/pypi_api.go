@@ -10,12 +10,17 @@ type pypiPackage struct {
 }
 
 type pypiPackageInfo struct {
-	Name            string `json:"name"`
-	Description     string `json:"summary"`
-	LatestVersion   string `json:"version"`
-	PackageURL      string `json:"package_url"`
-	Author          string `json:"author"`
-	AuthorEmail     string `json:"author_email"`
-	Maintainer      string `json:"maintainer"`
-	MaintainerEmail string `json:"maintainer_email"`
+	Name            string          `json:"name"`
+	Description     string          `json:"summary"`
+	LatestVersion   string          `json:"version"`
+	PackageURL      string          `json:"package_url"`
+	Author          string          `json:"author"`
+	AuthorEmail     string          `json:"author_email"`
+	Maintainer      string          `json:"maintainer"`
+	MaintainerEmail string          `json:"maintainer_email"`
+	ProjectURLs     pypiProjectURLs `json:"project_urls"`
+}
+
+type pypiProjectURLs struct {
+	Source string `json:"source"`
 }

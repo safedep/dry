@@ -74,7 +74,7 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 
 	res, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch pypi package metadata %w", err)
+		return nil, ErrFailedToFetchPackage
 	}
 
 	if res.StatusCode == 404 {
@@ -92,5 +92,45 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		return nil, ErrFailedToParsePackage
 	}
 
-	return nil, nil
+	pkgVersions := make([]PackageVersionInfo, 0)
+	for release := range pypipkg.Releases {
+		pkgVersions = append(pkgVersions, PackageVersionInfo{
+			Version: release,
+		})
+	}
+
+	latestVersion := pkgVersions[len(pkgVersions)-1]
+
+	// verify latest version is the same as the latest version in the pypi packageo
+	// Just to make sure we are not missing anything
+	if latestVersion.Version != pypipkg.Info.LatestVersion {
+		return nil, fmt.Errorf("latest version is not the same as the latest version in the pypi package")
+	}
+
+	pkg := Package{
+		Name:                pypipkg.Info.Name,
+		Description:         pypipkg.Info.Description,
+		SourceRepositoryUrl: pypipkg.Info.ProjectURLs.Source,
+		Author: Publisher{
+			Name:  pypipkg.Info.Author,
+			Email: pypipkg.Info.AuthorEmail,
+		},
+		Maintainers: []Publisher{
+			{
+				Name:  pypipkg.Info.Maintainer,
+				Email: pypipkg.Info.MaintainerEmail,
+			},
+		},
+		Versions: pkgVersions,
+		// Do offical way to get downloads
+		// Thought we can use pypi.tech
+		// https://api.pepy.tech/api/v2/projects/requests
+		// But it require API key
+		Downloads: OptionalInt{
+			Valid: false,
+			Value: 0,
+		},
+	}
+
+	return &pkg, nil
 }

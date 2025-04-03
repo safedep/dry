@@ -18,6 +18,7 @@ type PublisherVerificationStatus struct {
 type Publisher struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	Url   string `json:"url"`
 
 	// Verification may or may not be supported by all
 	// package registries. Hence its optional
@@ -46,9 +47,6 @@ type Package struct {
 
 	// The source repository URL for the project.
 	SourceRepositoryUrl string `json:"source_repository_url"`
-
-	// The registry url for the Package
-	PackageUrl string `json:"package_url"`
 
 	// Publisher of the package
 	Publisher Publisher `json:"publisher"`

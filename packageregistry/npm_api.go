@@ -10,13 +10,13 @@ import (
 // - GET https://registry.npmjs.org/<packageName>
 // Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#package
 type npmPackage struct {
-	Name        string               `json:"name"`
-	Description string               `json:"description"`
-	Versions    []npmPackageVersion  `json:"versions"`
-	Author      npmPackageAuthor     `json:"author"`
-	Repository  npmPackageRepository `json:"repository"`
-	Maintainers []npmPackageAuthor   `json:"maintainers"`
-	Time        npmPackageTime       `json:"time"`
+	Name        string                       `json:"name"`
+	Description string                       `json:"description"`
+	Versions    map[string]npmPackageVersion `json:"versions"`
+	Author      npmPackageAuthor             `json:"author"`
+	Repository  npmPackageRepository         `json:"repository"`
+	Maintainers []npmPackageAuthor           `json:"maintainers"`
+	Time        npmPackageTime               `json:"time"`
 }
 
 // Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#version

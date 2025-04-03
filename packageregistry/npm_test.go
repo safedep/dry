@@ -127,13 +127,33 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 
 func TestNpmGetPackage(t *testing.T) {
 	cases := []struct {
-		pkgName string
-		err     error
+		pkgName    string
+		err        error
+		downloads  uint64
+		repoURL    string
+		publishers Publisher
 	}{
 		{
-			pkgName: "express",
-			err:     nil,
+			pkgName:   "express",
+			err:       nil,
+			downloads: 1658725727, // express downoads on last year, we will check >= this
+			repoURL:   "git+https://github.com/expressjs/express.git",
+			publishers: Publisher{
+				Name:  "TJ Holowaychuk",
+				Email: "tj@vision-media.ca",
+			},
 		},
+		{
+			pkgName:   "@kunalsin9h/load-gql",
+			err:       nil,
+			downloads: 90,
+			repoURL:   "git+https://github.com/kunalsin9h/load-gql.git",
+			publishers: Publisher{
+				Name:  "Kunal Singh",
+				Email: "kunal@kunalsin9h.com",
+			},
+		},
+
 		{
 			pkgName: "random-package-name-that-does-not-exist-1246890",
 			err:     ErrPackageNotFound,
@@ -143,6 +163,7 @@ func TestNpmGetPackage(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.pkgName, func(t *testing.T) {
 			adapter, err := NewNpmAdapter()
+
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
 			}
@@ -158,6 +179,12 @@ func TestNpmGetPackage(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkg)
+				// Downloads data
+				assert.True(t, pkg.Downloads.Valid)
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.downloads)
+
+				// Repository data
+				assert.Equal(t, test.repoURL, pkg.SourceRepositoryUrl)
 			}
 		})
 	}

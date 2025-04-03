@@ -73,28 +73,27 @@ func TestRubyGetPublisher(t *testing.T) {
 
 func TestRubyGetPublisherPackages(t *testing.T) {
 	cases := []struct {
-		name           string
-		publishername  string
-		publisherEmail string
-		minPackages    int
-		err            error
+		name          string
+		publishername string
+		minPackages   int
+		err           error
 	}{
 		{
-			name:           "Correct ruby publisher",
-			publishername:  "sferik",
-			publisherEmail: "sferik@gmail.com",
-			minPackages:    2,
+			name:          "Correct ruby publisher",
+			publishername: "noelrap",
+			minPackages:   2,
 		},
 		{
-			name:           "incorrect publisher info",
-			publishername:  "randomrubypackage",
-			publisherEmail: "rndom.com",
-			err:            fmt.Errorf("packages not found for author"),
+			name:          "incorrect publisher info",
+			publishername: "randomrubypackage",
+			err:           ErrAuthorNotFound,
 		},
 	}
 
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			adapter, err := NewRubyAdapter()
 			if err != nil {
 				t.Fatalf("failed to create package registry npm adapter: %v", err)
@@ -105,10 +104,10 @@ func TestRubyGetPublisherPackages(t *testing.T) {
 				t.Fatalf("failed to create publisher discovery client in npm adapter")
 			}
 
-			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: test.publisherEmail})
+			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: ""})
 			if test.err != nil {
 				assert.Error(t, err)
-				assert.ErrorContains(t, err, test.err.Error())
+				assert.ErrorIs(t, err, test.err)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)

@@ -16,8 +16,9 @@ type gemObject struct {
 }
 
 type rubyPublisherData struct {
-	Username string `json:"handle"`
-	Email    string `json:"email"`
+	Id     int    `json:"id"`
+	Handle string `json:"handle"`
+	Email  string `json:"email"`
 }
 
 // ruby version data

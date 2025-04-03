@@ -11,8 +11,8 @@ func rubyAPIEndpointPackageURL(packageName string) string {
 	return fmt.Sprintf("https://rubygems.org/api/v1/gems/%s.json", packageName)
 }
 
-func rubyAPIEndpointPackageWithVersionURL(packageName, version string) string {
-	return fmt.Sprintf("https://rubygems.org/api/v2/gems/%s/versions/%s.json", packageName, version)
+func rubyAPIEndpointGetPublishersForPackageURL(packageName string) string {
+	return fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/owners.json", packageName)
 }
 
 // Get all versions of a package

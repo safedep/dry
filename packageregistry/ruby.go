@@ -2,7 +2,6 @@ package packageregistry
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -29,14 +28,18 @@ func (na *rubyAdapter) PublisherDiscovery() (PublisherDiscovery, error) {
 func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.PackageVersion) (*PackagePublisherInfo, error) {
 	packageName := packageVersion.GetPackage().GetName()
 
-	packageURL := fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/owners.json", packageName)
+	packageURL := rubyAPIEndpointGetPublishersForPackageURL(packageName)
 	res, err := http.Get(packageURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch ruby package metadata %w", err)
+		return nil, ErrFailedToFetchPackage
+	}
+
+	if res.StatusCode == 404 {
+		return nil, ErrPackageNotFound
 	}
 
 	if res.StatusCode != 200 {
-		return nil, fmt.Errorf("unable to fetch ruby package metadata, statusCode: %d", res.StatusCode)
+		return nil, ErrFailedToFetchPackage
 	}
 
 	defer res.Body.Close()
@@ -44,17 +47,17 @@ func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	var owners []rubyPublisherData
 	err = json.NewDecoder(res.Body).Decode(&owners)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON response in ruby registry adapter %w", err)
+		return nil, ErrFailedToParsePackage
 	}
 
 	if len(owners) < 1 {
-		return nil, fmt.Errorf("no authors found for package %s", packageName)
+		return nil, ErrAuthorNotFound
 	}
 
 	publishers := make([]*Publisher, 0, len(owners))
 	for _, author := range owners {
 		publishers = append(publishers, &Publisher{
-			Name:  author.Username,
+			Name:  author.Handle,
 			Email: author.Email,
 		})
 	}

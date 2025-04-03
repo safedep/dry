@@ -11,39 +11,52 @@ import (
 // npmPackage represents a package in the NPM registry
 // Endpoint:
 // - GET https://registry.npmjs.org/<packageName>
+// Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#package
 type npmPackage struct {
-	Name         string                `json:"name"`
-	Versions     []npmPackageVersion   `json:"versions"`
-	Time         npmPackageTime        `json:"time"` // Time is always present
-	Bugs         *npmPackageBugs       `json:"bugs"`
-	Author       *npmPackageAuthor     `json:"author"`
-	License      *string               `json:"license"`
-	Homepage     *string               `json:"homepage"`
-	Keywords     []string              `json:"keywords"`
-	Repository   *npmPackageRepository `json:"repository"` // Can be string or object
-	Description  *string               `json:"description"`
-	Contributors []npmPackageAuthor    `json:"contributors"`
-	Maintainers  []npmPackageAuthor    `json:"maintainers"`
-	Users        []string              `json:"users"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Versions    []npmPackageVersion  `json:"versions"`
+	Author      npmPackageAuthor     `json:"author"`     // Can be string or object
+	Repository  npmPackageRepository `json:"repository"` // Can be string or object
+	Maintainers []npmPackageAuthor   `json:"maintainers"`
+	Time        npmPackageTime       `json:"time"` // Time is always present
 }
 
+// Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#version
 type npmPackageVersion struct {
-	Name            string                `json:"name"`
-	Version         string                `json:"version"`
-	Description     *string               `json:"description"`
-	Deprecated      *string               `json:"deprecated"`
-	Keywords        []string              `json:"keywords"`
-	Author          *npmPackageAuthor     `json:"author"`
-	Contributors    []npmPackageAuthor    `json:"contributors"`
-	Dist            *npmPackageDist       `json:"dist"`
-	Dependencies    map[string]string     `json:"dependencies"`
-	DevDependencies map[string]string     `json:"devDependencies"`
-	Repository      *npmPackageRepository `json:"repository"`
+	Version string `json:"version"`
 }
 
+// Throught registry docs....
+// author can be object with name, email, and or url of author as listed in package.json
 type npmPackageAuthor struct {
-	Name  *string `json:"name"`
-	Email *string `json:"email"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Url   string `json:"url"`
+}
+
+// Custom unmarshal for npmPackageAuthor, because the type can be string or object
+func (a *npmPackageAuthor) UnmarshalJSON(data []byte) error {
+	// try to string first
+	var authorUrl string
+	if err := json.Unmarshal(data, &authorUrl); err == nil {
+		a.Url = authorUrl
+		return nil
+	}
+
+	// try to object next
+	var authorObject struct {
+		Name  string `json:"name"`
+		Email string `json:"email"`
+	}
+
+	if err := json.Unmarshal(data, &authorObject); err == nil {
+		a.Name = authorObject.Name
+		a.Email = authorObject.Email
+		return nil
+	}
+
+	return ErrFailedToParseNpmPackage
 }
 
 type npmPackageRepository struct {
@@ -75,25 +88,9 @@ func (r *npmPackageRepository) UnmarshalJSON(data []byte) error {
 	return ErrFailedToParseNpmPackage
 }
 
-type npmPackageDist struct {
-	Shasum     string                `json:"shasum"`
-	Tarball    string                `json:"tarball"`
-	Integrity  string                `json:"integrity"`
-	Signatures []npmPackageSignature `json:"signatures"`
-}
-
-type npmPackageSignature struct {
-	Sig   string `json:"sig"`
-	Keyid string `json:"keyid"`
-}
-
 type npmPackageTime struct {
 	Created  time.Time `json:"created"`
 	Modified time.Time `json:"modified"`
-}
-
-type npmPackageBugs struct {
-	Url string `json:"url"`
 }
 
 type npmPackageMaintainerInfo struct {

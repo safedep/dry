@@ -8,6 +8,14 @@ import (
 // Npm API
 // Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md
 
+type npmEndpoint string
+
+const (
+	npmEndpointPackage            npmEndpoint = "https://registry.npmjs.org/%s"
+	npmEndpointSearchWithAuthor   npmEndpoint = "https://registry.npmjs.org/-/v1/search?text=author:%s"
+	npmEndpointPackageWithVersion npmEndpoint = "https://registry.npmjs.org/%s/%s"
+)
+
 // npmPackage represents a package in the NPM registry
 // Endpoint:
 // - GET https://registry.npmjs.org/<packageName>
@@ -16,10 +24,10 @@ type npmPackage struct {
 	Name        string               `json:"name"`
 	Description string               `json:"description"`
 	Versions    []npmPackageVersion  `json:"versions"`
-	Author      npmPackageAuthor     `json:"author"`     // Can be string or object
-	Repository  npmPackageRepository `json:"repository"` // Can be string or object
+	Author      npmPackageAuthor     `json:"author"`
+	Repository  npmPackageRepository `json:"repository"`
 	Maintainers []npmPackageAuthor   `json:"maintainers"`
-	Time        npmPackageTime       `json:"time"` // Time is always present
+	Time        npmPackageTime       `json:"time"`
 }
 
 // Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#version
@@ -60,32 +68,8 @@ func (a *npmPackageAuthor) UnmarshalJSON(data []byte) error {
 }
 
 type npmPackageRepository struct {
-	// Internally, we use url as a string
-	url string
-}
-
-// Custom unmarshal for npmPackageRepository, because the type can be string or object
-func (r *npmPackageRepository) UnmarshalJSON(data []byte) error {
-	type npmPackageRepositoryType struct {
-		Url  string `json:"url"`
-		Type string `json:"type"`
-	}
-
-	// Try to string first
-	var stringValue string
-	if err := json.Unmarshal(data, &stringValue); err == nil {
-		r.url = stringValue
-		return nil
-	}
-
-	// Try to object next
-	var objectValue npmPackageRepositoryType
-	if err := json.Unmarshal(data, &objectValue); err == nil {
-		r.url = objectValue.Url
-		return nil
-	}
-
-	return ErrFailedToParseNpmPackage
+	Url  string `json:"url"`
+	Type string `json:"type"`
 }
 
 type npmPackageTime struct {
@@ -106,13 +90,7 @@ type npmPublisherRecord struct {
 }
 
 type npmPublisherRecordPackage struct {
-	Package     npmPublisherRecordPackageDetails `json:"package"`
-	Downloads   npmPackageDownloads              `json:"downloads"`
-	Dependents  uint32                           `json:"dependents"`
-	UpdatedAt   time.Time                        `json:"updated"`
-	SearchScore float64                          `json:"searchScore"`
-	Score       npmPackageScore                  `json:"score"`
-	Flags       npmPackageFlags                  `json:"flags"`
+	Package npmPublisherRecordPackageDetails `json:"package"`
 }
 
 // npmPublisherRecordPackageDetails represents the details of a package in the NPM publisher API
@@ -120,24 +98,4 @@ type npmPublisherRecordPackage struct {
 // Beause current data only contains the latest version of the package, we want all version
 type npmPublisherRecordPackageDetails struct {
 	Name string `json:"name"`
-}
-
-type npmPackageDownloads struct {
-	Monthly uint32 `json:"monthly"`
-	Weekly  uint32 `json:"weekly"`
-}
-
-type npmPackageScore struct {
-	Final  float64        `json:"final"`
-	Detail npmScoreDetail `json:"detail"`
-}
-
-type npmScoreDetail struct {
-	Quality     float64 `json:"quality"`
-	Popularity  float64 `json:"popularity"`
-	Maintenance float64 `json:"maintenance"`
-}
-
-type npmPackageFlags struct {
-	Insecure bool `json:"insecure"`
 }

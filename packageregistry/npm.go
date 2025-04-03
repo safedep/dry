@@ -33,7 +33,7 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
 
-	packageURL := fmt.Sprintf("https://registry.npmjs.org/%s/%s", packageName, version)
+	packageURL := fmt.Sprintf(string(npmEndpointPackageWithVersion), packageName, version)
 	res, err := http.Get(packageURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
@@ -60,8 +60,9 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 
 	for i, maintainer := range npmpkg.Maintainers {
 		publishers[i] = &Publisher{
-			Name:  *maintainer.Name,
-			Email: *maintainer.Email,
+			Name:  maintainer.Name,
+			Email: maintainer.Email,
+			Url:   maintainer.Url,
 		}
 	}
 
@@ -70,7 +71,7 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 
 // GetPublisherPackages returns all the packages published by a given publisher
 func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
-	publisherURL := fmt.Sprintf("https://registry.npmjs.org/-/v1/search?text=author:%s", publisher.Name)
+	publisherURL := fmt.Sprintf(string(npmEndpointSearchWithAuthor), publisher.Name)
 
 	res, err := http.Get(publisherURL)
 	if err != nil {
@@ -109,7 +110,7 @@ func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) 
 }
 
 func getPackageDetails(packageName string) (*Package, error) {
-	packageURL := fmt.Sprintf("https://registry.npmjs.org/%s", packageName)
+	packageURL := fmt.Sprintf(string(npmEndpointPackage), packageName)
 
 	res, err := http.Get(packageURL)
 	if err != nil {
@@ -133,56 +134,33 @@ func getPackageDetails(packageName string) (*Package, error) {
 
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
-		// In NPM, a package can be depricated by setting the deprecated field to a non-empty string
-		depricated := version.Deprecated != nil && *version.Deprecated != ""
-
 		pkgVerions = append(pkgVerions, PackageVersionInfo{
-			Version:    version.Version,
-			Depricated: &depricated,
-			Author: &Publisher{
-				Name:  *version.Author.Name,
-				Email: *version.Author.Email,
-			},
+			Version: version.Version,
 		})
 	}
 
 	pkgMaintainers := make([]Publisher, 0)
 	for _, maintainer := range npmpkg.Maintainers {
 		pkgMaintainers = append(pkgMaintainers, Publisher{
-			Name:  *maintainer.Name,
-			Email: *maintainer.Email,
+			Name:  maintainer.Name,
+			Email: maintainer.Email,
+			Url:   maintainer.Url,
 		})
-	}
-
-	sourceRepositoryURL := new(string)
-	if npmpkg.Repository != nil && npmpkg.Repository.url != "" {
-		*sourceRepositoryURL = npmpkg.Repository.url
-	}
-
-	publicPakcageURL := fmt.Sprintf("https://www.npmjs.com/package/%s", npmpkg.Name)
-
-	var author Publisher
-	if npmpkg.Author != nil {
-		if npmpkg.Author.Name != nil {
-			author.Name = *npmpkg.Author.Name
-		}
-		if npmpkg.Author.Email != nil {
-			author.Email = *npmpkg.Author.Email
-		}
 	}
 
 	pkg := Package{
 		Name:                npmpkg.Name,
 		Description:         npmpkg.Description,
-		SourceRepositoryUrl: sourceRepositoryURL,
-		PackageUrl:          &publicPakcageURL,
-		HomepageUrl:         npmpkg.Homepage,
+		SourceRepositoryUrl: npmpkg.Repository.Url,
 		Versions:            pkgVerions,
-		CreatedAt:           &npmpkg.Time.Created,
-		UpdatedAt:           &npmpkg.Time.Modified,
-		Publisher:           author,
-		Maintainers:         pkgMaintainers,
-		License:             npmpkg.License,
+		CreatedAt:           npmpkg.Time.Created,
+		UpdatedAt:           npmpkg.Time.Modified,
+		Publisher: Publisher{
+			Name:  npmpkg.Author.Name,
+			Email: npmpkg.Author.Email,
+			Url:   npmpkg.Author.Url,
+		},
+		Maintainers: pkgMaintainers,
 	}
 
 	return &pkg, nil

@@ -53,7 +53,7 @@ func (a *npmPackageAuthor) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return ErrFailedToParseNpmPackage
+	return ErrFailedToParsePackage
 }
 
 type npmPackageRepository struct {

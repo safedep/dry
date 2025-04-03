@@ -48,10 +48,10 @@ type Package struct {
 	// The source repository URL for the project.
 	SourceRepositoryUrl string `json:"source_repository_url"`
 
-	// Publisher of the package
+	// Author is the creator of the package
 	Author Publisher `json:"author"`
 
-	// Maintainers of the package
+	// Maintainers of the package (can include author also)
 	Maintainers []Publisher `json:"maintainers"`
 
 	// Published versions of the project.

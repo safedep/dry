@@ -81,7 +81,16 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		return nil, ErrPackageNotFound
 	}
 
+	if res.StatusCode != 200 {
+		return nil, ErrFailedToFetchPackage
+	}
 	defer res.Body.Close()
+
+	var pypipkg pypiPackage
+	err = json.NewDecoder(res.Body).Decode(&pypipkg)
+	if err != nil {
+		return nil, ErrFailedToParsePackage
+	}
 
 	return nil, nil
 }

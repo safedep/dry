@@ -164,6 +164,9 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
 			Url:   npmpkg.Author.Url,
+			VerificationStatus: &PublisherVerificationStatus{ // NPM only allows verified publishers to publish packages
+				IsVerified: true,
+			},
 		},
 		Maintainers: pkgMaintainers,
 	}

@@ -9,7 +9,7 @@ type gemObject struct {
 	VersionCreatedAt time.Time `json:"version_created_at"`
 	VersionDownloads uint64    `json:"version_downloads"`
 	Authors          string    `json:"authors"`
-	Description      string    `json:"description"`
+	Description      string    `json:"info"`
 	ProjectURI       string    `json:"project_uri"`
 	SourceCodeURL    string    `json:"source_code_uri"`
 	CreatedAt        time.Time `json:"created_at"`

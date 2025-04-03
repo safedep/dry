@@ -18,5 +18,5 @@ func rubyAPIEndpointPackageWithVersionURL(packageName, version string) string {
 // Get all versions of a package
 // V1 API, v2 does not support this
 func rubyAPIEndpointAllVersionsURL(packageName string) string {
-	return fmt.Sprintf("https://rubygems.org/api/v1/gems/%s/versions.json", packageName)
+	return fmt.Sprintf("https://rubygems.org/api/v1/versions/%s.json", packageName)
 }

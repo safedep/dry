@@ -71,7 +71,7 @@ func TestRubyGetPublisher(t *testing.T) {
 
 }
 
-func TestRubyGetPackages(t *testing.T) {
+func TestRubyGetPublisherPackages(t *testing.T) {
 	cases := []struct {
 		name           string
 		publishername  string
@@ -117,4 +117,57 @@ func TestRubyGetPackages(t *testing.T) {
 		})
 	}
 
+}
+
+func TestRubyGetPackage(t *testing.T) {
+	cases := []struct {
+		name    string
+		pkgName string
+		err     error
+		assert  func(t *testing.T, pkg *Package)
+	}{
+		{
+			name:    "Correct ruby package",
+			pkgName: "rails",
+			err:     nil,
+			assert: func(t *testing.T, pkg *Package) {
+				assert.Equal(t, pkg.Name, "rails")
+				assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
+				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/rails/rails/tree/v8.0.2")
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, uint64(600000000))
+				assert.Equal(t, pkg.Author.Name, "David Heinemeier Hansson")
+			},
+		},
+		{
+			name:    "Incorrect package name",
+			pkgName: "railsii",
+			err:     ErrPackageNotFound,
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewRubyAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry npm adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in npm adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.err != nil {
+				assert.Error(t, err)
+				assert.ErrorIs(t, err, test.err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, pkg)
+				test.assert(t, pkg)
+			}
+		})
+	}
 }

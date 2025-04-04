@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"reflect"
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -12,53 +13,37 @@ func TestNpmGetPublisher(t *testing.T) {
 		testName   string
 		pkgName    string
 		pkgVersion string
-		err        error
-		assertFunc func(t *testing.T, publisherInfo *PackagePublisherInfo, err error)
+
+		expectedError      error
+		expectedPublishers []Publisher
+		assertFunc         func(t *testing.T, publisherInfo *PackagePublisherInfo, err error)
 	}{
 		{
 			testName:   "Correct Npm publisher for package",
 			pkgName:    "@kunalsin9h/load-gql",
 			pkgVersion: "1.0.2",
-			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
-				assert.NoError(t, err)
-				assert.NotNil(t, publisherInfo)
-				assert.Equal(t, 1, len(publisherInfo.Publishers))
 
-				validPublishersName := []string{"kunalsin9h"}
-				validPublishersEmail := []string{"kunalsin9h@gmail.com"}
-
-				for _, publisher := range publisherInfo.Publishers {
-					assert.Contains(t, validPublishersName, publisher.Name)
-					assert.Contains(t, validPublishersEmail, publisher.Email)
-				}
-			},
+			expectedError:      nil,
+			expectedPublishers: []Publisher{{Name: "kunalsin9h", Email: "kunalsin9h@gmail.com"}},
 		},
 		{
 			testName:   "Correct NPM publisher for package express",
 			pkgName:    "express",
 			pkgVersion: "5.1.0",
-			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
-				assert.NoError(t, err)
-				assert.NotNil(t, publisherInfo)
-				assert.Equal(t, 4, len(publisherInfo.Publishers))
 
-				validPublishersName := []string{"wesleytodd", "jonchurch", "ctcpip", "sheplu"}
-				validPublishersEmail := []string{"wes@wesleytodd.com", "npm@jonchurch.com", "c@labsector.com", "jean.burellier@gmail.com"}
-
-				for _, publisher := range publisherInfo.Publishers {
-					assert.Contains(t, validPublishersName, publisher.Name)
-					assert.Contains(t, validPublishersEmail, publisher.Email)
-				}
+			expectedError: nil,
+			expectedPublishers: []Publisher{
+				{Name: "wesleytodd", Email: "wes@wesleytodd.com"},
+				{Name: "jonchurch", Email: "npm@jonchurch.com"},
+				{Name: "ctcpip", Email: "c@labsector.com"},
+				{Name: "sheplu", Email: "jean.burellier@gmail.com"},
 			},
 		},
 		{
-			testName:   "Failed to fetch package",
-			pkgName:    "@adguard/dnr-rulesets",
-			pkgVersion: "0.0.0",
-			assertFunc: func(t *testing.T, publisherInfo *PackagePublisherInfo, err error) {
-				assert.ErrorIs(t, err, ErrPackageNotFound)
-				assert.Nil(t, publisherInfo)
-			},
+			testName:      "Failed to fetch package",
+			pkgName:       "@adguard/dnr-rulesets",
+			pkgVersion:    "0.0.0",
+			expectedError: ErrPackageNotFound,
 		},
 	}
 
@@ -84,10 +69,20 @@ func TestNpmGetPublisher(t *testing.T) {
 			}
 
 			publisherInfo, err := pd.GetPackagePublisher(&pkgVersion)
-			test.assertFunc(t, publisherInfo, err)
+
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, publisherInfo)
+				assert.Equal(t, len(publisherInfo.Publishers), len(test.expectedPublishers))
+
+				if !reflect.DeepEqual(publisherInfo.Publishers, test.expectedPublishers) {
+					t.Errorf("expected: %v, got: %v", test.expectedPublishers, publisherInfo.Publishers)
+				}
+			}
 		})
 	}
-
 }
 
 func TestNpmGetPackagesByPublisher(t *testing.T) {
@@ -95,23 +90,26 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 		testName       string
 		publishername  string
 		publisherEmail string
-		minPackages    int
-		err            error
-		pkgNames       []string
+
+		expectedError       error
+		expectedMinPackages int
+		expectedPkgNames    []string
 	}{
 		{
 			testName:       "Correct Npm publisher",
 			publishername:  "kunalsin9h",
 			publisherEmail: "kunal@kunalsin9h.com",
-			minPackages:    2,
-			err:            nil,
-			pkgNames:       []string{"@kunalsin9h/load-gql", "instant-solid"},
+
+			expectedError:       nil,
+			expectedMinPackages: 2,
+			expectedPkgNames:    []string{"@kunalsin9h/load-gql", "instant-solid"},
 		},
 		{
 			testName:       "incorrect publisher info",
 			publishername:  "randomguyyssssss",
 			publisherEmail: "randomguyyssssss@gmail.com",
-			err:            ErrNoPackagesFound,
+
+			expectedError: ErrNoPackagesFound,
 		},
 	}
 
@@ -130,14 +128,14 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 			}
 
 			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: test.publisherEmail})
-			if test.err != nil {
-				assert.ErrorIs(t, err, test.err)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
-				assert.GreaterOrEqual(t, len(pkgs), test.minPackages)
+				assert.GreaterOrEqual(t, len(pkgs), test.expectedMinPackages)
 				for _, pkg := range pkgs {
-					assert.Contains(t, test.pkgNames, pkg.Name)
+					assert.Contains(t, test.expectedPkgNames, pkg.Name)
 				}
 			}
 		})
@@ -146,36 +144,37 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 
 func TestNpmGetPackage(t *testing.T) {
 	cases := []struct {
-		pkgName    string
-		err        error
-		downloads  uint64
-		repoURL    string
-		publishers Publisher
+		pkgName string
+
+		expectedError        error
+		expectedMinDownloads uint64
+		expectedRepoURL      string
+		expectedPublishers   Publisher
 	}{
 		{
-			pkgName:   "express",
-			err:       nil,
-			downloads: 1658725727, // express downoads on last year, we will check >= this
-			repoURL:   "https://github.com/expressjs/express",
-			publishers: Publisher{
+			pkgName:              "express",
+			expectedError:        nil,
+			expectedMinDownloads: 1658725727, // express downoads on last year, we will check >= this
+			expectedRepoURL:      "https://github.com/expressjs/express",
+			expectedPublishers: Publisher{
 				Name:  "TJ Holowaychuk",
 				Email: "tj@vision-media.ca",
 			},
 		},
 		{
-			pkgName:   "@kunalsin9h/load-gql",
-			err:       nil,
-			downloads: 90,
-			repoURL:   "https://github.com/kunalsin9h/load-gql",
-			publishers: Publisher{
+			pkgName:              "@kunalsin9h/load-gql",
+			expectedError:        nil,
+			expectedMinDownloads: 90,
+			expectedRepoURL:      "https://github.com/kunalsin9h/load-gql",
+			expectedPublishers: Publisher{
 				Name:  "Kunal Singh",
 				Email: "kunal@kunalsin9h.com",
 			},
 		},
 
 		{
-			pkgName: "random-package-name-that-does-not-exist-1246890",
-			err:     ErrPackageNotFound,
+			pkgName:       "random-package-name-that-does-not-exist-1246890",
+			expectedError: ErrPackageNotFound,
 		},
 	}
 
@@ -195,17 +194,21 @@ func TestNpmGetPackage(t *testing.T) {
 			}
 
 			pkg, err := pd.GetPackage(test.pkgName)
-			if test.err != nil {
-				assert.ErrorIs(t, err, test.err)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkg)
 				// Downloads data
 				assert.True(t, pkg.Downloads.Valid)
-				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.downloads)
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
 
 				// Repository data
-				assert.Equal(t, test.repoURL, pkg.SourceRepositoryUrl)
+				assert.Equal(t, test.expectedRepoURL, pkg.SourceRepositoryUrl)
+
+				// Publisher data
+				assert.Equal(t, test.expectedPublishers.Name, pkg.Author.Name)
+				assert.Equal(t, test.expectedPublishers.Email, pkg.Author.Email)
 			}
 		})
 	}

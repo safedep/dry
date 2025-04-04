@@ -13,13 +13,15 @@ func TestRubyGetPublisher(t *testing.T) {
 		name       string
 		pkgName    string
 		pkgVersion string
-		err        error
-		publishers []Publisher
+
+		expectedError      error
+		expectedPublishers []Publisher
 	}{
 		{
 			name:    "ruby gem gemcutter",
 			pkgName: "gemcutter",
-			publishers: []Publisher{
+
+			expectedPublishers: []Publisher{
 				{Name: "qrush", Email: ""},
 				{Name: "sferik", Email: "sferik@gmail.com"},
 				{Name: "gemcutter", Email: ""},
@@ -27,10 +29,10 @@ func TestRubyGetPublisher(t *testing.T) {
 			},
 		},
 		{
-			name:       "Incorrect package name",
-			pkgName:    "railsii",
-			pkgVersion: "0.0.0",
-			err:        ErrPackageNotFound,
+			name:          "Incorrect package name",
+			pkgName:       "railsii",
+			pkgVersion:    "0.0.0",
+			expectedError: ErrPackageNotFound,
 		},
 	}
 
@@ -53,16 +55,16 @@ func TestRubyGetPublisher(t *testing.T) {
 			}
 			publisherInfo, err := pd.GetPackagePublisher(&pkgVersion)
 
-			if test.err != nil {
+			if test.expectedError != nil {
 				assert.Error(t, err)
-				assert.ErrorContains(t, err, test.err.Error())
+				assert.ErrorContains(t, err, test.expectedError.Error())
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, publisherInfo)
-				assert.Equal(t, len(publisherInfo.Publishers), len(test.publishers))
+				assert.Equal(t, len(publisherInfo.Publishers), len(test.expectedPublishers))
 
-				if !reflect.DeepEqual(publisherInfo.Publishers, test.publishers) {
-					t.Errorf("expected: %v, got: %v", test.publishers, publisherInfo.Publishers)
+				if !reflect.DeepEqual(publisherInfo.Publishers, test.expectedPublishers) {
+					t.Errorf("expected: %v, got: %v", test.expectedPublishers, publisherInfo.Publishers)
 				}
 			}
 		})
@@ -74,18 +76,20 @@ func TestRubyGetPublisherPackages(t *testing.T) {
 	cases := []struct {
 		name          string
 		publishername string
-		minPackages   int
-		err           error
+
+		expectedMinPackages int
+		expectedError       error
 	}{
 		{
 			name:          "Correct ruby publisher",
 			publishername: "noelrap",
-			minPackages:   2,
+
+			expectedMinPackages: 2,
 		},
 		{
 			name:          "incorrect publisher info",
 			publishername: "randomrubypackage",
-			err:           ErrAuthorNotFound,
+			expectedError: ErrAuthorNotFound,
 		},
 	}
 
@@ -104,13 +108,13 @@ func TestRubyGetPublisherPackages(t *testing.T) {
 			}
 
 			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: ""})
-			if test.err != nil {
+			if test.expectedError != nil {
 				assert.Error(t, err)
-				assert.ErrorIs(t, err, test.err)
+				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
-				assert.GreaterOrEqual(t, len(pkgs), test.minPackages)
+				assert.GreaterOrEqual(t, len(pkgs), test.expectedMinPackages)
 			}
 		})
 	}
@@ -121,26 +125,32 @@ func TestRubyGetPackage(t *testing.T) {
 	cases := []struct {
 		name    string
 		pkgName string
-		err     error
-		assert  func(t *testing.T, pkg *Package)
+
+		expectedPackageName  string
+		expectedDescription  bool // Description might change, so we check if is lenght >= 1
+		expectedRepoURL      string
+		expectedMinDownloads uint64
+		expectedAuthorName   string
+		expectedMinVersions  int
+		expectedError        error
+		assert               func(t *testing.T, pkg *Package)
 	}{
 		{
 			name:    "Correct ruby package",
 			pkgName: "rails",
-			err:     nil,
-			assert: func(t *testing.T, pkg *Package) {
-				assert.Equal(t, pkg.Name, "rails")
-				assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
-				assert.Equal(t, pkg.SourceRepositoryUrl, "https://github.com/rails/rails")
-				assert.GreaterOrEqual(t, pkg.Downloads.Value, uint64(600000000))
-				assert.Equal(t, pkg.Author.Name, "David Heinemeier Hansson")
-				assert.GreaterOrEqual(t, len(pkg.Versions), 100) // There are more than 100 versions
-			},
+
+			expectedError:        nil,
+			expectedPackageName:  "rails",
+			expectedDescription:  true,
+			expectedRepoURL:      "https://github.com/rails/rails",
+			expectedMinDownloads: 600000000,
+			expectedAuthorName:   "David Heinemeier Hansson",
+			expectedMinVersions:  100,
 		},
 		{
-			name:    "Incorrect package name",
-			pkgName: "railsii",
-			err:     ErrPackageNotFound,
+			name:          "Incorrect package name",
+			pkgName:       "railsii",
+			expectedError: ErrPackageNotFound,
 		},
 	}
 
@@ -159,13 +169,21 @@ func TestRubyGetPackage(t *testing.T) {
 			}
 
 			pkg, err := pd.GetPackage(test.pkgName)
-			if test.err != nil {
+			if test.expectedError != nil {
 				assert.Error(t, err)
-				assert.ErrorIs(t, err, test.err)
+				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkg)
-				test.assert(t, pkg)
+
+				assert.Equal(t, pkg.Name, test.expectedPackageName)
+				if test.expectedDescription {
+					assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
+				}
+				assert.Equal(t, pkg.SourceRepositoryUrl, test.expectedRepoURL)
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
+				assert.Equal(t, pkg.Author.Name, test.expectedAuthorName)
+				assert.GreaterOrEqual(t, len(pkg.Versions), test.expectedMinVersions)
 			}
 		})
 	}

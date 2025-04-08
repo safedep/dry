@@ -188,3 +188,44 @@ func TestPypiGetPublisherPackages(t *testing.T) {
 		})
 	}
 }
+
+func TestPypiGetPackageLatestVersion(t *testing.T) {
+	cases := []struct {
+		pkgName               string
+		expectedError         error
+		expectedLatestVersion string
+	}{
+		{
+			pkgName:               "requests",
+			expectedLatestVersion: "2.32.3",
+		},
+		{
+			pkgName:               "fastapi",
+			expectedLatestVersion: "0.115.12",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewPypiAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry pypi adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in pypi adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.GreaterOrEqual(t, pkg.LatestVersion, test.expectedLatestVersion)
+			}
+		})
+	}
+}

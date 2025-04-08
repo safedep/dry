@@ -128,6 +128,7 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		SourceRepositoryUrl: sourceGitURL,
 		Author:              author,
 		Maintainers:         maintainers,
+		LatestVersion:       pypipkg.Info.LatestVersion,
 		Versions:            pkgVersions,
 		// Do offical way to get downloads
 		// Thought we can use pypi.tech

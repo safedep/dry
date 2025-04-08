@@ -13,6 +13,7 @@ type npmPackage struct {
 	Name        string                       `json:"name"`
 	Description string                       `json:"description"`
 	Versions    map[string]npmPackageVersion `json:"versions"`
+	DistTags    npmPackageDistTags           `json:"dist-tags"`
 	Author      npmPackageAuthor             `json:"author"`
 	Repository  npmPackageRepository         `json:"repository"`
 	Maintainers []npmPackageAuthor           `json:"maintainers"`
@@ -22,6 +23,10 @@ type npmPackage struct {
 // Docs: https://github.com/npm/registry/blob/main/docs/REGISTRY-API.md#version
 type npmPackageVersion struct {
 	Version string `json:"version"`
+}
+
+type npmPackageDistTags struct {
+	Latest string `json:"latest"`
 }
 
 // Throught registry docs....

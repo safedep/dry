@@ -170,6 +170,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		Description:         npmpkg.Description,
 		SourceRepositoryUrl: sourceGitURL,
 		Versions:            pkgVerions,
+		LatestVersion:       npmpkg.DistTags.Latest,
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,
 		Downloads:           OptionalInt{Value: downloads, Valid: downloads > 0},

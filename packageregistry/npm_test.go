@@ -213,3 +213,45 @@ func TestNpmGetPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestNpmGetPackageLatestVersion(t *testing.T) {
+	cases := []struct {
+		pkgName               string
+		expectedError         error
+		expectedLatestVersion string
+	}{
+		{
+			pkgName:               "express",
+			expectedError:         nil,
+			expectedLatestVersion: "5.1.0",
+		},
+		{
+			pkgName:               "sql",
+			expectedLatestVersion: "0.78.0",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewNpmAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry npm adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in npm adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.GreaterOrEqual(t, pkg.LatestVersion, test.expectedLatestVersion)
+			}
+		})
+	}
+}

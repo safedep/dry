@@ -55,6 +55,9 @@ type Package struct {
 	// Maintainers of the package (can include author also)
 	Maintainers []Publisher `json:"maintainers"`
 
+	// Latest version of the package
+	LatestVersion string `json:"latest_version"`
+
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
 

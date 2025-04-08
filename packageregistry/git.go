@@ -2,19 +2,19 @@ package packageregistry
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
-
-	vcsurl "github.com/gitsight/go-vcsurl"
 )
 
 // getNormalizedGitURL normalizes different Git URL formats to a standardized form
 // Supports self-hosted Git repositories as well as popular services
 func getNormalizedGitURL(inputURL string) (string, error) {
-	//Check if its even a git URL
 	if inputURL == "" {
 		return "", nil
 	}
 
+	// Remove git+ prefix and .git suffix
 	inputURL = strings.TrimPrefix(inputURL, "git+")
 	inputURL = strings.TrimSuffix(inputURL, ".git")
 
@@ -26,9 +26,8 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 		}
 	}
 
-	// Special handling for SCP-style SSH URLs with port numbers
-	// e.g. git@host:port/path.git -> ssh://git@host:port/path.git
-	if strings.HasPrefix(inputURL, "git@") && strings.Contains(inputURL, ":") {
+	// Handle SCP-style SSH URLs (e.g., git@github.com:user/repo)
+	if strings.HasPrefix(inputURL, "git@") {
 		parts := strings.SplitN(inputURL, ":", 2)
 		if len(parts) == 2 {
 			host := parts[0][4:] // Remove "git@" prefix
@@ -45,11 +44,41 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 		}
 	}
 
-	// Parse the Git URL
-	vcsURL, err := vcsurl.Parse(inputURL)
+	// Convert git:// URLs to https://
+	if strings.HasPrefix(inputURL, "git://") {
+		inputURL = "https://" + inputURL[6:]
+	}
+
+	// Convert ssh:// URLs to https://
+	sshPattern := regexp.MustCompile(`^ssh://(?:git@)?(.+)$`)
+	if matches := sshPattern.FindStringSubmatch(inputURL); matches != nil {
+		inputURL = "https://" + matches[1]
+	}
+
+	// Handle SCP-style URLs without explicit protocol
+	if strings.Contains(inputURL, ":") && !strings.Contains(inputURL, "://") {
+		parts := strings.SplitN(inputURL, ":", 2)
+		if len(parts) == 2 && !strings.Contains(parts[0], "/") {
+			inputURL = fmt.Sprintf("https://%s/%s", parts[0], parts[1])
+		}
+	}
+
+	// Parse the URL to validate and normalize it
+	parsedURL, err := url.Parse(inputURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse git URL: %w", err)
 	}
 
-	return fmt.Sprintf("https://%s/%s", vcsURL.Host, vcsURL.FullName), nil
+	// Convert scheme to https
+	parsedURL.Scheme = "https"
+
+	// Remove username and password from URL
+	parsedURL.User = nil
+
+	// Clean up the path
+	path := parsedURL.Path
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimSuffix(path, "/")
+
+	return fmt.Sprintf("https://%s/%s", parsedURL.Host, path), nil
 }

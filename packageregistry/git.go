@@ -45,7 +45,7 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 		}
 	}
 
-	// Parse the Git URL using the git-urls library
+	// Parse the Git URL
 	vcsURL, err := vcsurl.Parse(inputURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse git URL: %w", err)

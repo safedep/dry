@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	giturls "github.com/whilp/git-urls"
+	vcsurl "github.com/gitsight/go-vcsurl"
 )
 
 // getNormalizedGitURL normalizes different Git URL formats to a standardized form
@@ -45,17 +45,10 @@ func getNormalizedGitURL(inputURL string) (string, error) {
 		}
 	}
 
-	// Parse the Git URL using the git-urls library
-	u, err := giturls.Parse(inputURL)
+	vcsURL, err := vcsurl.Parse(inputURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse git URL: %w", err)
+		return "", fmt.Errorf("failed to parse vcs URL: %w", err)
 	}
 
-	// Always use HTTPS for the normalized form
-	u.Scheme = "https"
-
-	// Remove username and password if present
-	u.User = nil
-
-	return u.String(), nil
+	return fmt.Sprintf("https://%s/%s", vcsURL.Host, vcsURL.FullName), nil
 }

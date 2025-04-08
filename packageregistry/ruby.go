@@ -145,6 +145,7 @@ func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 		Name:                gemObject.Name,
 		Description:         gemObject.Description,
 		SourceRepositoryUrl: sourceGitURL,
+		LatestVersion:       gemObject.LatestVersion,
 		Versions:            pkgVersions,
 		Downloads: OptionalInt{
 			Value: gemObject.TotalDownloads,

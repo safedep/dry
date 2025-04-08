@@ -188,3 +188,44 @@ func TestRubyGetPackage(t *testing.T) {
 		})
 	}
 }
+
+func TestRubyGetPackageLatestVersion(t *testing.T) {
+	cases := []struct {
+		pkgName               string
+		expectedError         error
+		expectedLatestVersion string
+	}{
+		{
+			pkgName:               "rails",
+			expectedLatestVersion: "8.0.2",
+		},
+		{
+			pkgName:               "sql_enum",
+			expectedLatestVersion: "1.0.0",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewRubyAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry npm adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in npm adapter")
+			}
+
+			pkg, err := pd.GetPackage(test.pkgName)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.GreaterOrEqual(t, pkg.LatestVersion, test.expectedLatestVersion)
+			}
+		})
+	}
+}

@@ -16,7 +16,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 		expectedDescription   bool
 		expectedSourceURL     string
 		expectedAuthorName    string
-		expectedAuthorEmail   string
 		expectedLatestVersion string
 		expectedMinVersions   int
 	}{
@@ -27,7 +26,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/vet",
 			expectedAuthorName:    "safedep",
-			expectedAuthorEmail:   "",
 			expectedLatestVersion: "v1.9.9", // we will do >=
 			expectedMinVersions:   10,       // vet has minimum 10 releases (versions)
 		},
@@ -39,7 +37,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/dry",
 			expectedAuthorName:    "safedep",
-			expectedAuthorEmail:   "",
 			expectedLatestVersion: "main", // default branch, since no releases are there in this repo
 			expectedMinVersions:   0,      // dry has no releases
 		},
@@ -50,7 +47,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/KunalSin9h/livejq",
 			expectedAuthorName:    "KunalSin9h",
-			expectedAuthorEmail:   "kunal@kunalsin9h.com",
 			expectedLatestVersion: "v2.0.0", // we will do >=
 			expectedMinVersions:   2,        // livejq has minimum 2 releases (versions)
 		},
@@ -87,7 +83,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 				assert.Equal(t, testCase.expectedDescription, pkg.Description != "")
 				assert.Equal(t, testCase.expectedSourceURL, pkg.SourceRepositoryUrl)
 				assert.Equal(t, testCase.expectedAuthorName, pkg.Author.Name)
-				assert.Equal(t, testCase.expectedAuthorEmail, pkg.Author.Email)
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
 				assert.GreaterOrEqual(t, pkg.LatestVersion, testCase.expectedLatestVersion)

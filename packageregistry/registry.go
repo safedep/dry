@@ -124,6 +124,8 @@ func NewRegistryAdapter(ecosystem packagev1.Ecosystem) (Client, error) {
 		return NewPypiAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:
 		return NewRubyAdapter()
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:
+		return NewGithubPackageRegistryAdapter()
 	default:
 		return nil, fmt.Errorf("unsupported ecosystem: %s", ecosystem)
 	}

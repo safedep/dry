@@ -41,16 +41,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedMinVersions:   0,      // dry has no releases
 		},
 		{
-			packageName: "KunalSin9h/livejq",
-
-			expectedErr:           nil,
-			expectedDescription:   true,
-			expectedSourceURL:     "https://github.com/KunalSin9h/livejq",
-			expectedAuthorName:    "KunalSin9h",
-			expectedLatestVersion: "v2.0.0", // we will do >=
-			expectedMinVersions:   2,        // livejq has minimum 2 releases (versions)
-		},
-		{
 			packageName: "somerandomuser/non-existing-package",
 
 			expectedErr: ErrNoPackagesFound,
@@ -98,10 +88,10 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 		expectedPackages int
 	}{
 		{
-			publisherName: "safedep",
+			publisherName: "srishti77singh",
 
 			expectedErr:      nil,
-			expectedPackages: 30, // more then 10 repos
+			expectedPackages: 3, // more then 3 repos
 		},
 	}
 

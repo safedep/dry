@@ -71,11 +71,13 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 
 	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
 	if err != nil {
+		fmt.Printf("Failed to create github client: %v", err)
 		return nil, ErrNoPackagesFound
 	}
 
 	repos, _, err := ghClient.Client.Repositories.ListByUser(ctx, publisher.Name, nil)
 	if err != nil {
+		fmt.Printf("Failed to list repositories: %v", err)
 		return nil, ErrNoPackagesFound
 	}
 
@@ -84,6 +86,7 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 	for _, repo := range repos {
 		pkg, err := getGitHubRepoDetails(ctx, ghClient, repo)
 		if err != nil {
+			fmt.Printf("Failed to get repository details: %v", err)
 			return nil, err
 		}
 		packages = append(packages, pkg)

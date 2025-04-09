@@ -12,7 +12,6 @@ require (
 	github.com/envoyproxy/go-control-plane v0.13.1
 	github.com/goark/go-cvss v1.6.7
 	github.com/golang/protobuf v1.5.4
-	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/go-github/v70 v70.0.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/labstack/echo-contrib v0.17.1

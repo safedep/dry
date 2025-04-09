@@ -92,7 +92,7 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 	return packages, nil
 }
 
-// GetPackage returns the package details form the package nam
+// GetPackage returns the package details from the package name
 // For GitHub the package name is the {owner}/{repo}
 func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	ctx := context.Background()

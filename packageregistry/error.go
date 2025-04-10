@@ -10,4 +10,7 @@ var (
 	ErrFailedToParsePackage = errors.New("failed to parse package")
 	ErrNoPackagesFound      = errors.New("no packages found")
 	ErrAuthorNotFound       = errors.New("author not found")
+
+	ErrGitHubClientError       = errors.New("github client error")
+	ErrGitHubRateLimitExceeded = errors.New("github api rate limit exceeded")
 )

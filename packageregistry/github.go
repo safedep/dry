@@ -37,7 +37,7 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVe
 
 	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
 	if err != nil {
-		return nil, ErrNoPackagesFound
+		return nil, ErrGitHubClientError
 	}
 
 	tokens := strings.Split(pkgName, "/")
@@ -50,6 +50,9 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVe
 
 	repository, _, err := ghClient.Client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
+		if isGitHubRateLimitError(err) {
+			return nil, ErrGitHubRateLimitExceeded
+		}
 		return nil, ErrNoPackagesFound
 	}
 
@@ -71,18 +74,25 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 
 	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
 	if err != nil {
-		return nil, ErrNoPackagesFound
+		return nil, ErrGitHubClientError
 	}
 
 	repos, _, err := ghClient.Client.Repositories.ListByUser(ctx, publisher.Name, nil)
 	if err != nil {
+		if isGitHubRateLimitError(err) {
+			return nil, ErrGitHubRateLimitExceeded
+		}
 		return nil, ErrNoPackagesFound
 	}
 
 	packages := []*Package{}
 
 	for _, repo := range repos {
-		latestVersion := getGitHubRepositoryLatestVersion(ctx, ghClient, repo)
+		latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ghClient, repo)
+		if err != nil {
+			return nil, err
+		}
+
 		pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repo)
 		if err != nil {
 			return nil, err
@@ -102,7 +112,7 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 
 	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
 	if err != nil {
-		return nil, ErrNoPackagesFound
+		return nil, ErrGitHubClientError
 	}
 
 	tokens := strings.Split(packageName, "/")
@@ -115,10 +125,16 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 
 	repository, _, err := ghClient.Client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
+		if isGitHubRateLimitError(err) {
+			return nil, ErrGitHubRateLimitExceeded
+		}
 		return nil, ErrNoPackagesFound
 	}
 
-	latestVersion := getGitHubRepositoryLatestVersion(ctx, ghClient, repository)
+	latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ghClient, repository)
+	if err != nil {
+		return nil, err
+	}
 
 	pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repository)
 	if err != nil {
@@ -130,13 +146,17 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 
 // getGitHubRepositoryLatestVersion returns the latest version of the repository
 // If there is no release, it returns the default branch
-func getGitHubRepositoryLatestVersion(ctx context.Context, ghClient *adapters.GithubClient, repo *github.Repository) string {
-	latestRelease, _, _ := ghClient.Client.Repositories.GetLatestRelease(ctx, repo.GetOwner().GetLogin(), repo.GetName())
+// We only return RateLimitError if the rate limit is exceeded
+func getGitHubRepositoryLatestVersion(ctx context.Context, ghClient *adapters.GithubClient, repo *github.Repository) (string, error) {
+	latestRelease, _, err := ghClient.Client.Repositories.GetLatestRelease(ctx, repo.GetOwner().GetLogin(), repo.GetName())
+	if isGitHubRateLimitError(err) {
+		return "", ErrGitHubRateLimitExceeded
+	}
 
 	if latestRelease != nil && latestRelease.GetTagName() != "" {
-		return latestRelease.GetTagName()
+		return latestRelease.GetTagName(), nil
 	}
-	return repo.GetDefaultBranch()
+	return repo.GetDefaultBranch(), nil
 }
 
 // getGitHubRepositoryVersions returns all versions of the repository
@@ -145,6 +165,9 @@ func getGitHubRepositoryVersions(ctx context.Context, ghClient *adapters.GithubC
 
 	releases, _, err := ghClient.Client.Repositories.ListReleases(ctx, repo.GetOwner().GetLogin(), repo.GetName(), nil)
 	if err != nil {
+		if isGitHubRateLimitError(err) {
+			return nil, ErrGitHubRateLimitExceeded
+		}
 		return nil, ErrNoPackagesFound
 	}
 
@@ -175,4 +198,11 @@ func githubRegistryCreatePackageWrapper(repo *github.Repository, latestVersion s
 	}
 
 	return pkg
+}
+
+// Check if the error is due to rate limiting
+func isGitHubRateLimitError(err error) bool {
+	_, isRateLimit := err.(*github.RateLimitError)
+	_, isAbuseRateLimit := err.(*github.AbuseRateLimitError)
+	return isRateLimit || isAbuseRateLimit
 }

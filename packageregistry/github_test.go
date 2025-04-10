@@ -102,7 +102,7 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 			publisherName: "safedep",
 
 			expectedErr:         nil,
-			expectedMinPackages: 30, // more then 30 repos
+			expectedMinPackages: 25, // more then 25 public repos
 		},
 		{
 			publisherName: "safedep-hiring",

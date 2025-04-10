@@ -5,10 +5,16 @@ import (
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
+	"github.com/safedep/dry/adapters"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
+	githubClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
+	if err != nil {
+		t.Fatalf("Failed to create github client: %v", err)
+	}
+
 	cases := []struct {
 		packageName string
 
@@ -51,7 +57,7 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 		t.Run(testCase.packageName, func(t *testing.T) {
 			t.Parallel()
 
-			gha, err := NewGithubPackageRegistryAdapter()
+			gha, err := NewGithubPackageRegistryAdapter(githubClient)
 			if err != nil {
 				t.Fatalf("Failed to create github package registry adapter: %v", err)
 			}
@@ -82,6 +88,11 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 }
 
 func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
+	githubClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
+	if err != nil {
+		t.Fatalf("Failed to create github client: %v", err)
+	}
+
 	cases := []struct {
 		publisherName    string
 		expectedErr      error
@@ -99,7 +110,7 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 		t.Run(testCase.publisherName, func(t *testing.T) {
 			t.Parallel()
 
-			gha, err := NewGithubPackageRegistryAdapter()
+			gha, err := NewGithubPackageRegistryAdapter(githubClient)
 			if err != nil {
 				t.Fatalf("Failed to create github package registry adapter: %v", err)
 			}
@@ -124,6 +135,11 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 }
 
 func TestGithubPackageRegistryAdapter_GetPackagePublisher(t *testing.T) {
+	githubClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
+	if err != nil {
+		t.Fatalf("Failed to create github client: %v", err)
+	}
+
 	cases := []struct {
 		packageName       string
 		expectedErr       error
@@ -141,7 +157,7 @@ func TestGithubPackageRegistryAdapter_GetPackagePublisher(t *testing.T) {
 		t.Run(testCase.packageName, func(t *testing.T) {
 			t.Parallel()
 
-			gha, err := NewGithubPackageRegistryAdapter()
+			gha, err := NewGithubPackageRegistryAdapter(githubClient)
 			if err != nil {
 				t.Fatalf("Failed to create github package registry adapter: %v", err)
 			}

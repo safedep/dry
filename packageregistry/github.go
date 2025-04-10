@@ -10,35 +10,38 @@ import (
 	"github.com/safedep/dry/adapters"
 )
 
-type githubPackageRegistryAdapter struct{}
-type githubPackageRegistryPublisherDiscovery struct{}
-type githubPackageRegistryPackageDiscovery struct{}
+type githubPackageRegistryAdapter struct {
+	gitHubClient *adapters.GithubClient
+}
+
+type githubPackageRegistryPublisherDiscovery struct {
+	gitHubClient *adapters.GithubClient
+}
+
+type githubPackageRegistryPackageDiscovery struct {
+	gitHubClient *adapters.GithubClient
+}
 
 // Verify that githubPackageRegistryAdapter implements the Client interface
 var _ Client = (*githubPackageRegistryAdapter)(nil)
 
 // NewGithubPackageRegistryAdapter creates a new GitHub package registry adapter
-func NewGithubPackageRegistryAdapter() (Client, error) {
-	return &githubPackageRegistryAdapter{}, nil
+func NewGithubPackageRegistryAdapter(gitHubClient *adapters.GithubClient) (Client, error) {
+	return &githubPackageRegistryAdapter{gitHubClient: gitHubClient}, nil
 }
 
 func (ga *githubPackageRegistryAdapter) PublisherDiscovery() (PublisherDiscovery, error) {
-	return &githubPackageRegistryPublisherDiscovery{}, nil
+	return &githubPackageRegistryPublisherDiscovery{gitHubClient: ga.gitHubClient}, nil
 }
 
 func (ga *githubPackageRegistryAdapter) PackageDiscovery() (PackageDiscovery, error) {
-	return &githubPackageRegistryPackageDiscovery{}, nil
+	return &githubPackageRegistryPackageDiscovery{gitHubClient: ga.gitHubClient}, nil
 }
 
 func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.PackageVersion) (*PackagePublisherInfo, error) {
 	ctx := context.Background()
 
 	pkgName := packageVersion.Package.GetName()
-
-	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
-	if err != nil {
-		return nil, ErrGitHubClientError
-	}
 
 	tokens := strings.Split(pkgName, "/")
 	if len(tokens) != 2 {
@@ -48,7 +51,7 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVe
 	owner := tokens[0]
 	repo := tokens[1]
 
-	repository, _, err := ghClient.Client.Repositories.Get(ctx, owner, repo)
+	repository, _, err := ga.gitHubClient.Client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		if isGitHubRateLimitError(err) {
 			return nil, ErrGitHubRateLimitExceeded
@@ -72,12 +75,7 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVe
 func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	ctx := context.Background()
 
-	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
-	if err != nil {
-		return nil, ErrGitHubClientError
-	}
-
-	repos, _, err := ghClient.Client.Repositories.ListByUser(ctx, publisher.Name, nil)
+	repos, _, err := ga.gitHubClient.Client.Repositories.ListByUser(ctx, publisher.Name, nil)
 	if err != nil {
 		if isGitHubRateLimitError(err) {
 			return nil, ErrGitHubRateLimitExceeded
@@ -88,12 +86,12 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 	packages := []*Package{}
 
 	for _, repo := range repos {
-		latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ghClient, repo)
+		latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ga.gitHubClient, repo)
 		if err != nil {
 			return nil, err
 		}
 
-		pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repo)
+		pkgVersions, err := getGitHubRepositoryVersions(ctx, ga.gitHubClient, repo)
 		if err != nil {
 			return nil, err
 		}

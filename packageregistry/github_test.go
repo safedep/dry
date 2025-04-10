@@ -88,7 +88,7 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 		expectedPackages int
 	}{
 		{
-			publisherName: "safedep",
+			publisherName: "srishti77singh",
 
 			expectedErr:      nil,
 			expectedPackages: 3, // more then 3 repos

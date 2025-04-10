@@ -71,24 +71,24 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 
 	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
 	if err != nil {
-		fmt.Printf("Failed to create github client: %v", err)
 		return nil, ErrNoPackagesFound
 	}
 
 	repos, _, err := ghClient.Client.Repositories.ListByUser(ctx, publisher.Name, nil)
 	if err != nil {
-		fmt.Printf("Failed to list repositories: %v", err)
 		return nil, ErrNoPackagesFound
 	}
 
 	packages := []*Package{}
 
 	for _, repo := range repos {
-		pkg, err := getGitHubRepoDetails(ctx, ghClient, repo)
+		latestVersion := getGitHubRepositoryLatestVersion(ctx, ghClient, repo)
+		pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repo)
 		if err != nil {
-			fmt.Printf("Failed to get repository details: %v", err)
 			return nil, err
 		}
+
+		pkg := githubRegistryCreatePackageWrapper(repo, latestVersion, pkgVersions)
 		packages = append(packages, pkg)
 	}
 
@@ -118,19 +118,29 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 		return nil, ErrNoPackagesFound
 	}
 
-	return getGitHubRepoDetails(ctx, ghClient, repository)
-}
+	latestVersion := getGitHubRepositoryLatestVersion(ctx, ghClient, repository)
 
-func getGitHubRepoDetails(ctx context.Context, ghClient *adapters.GithubClient, repo *github.Repository) (*Package, error) {
-	// Default fallback for latest version, to default branch (works good)
-	latestVersion := repo.GetDefaultBranch()
-
-	// We are not handling error since we anyway using default fallback
-	latestRelease, _, _ := ghClient.Client.Repositories.GetLatestRelease(ctx, repo.GetOwner().GetLogin(), repo.GetName())
-	if latestRelease != nil && latestRelease.GetTagName() != "" {
-		latestVersion = latestRelease.GetTagName()
+	pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repository)
+	if err != nil {
+		return nil, err
 	}
 
+	return githubRegistryCreatePackageWrapper(repository, latestVersion, pkgVersions), nil
+}
+
+// getGitHubRepositoryLatestVersion returns the latest version of the repository
+// If there is no release, it returns the default branch
+func getGitHubRepositoryLatestVersion(ctx context.Context, ghClient *adapters.GithubClient, repo *github.Repository) string {
+	latestRelease, _, _ := ghClient.Client.Repositories.GetLatestRelease(ctx, repo.GetOwner().GetLogin(), repo.GetName())
+
+	if latestRelease != nil && latestRelease.GetTagName() != "" {
+		return latestRelease.GetTagName()
+	}
+	return repo.GetDefaultBranch()
+}
+
+// getGitHubRepositoryVersions returns all versions of the repository
+func getGitHubRepositoryVersions(ctx context.Context, ghClient *adapters.GithubClient, repo *github.Repository) ([]PackageVersionInfo, error) {
 	pkgVersions := []PackageVersionInfo{}
 
 	releases, _, err := ghClient.Client.Repositories.ListReleases(ctx, repo.GetOwner().GetLogin(), repo.GetName(), nil)
@@ -144,6 +154,11 @@ func getGitHubRepoDetails(ctx context.Context, ghClient *adapters.GithubClient, 
 		})
 	}
 
+	return pkgVersions, nil
+}
+
+// githubRegistryCreatePackageWrapper creates a new package wrapper form github.Repository
+func githubRegistryCreatePackageWrapper(repo *github.Repository, latestVersion string, pkgVersions []PackageVersionInfo) *Package {
 	pkg := &Package{
 		Name:                repo.GetFullName(),
 		Description:         repo.GetDescription(),
@@ -159,5 +174,5 @@ func getGitHubRepoDetails(ctx context.Context, ghClient *adapters.GithubClient, 
 		UpdatedAt:     repo.GetUpdatedAt().Time,
 	}
 
-	return pkg, nil
+	return pkg
 }

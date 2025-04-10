@@ -102,9 +102,9 @@ type Client interface {
 	PackageDiscovery() (PackageDiscovery, error)
 }
 
-// RegisterAdapterConfig is a configuration for the registry adapter.
+// RegistryAdapterConfig is a configuration for the registry adapter.
 // Its optional and only required for certain ecosystems.
-type RegisterAdapterConfig struct {
+type RegistryAdapterConfig struct {
 	GitHubClient *adapters.GithubClient
 }
 
@@ -132,7 +132,7 @@ type RegisterAdapterConfig struct {
 //		log.Fatalf("failed to create github client: %v", err)
 //	}
 //	client, err := packageregistry.NewRegistryAdapter(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, &packageregistry.RegisterAdapterConfig{GitHubClient: githubClient})
-func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegisterAdapterConfig) (Client, error) {
+func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegistryAdapterConfig) (Client, error) {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_NPM:
 		return NewNpmAdapter()

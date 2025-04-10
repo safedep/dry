@@ -5,6 +5,7 @@ import (
 	"time"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
+	"github.com/safedep/dry/adapters"
 )
 
 // PublisherVerificationStatus holds package registry specific information about verification
@@ -101,10 +102,17 @@ type Client interface {
 	PackageDiscovery() (PackageDiscovery, error)
 }
 
+// RegistryAdapterConfig is a configuration for the registry adapter.
+// Its optional and only required for certain ecosystems.
+type RegistryAdapterConfig struct {
+	GitHubClient *adapters.GithubClient
+}
+
 // NewRegistryAdapter creates and returns a new registry adapter for the specified ecosystem.
 //
 // Parameters:
 //   - ecosystem: The package ecosystem to create an adapter for (e.g., NPM, PyPI, RubyGems)
+//   - config: Optional configuration for the adapter
 //
 // Returns:
 //   - Client: The registry adapter implementing the Client interface
@@ -112,11 +120,19 @@ type Client interface {
 //
 // Example:
 //
-//	client, err := packageregistry.NewRegistryAdapter(packagev1.Ecosystem_ECOSYSTEM_NPM)
+//	client, err := packageregistry.NewRegistryAdapter(packagev1.Ecosystem_ECOSYSTEM_NPM, nil)
 //	if err != nil {
 //		log.Fatalf("failed to create registry adapter: %v", err)
 //	}
-func NewRegistryAdapter(ecosystem packagev1.Ecosystem) (Client, error) {
+//
+// Example with GitHub client:
+//
+//	githubClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
+//	if err != nil {
+//		log.Fatalf("failed to create github client: %v", err)
+//	}
+//	client, err := packageregistry.NewRegistryAdapter(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, &packageregistry.RegisterAdapterConfig{GitHubClient: githubClient})
+func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegistryAdapterConfig) (Client, error) {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_NPM:
 		return NewNpmAdapter()
@@ -124,6 +140,12 @@ func NewRegistryAdapter(ecosystem packagev1.Ecosystem) (Client, error) {
 		return NewPypiAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:
 		return NewRubyAdapter()
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:
+		if config == nil || config.GitHubClient == nil {
+			return nil, fmt.Errorf("github client is required for github actions ecosystem")
+		}
+
+		return NewGithubPackageRegistryAdapter(config.GitHubClient)
 	default:
 		return nil, fmt.Errorf("unsupported ecosystem: %s", ecosystem)
 	}

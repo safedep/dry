@@ -94,15 +94,21 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 	}
 
 	cases := []struct {
-		publisherName    string
-		expectedErr      error
-		expectedPackages int
+		publisherName       string
+		expectedErr         error
+		expectedMinPackages int
 	}{
+		{
+			publisherName: "safedep",
+
+			expectedErr:         nil,
+			expectedMinPackages: 30, // more then 30 repos
+		},
 		{
 			publisherName: "safedep-hiring",
 
-			expectedErr:      nil,
-			expectedPackages: 4, // more then 4 repos
+			expectedErr:         nil,
+			expectedMinPackages: 4, // more then 4 repos
 		},
 	}
 
@@ -128,7 +134,7 @@ func TestGithubPackageRegistryAdapter_GetPublisherPackages(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkgs)
 
-				assert.GreaterOrEqual(t, len(pkgs), testCase.expectedPackages)
+				assert.GreaterOrEqual(t, len(pkgs), testCase.expectedMinPackages)
 			}
 		})
 	}

@@ -72,6 +72,8 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPackagePublisher(packageVe
 	}, nil
 }
 
+// GetPublisherPackages returns all packages for a publisher
+// Currently, we don't fetch the latest version and package versions
 func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	ctx := context.Background()
 
@@ -86,17 +88,9 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 	packages := []*Package{}
 
 	for _, repo := range repos {
-		latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ga.gitHubClient, repo)
-		if err != nil {
-			return nil, err
-		}
-
-		pkgVersions, err := getGitHubRepositoryVersions(ctx, ga.gitHubClient, repo)
-		if err != nil {
-			return nil, err
-		}
-
-		pkg := githubRegistryCreatePackageWrapper(repo, latestVersion, pkgVersions)
+		// Tradeoff: To prevent rate limiting, we don't fetch the latest version and package versions
+		// These valeus are empty, and client needs to handle it
+		pkg := githubRegistryCreatePackageWrapper(repo, "", []PackageVersionInfo{})
 		packages = append(packages, pkg)
 	}
 

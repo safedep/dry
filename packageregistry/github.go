@@ -108,11 +108,6 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	ctx := context.Background()
 
-	ghClient, err := adapters.NewGithubClient(adapters.DefaultGitHubClientConfig())
-	if err != nil {
-		return nil, ErrGitHubClientError
-	}
-
 	tokens := strings.Split(packageName, "/")
 	if len(tokens) != 2 {
 		return nil, ErrNoPackagesFound
@@ -121,7 +116,7 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 	owner := tokens[0]
 	repo := tokens[1]
 
-	repository, _, err := ghClient.Client.Repositories.Get(ctx, owner, repo)
+	repository, _, err := ga.gitHubClient.Client.Repositories.Get(ctx, owner, repo)
 	if err != nil {
 		if isGitHubRateLimitError(err) {
 			return nil, ErrGitHubRateLimitExceeded
@@ -129,12 +124,12 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 		return nil, ErrNoPackagesFound
 	}
 
-	latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ghClient, repository)
+	latestVersion, err := getGitHubRepositoryLatestVersion(ctx, ga.gitHubClient, repository)
 	if err != nil {
 		return nil, err
 	}
 
-	pkgVersions, err := getGitHubRepositoryVersions(ctx, ghClient, repository)
+	pkgVersions, err := getGitHubRepositoryVersions(ctx, ga.gitHubClient, repository)
 	if err != nil {
 		return nil, err
 	}

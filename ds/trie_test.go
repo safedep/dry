@@ -1,4 +1,4 @@
-package trie
+package ds
 
 import (
 	"fmt"

@@ -1,4 +1,6 @@
-package trie
+// Source: https://github.com/priyakdey/trie
+
+package ds
 
 import (
 	"strings"

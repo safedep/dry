@@ -136,8 +136,7 @@ func (t *Trie) Delete(word string) {
 
 		if len(n.children) == 0 && !n.isWord {
 			parent := visitedNodes[i-1]
-			delete(parent.children, n.key) // delete the reference from the paren node
-		}
+			delete(parent.children, n.key) // delete the reference from the parent node
 	}
 
 	// check for the first character

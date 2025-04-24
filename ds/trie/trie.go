@@ -2,7 +2,7 @@
 
 package trie
 
-// node is a single node in the prefix tree, which represents the a letter in word
+// node is a single node in the prefix tree, which represents a letter in word
 type node[T any] struct {
 	// key is the int representation of the character in a word
 	key uint8

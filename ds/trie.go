@@ -17,7 +17,7 @@ type node struct {
 }
 
 // Trie represents the Prefix Tree.
-// This should not be created dicrectly, instead use trie.New()
+// This should not be created directly, instead use trie.New()
 type Trie struct {
 	root *node
 }

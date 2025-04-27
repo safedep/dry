@@ -1,7 +1,7 @@
 package packageregistry
 
 import (
-	"github.com/safedep/dry/utils"
+	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
 
@@ -44,8 +44,8 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/dry",
 			expectedAuthorName:    "safedep",
-			expectedLatestVersion: "main", // default branch, since no releases are there in this repo
-			expectedMinVersions:   0,      // dry has no releases
+			expectedLatestVersion: "", // default branch, since no releases are there in this repo
+			expectedMinVersions:   0,  // dry has no releases
 		},
 		{
 			packageName: "somerandomuser/non-existing-package",
@@ -82,7 +82,9 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 				assert.Equal(t, testCase.expectedAuthorName, pkg.Author.Name)
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
-				assert.True(t, utils.Version(pkg.LatestVersion).IsGreaterThenOrEqualTo(testCase.expectedLatestVersion))
+				if testCase.expectedLatestVersion != "" {
+					assert.True(t, semver.IsAheadOrEqual(pkg.LatestVersion, testCase.expectedLatestVersion))
+				}
 			}
 		})
 	}

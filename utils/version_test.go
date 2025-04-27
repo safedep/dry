@@ -66,6 +66,12 @@ func TestVersion(t *testing.T) {
 			versionToCompare:   "3.9.2",
 			isGreaterThenEqual: true,
 		},
+		{
+			name:               "github branch ref",
+			versionSelf:        Version("main"),
+			versionToCompare:   "main",
+			isGreaterThenEqual: true,
+		},
 	}
 
 	for _, test := range cases {

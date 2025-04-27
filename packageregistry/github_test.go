@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"fmt"
 	"github.com/safedep/dry/utils"
 	"reflect"
 	"testing"
@@ -83,8 +82,6 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 				assert.Equal(t, testCase.expectedAuthorName, pkg.Author.Name)
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
-				fmt.Println(pkg.LatestVersion)
-				fmt.Println(testCase.expectedLatestVersion)
 				assert.True(t, utils.Version(pkg.LatestVersion).IsGreaterThenOrEqualTo(testCase.expectedLatestVersion))
 			}
 		})

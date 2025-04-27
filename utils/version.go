@@ -17,8 +17,6 @@ func (v Version) IsGreaterThenOrEqualTo(version string) bool {
 
 	maxCommonComponentsLen := max(selfVCLen, inputVCLen)
 
-	var err error
-
 	// If a version is 2.23 and 2.12.3 i.e., different components length
 	// [2, 23]
 	// [2, 12, 3]
@@ -32,21 +30,19 @@ func (v Version) IsGreaterThenOrEqualTo(version string) bool {
 
 		if i < selfVCLen {
 			token := strings.TrimPrefix(selfVersionComponents[i], "v")
-			componentSelf, err = strconv.Atoi(token)
-			if err != nil {
-				return false
+			intToken, err := strconv.Atoi(token)
+			if err == nil {
+				componentSelf = intToken
 			}
 		}
 
 		if i < inputVCLen {
 			token := strings.TrimPrefix(inputVersionComponents[i], "v")
-			componentInput, err = strconv.Atoi(token)
-			if err != nil {
-				return false
+			intToken, err := strconv.Atoi(token)
+			if err == nil {
+				componentInput = intToken
 			}
 		}
-
-		// convert it to
 
 		if componentSelf != componentInput {
 			return componentSelf > componentInput

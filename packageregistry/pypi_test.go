@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
 
@@ -224,7 +225,7 @@ func TestPypiGetPackageLatestVersion(t *testing.T) {
 				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.GreaterOrEqual(t, pkg.LatestVersion, test.expectedLatestVersion)
+				assert.True(t, semver.IsAheadOrEqual(pkg.LatestVersion, test.expectedLatestVersion))
 			}
 		})
 	}

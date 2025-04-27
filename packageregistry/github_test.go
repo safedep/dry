@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
 
@@ -32,8 +33,8 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/vet",
 			expectedAuthorName:    "safedep",
-			expectedLatestVersion: "v1.9.9", // we will do >=
-			expectedMinVersions:   10,       // vet has minimum 10 releases (versions)
+			expectedLatestVersion: "v1.10.2", // we will do >=
+			expectedMinVersions:   10,        // vet has minimum 10 releases (versions)
 		},
 		{
 			// Good test where there is no release
@@ -43,8 +44,8 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/dry",
 			expectedAuthorName:    "safedep",
-			expectedLatestVersion: "main", // default branch, since no releases are there in this repo
-			expectedMinVersions:   0,      // dry has no releases
+			expectedLatestVersion: "", // default branch, since no releases are there in this repo
+			expectedMinVersions:   0,  // dry has no releases
 		},
 		{
 			packageName: "somerandomuser/non-existing-package",
@@ -81,7 +82,9 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 				assert.Equal(t, testCase.expectedAuthorName, pkg.Author.Name)
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
-				assert.GreaterOrEqual(t, pkg.LatestVersion, testCase.expectedLatestVersion)
+				if testCase.expectedLatestVersion != "" {
+					assert.True(t, semver.IsAheadOrEqual(pkg.LatestVersion, testCase.expectedLatestVersion))
+				}
 			}
 		})
 	}

@@ -38,3 +38,19 @@ func IsAhead(base, head string) bool {
 
 	return v2.GreaterThan(v1)
 }
+
+// IsAheadOrEqual checks if head version is ahead of
+// base version in terms of semver
+func IsAheadOrEqual(base, head string) bool {
+	v1, err := mver.NewVersion(base)
+	if err != nil {
+		return false
+	}
+
+	v2, err := mver.NewVersion(head)
+	if err != nil {
+		return false
+	}
+
+	return v2.GreaterThanEqual(v1)
+}

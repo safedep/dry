@@ -1,6 +1,8 @@
 package packageregistry
 
 import (
+	"fmt"
+	"github.com/safedep/dry/utils"
 	"reflect"
 	"testing"
 
@@ -32,8 +34,8 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 			expectedDescription:   true,
 			expectedSourceURL:     "https://github.com/safedep/vet",
 			expectedAuthorName:    "safedep",
-			expectedLatestVersion: "v1.9.9", // we will do >=
-			expectedMinVersions:   10,       // vet has minimum 10 releases (versions)
+			expectedLatestVersion: "v1.10.2", // we will do >=
+			expectedMinVersions:   10,        // vet has minimum 10 releases (versions)
 		},
 		{
 			// Good test where there is no release
@@ -81,7 +83,9 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 				assert.Equal(t, testCase.expectedAuthorName, pkg.Author.Name)
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
-				assert.GreaterOrEqual(t, pkg.LatestVersion, testCase.expectedLatestVersion)
+				fmt.Println(pkg.LatestVersion)
+				fmt.Println(testCase.expectedLatestVersion)
+				assert.True(t, utils.Version(pkg.LatestVersion).IsGreaterThenOrEqualTo(testCase.expectedLatestVersion))
 			}
 		})
 	}

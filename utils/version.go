@@ -1,6 +1,9 @@
 package utils
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 type Version string
 
@@ -14,6 +17,8 @@ func (v Version) IsGreaterThenOrEqualTo(version string) bool {
 
 	maxCommonComponentsLen := max(selfVCLen, inputVCLen)
 
+	var err error
+
 	// If a version is 2.23 and 2.12.3 i.e., different components length
 	// [2, 23]
 	// [2, 12, 3]
@@ -22,21 +27,30 @@ func (v Version) IsGreaterThenOrEqualTo(version string) bool {
 	// [2, 12, 3]
 	// Then we compare each component with its counterpart
 	for i := range maxCommonComponentsLen {
-		componentSelf := string('0')
-		componentInput := string('0')
+		componentSelf := 0
+		componentInput := 0
 
 		if i < selfVCLen {
-			componentSelf = selfVersionComponents[i]
+			token := strings.TrimPrefix(selfVersionComponents[i], "v")
+			componentSelf, err = strconv.Atoi(token)
+			if err != nil {
+				return false
+			}
 		}
 
 		if i < inputVCLen {
-			componentInput = inputVersionComponents[i]
+			token := strings.TrimPrefix(inputVersionComponents[i], "v")
+			componentInput, err = strconv.Atoi(token)
+			if err != nil {
+				return false
+			}
 		}
+
+		// convert it to
 
 		if componentSelf != componentInput {
 			return componentSelf > componentInput
 		}
 	}
-
 	return true
 }

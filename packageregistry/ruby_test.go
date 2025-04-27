@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"github.com/safedep/dry/utils"
 	"reflect"
 	"testing"
 
@@ -75,20 +76,20 @@ func TestRubyGetPublisher(t *testing.T) {
 func TestRubyGetPublisherPackages(t *testing.T) {
 	cases := []struct {
 		name          string
-		publishername string
+		publisherName string
 
 		expectedMinPackages int
 		expectedError       error
 	}{
 		{
 			name:          "Correct ruby publisher",
-			publishername: "noelrap",
+			publisherName: "noelrap",
 
 			expectedMinPackages: 2,
 		},
 		{
 			name:          "incorrect publisher info",
-			publishername: "randomrubypackage",
+			publisherName: "randomrubypackage",
 			expectedError: ErrAuthorNotFound,
 		},
 	}
@@ -107,7 +108,7 @@ func TestRubyGetPublisherPackages(t *testing.T) {
 				t.Fatalf("failed to create publisher discovery client in npm adapter")
 			}
 
-			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publishername, Email: ""})
+			pkgs, err := pd.GetPublisherPackages(Publisher{Name: test.publisherName, Email: ""})
 			if test.expectedError != nil {
 				assert.Error(t, err)
 				assert.ErrorIs(t, err, test.expectedError)
@@ -224,7 +225,7 @@ func TestRubyGetPackageLatestVersion(t *testing.T) {
 				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.GreaterOrEqual(t, pkg.LatestVersion, test.expectedLatestVersion)
+				assert.True(t, utils.Version(pkg.LatestVersion).IsGreaterThenOrEqualTo(test.expectedLatestVersion))
 			}
 		})
 	}

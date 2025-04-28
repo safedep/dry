@@ -11,7 +11,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	sig_yaml "sigs.k8s.io/yaml"
 
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 )
 
 // Serialize an interface using JSON or return error string

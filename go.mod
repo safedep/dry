@@ -10,6 +10,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/antihax/optional v1.0.0
 	github.com/envoyproxy/go-control-plane v0.13.1
+	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/goark/go-cvss v1.6.7
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-github/v70 v70.0.0
@@ -17,7 +18,6 @@ require (
 	github.com/labstack/echo-contrib v0.17.1
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/labstack/gommon v0.4.2
-	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nats-io/nats.go v1.37.0
 	github.com/oklog/ulid/v2 v2.1.0
 	github.com/package-url/packageurl-go v0.1.3

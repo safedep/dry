@@ -15,5 +15,5 @@ var (
 
 // Wrap wraps an error with additional context
 func wrap(err error, wrapErr error, msg string) error {
-	return errors.New(msg + ": " + wrapErr.Error() + ": " + err.Error())
+	return fmt.Errorf("%s: %w: %w", msg, wrapErr, err)
 }

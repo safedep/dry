@@ -2,6 +2,7 @@ package huggingface
 
 import (
 	"errors"
+	"fmt"
 )
 
 // Error constants for the HuggingFace adapter

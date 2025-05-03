@@ -9,7 +9,7 @@ Re-usable Go modules for building [https://safedep.io](https://safedep.io)
 
 ### Setup
 
-* Need `golang-1.21`, refer `.tool-versions`
+* Need `golang-1.24`, refer `.tool-versions`
 * Install `gitleaks` following [instructions](https://github.com/gitleaks/gitleaks#installing)
 * Install `lefthook`
 

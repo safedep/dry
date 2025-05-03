@@ -120,28 +120,73 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 			"id":           "testowner/testdataset",
 			"datasetId":    "testdataset",
 			"author":       "testowner",
-			"tags":         []string{"nlp", "text"},
+			"tags":         []string{"nlp", "text", "task_categories:question-answering", "license:cc-by-4.0"},
 			"downloads":    500,
 			"likes":        20,
 			"createdAt":    "2023-01-01T00:00:00Z",
 			"lastModified": "2023-02-01T00:00:00Z",
 			"private":      false,
-			"description":  "A test dataset",
+			"description":  "A test dataset for question answering",
 			"citation":     "@article{test2023, title={Test Dataset}}",
 			"license":      "cc-by-4.0",
-			"size":         1048576,
 			"sha":          "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8",
 			"disabled":     false,
 			"gated":        "manual",
 			"usedStorage":  3145728,
+			"pretty_name":  "Test Dataset",
 			"siblings": []map[string]interface{}{
 				{"rfilename": "README.md"},
 				{"rfilename": "dataset-info.json"},
 				{"rfilename": "dataset_dict.json"},
 			},
 			"cardData": map[string]interface{}{
-				"language": "en",
-				"license":  "cc-by-4.0",
+				"language":        []string{"en"},
+				"license":         "cc-by-4.0",
+				"task_categories": []string{"question-answering", "text-generation"},
+				"pretty_name":     "Test Dataset",
+				"size_categories": []string{"1M<n<10M"},
+				"tags":            []string{"test", "qa"},
+			},
+			"configs": []map[string]interface{}{
+				{
+					"config_name": "default",
+					"data_files": []map[string]interface{}{
+						{
+							"split": "train",
+							"path":  "data/train-*",
+						},
+						{
+							"split": "test",
+							"path":  "data/test-*",
+						},
+					},
+				},
+			},
+			"dataset_info": map[string]interface{}{
+				"features": []map[string]interface{}{
+					{
+						"name":  "question",
+						"dtype": "string",
+					},
+					{
+						"name":  "answer",
+						"dtype": "string",
+					},
+				},
+				"splits": []map[string]interface{}{
+					{
+						"name":         "train",
+						"num_bytes":    1000000,
+						"num_examples": 10000,
+					},
+					{
+						"name":         "test",
+						"num_bytes":    200000,
+						"num_examples": 2000,
+					},
+				},
+				"download_size": 1200000,
+				"dataset_size":  1200000,
 			},
 		}
 
@@ -163,25 +208,47 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.Equal(t, "67ed3cd9290a7f9d3301f9c2", dataset.DatasetID)
 	assert.Equal(t, "testdataset", dataset.DatasetName)
 	assert.Equal(t, "testowner", dataset.Author)
-	assert.Equal(t, 2, len(dataset.Tags))
+	assert.Equal(t, 4, len(dataset.Tags))
 	assert.Contains(t, dataset.Tags, "nlp")
 	assert.Contains(t, dataset.Tags, "text")
+	assert.Contains(t, dataset.Tags, "task_categories:question-answering")
 	assert.Equal(t, int64(500), dataset.Downloads)
 	assert.Equal(t, 20, dataset.Likes)
 	assert.Equal(t, "2023-01-01T00:00:00Z", dataset.CreatedAt)
 	assert.Equal(t, "2023-02-01T00:00:00Z", dataset.LastModified)
 	assert.False(t, dataset.Private)
-	assert.Equal(t, "A test dataset", dataset.Description)
+	assert.Equal(t, "A test dataset for question answering", dataset.Description)
 	assert.Equal(t, "@article{test2023, title={Test Dataset}}", dataset.Citation)
 	assert.Equal(t, "cc-by-4.0", dataset.License)
-	assert.Equal(t, int64(1048576), dataset.Size)
 	assert.Equal(t, "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8", dataset.SHA)
 	assert.False(t, dataset.Disabled)
 	assert.Equal(t, "manual", dataset.Gated)
 	assert.Equal(t, int64(3145728), dataset.UsedStorage)
+	assert.Equal(t, "Test Dataset", dataset.PrettyName)
+	
+	// Test new fields
 	assert.Equal(t, 3, len(dataset.SiblingDatasets))
 	assert.Equal(t, "README.md", dataset.SiblingDatasets[0].RFilename)
 	assert.NotNil(t, dataset.CardData)
+	
+	// Check configs
+	assert.Equal(t, 1, len(dataset.Configs))
+	assert.Equal(t, "default", dataset.Configs[0].ConfigName)
+	assert.Equal(t, 2, len(dataset.Configs[0].DataFiles))
+	assert.Equal(t, "train", dataset.Configs[0].DataFiles[0].Split)
+	assert.Equal(t, "data/train-*", dataset.Configs[0].DataFiles[0].Path)
+	
+	// Check dataset info
+	assert.NotNil(t, dataset.DatasetInfo)
+	assert.Equal(t, 2, len(dataset.DatasetInfo.Features))
+	assert.Equal(t, "question", dataset.DatasetInfo.Features[0].Name)
+	assert.Equal(t, "string", dataset.DatasetInfo.Features[0].Dtype)
+	assert.Equal(t, 2, len(dataset.DatasetInfo.Splits))
+	assert.Equal(t, "train", dataset.DatasetInfo.Splits[0].Name)
+	assert.Equal(t, int64(10000), dataset.DatasetInfo.Splits[0].NumExamples)
+	assert.Equal(t, int64(1200000), dataset.DatasetInfo.DownloadSize)
+	assert.Equal(t, int64(1200000), dataset.DatasetInfo.DatasetSize)
+	
 	assert.NotNil(t, dataset.RawResponse)
 }
 

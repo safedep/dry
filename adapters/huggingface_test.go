@@ -19,19 +19,36 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 		assert.Equal(t, "Bearer testtoken", r.Header.Get("Authorization"))
 
 		modelResp := map[string]interface{}{
-			"id":           "testowner/testmodel",
-			"modelId":      "testmodel",
-			"author":       "testowner",
-			"tags":         []string{"nlp", "transformers"},
-			"downloads":    1000,
-			"likes":        42,
-			"createdAt":    "2023-01-01T00:00:00Z",
-			"lastModified": "2023-02-01T00:00:00Z",
-			"private":      false,
-			"pipeline_tag": "text-classification",
-			"library":      "transformers",
-			"license":      "mit",
-			"safetensors":  true,
+			"_id":           "67ed3cd9290a7f9d3301f9c1",
+			"id":            "testowner/testmodel",
+			"modelId":       "testmodel",
+			"author":        "testowner",
+			"tags":          []string{"nlp", "transformers"},
+			"downloads":     1000,
+			"likes":         42,
+			"createdAt":     "2023-01-01T00:00:00Z",
+			"lastModified":  "2023-02-01T00:00:00Z",
+			"private":       false,
+			"pipeline_tag":  "text-classification",
+			"library_name":  "transformers",
+			"sha":           "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8",
+			"disabled":      false,
+			"gated":         "manual",
+			"model-index":   nil,
+			"license":       "mit",
+			"safetensors":   true,
+			"inference":     "warm",
+			"usedStorage":   217343257722,
+			"transformersInfo": map[string]interface{}{
+				"auto_model":   "AutoModelForImageTextToText",
+				"pipeline_tag": "image-text-to-text",
+				"processor":    "AutoProcessor",
+			},
+			"siblings": []map[string]interface{}{
+				{"rfilename": ".gitattributes"},
+				{"rfilename": "LICENSE"},
+				{"rfilename": "README.md"},
+			},
 			"cardData": map[string]interface{}{
 				"language": "en",
 				"license":  "mit",
@@ -62,6 +79,7 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, model)
 	assert.Equal(t, "testowner/testmodel", model.ID)
+	assert.Equal(t, "67ed3cd9290a7f9d3301f9c1", model.ModelID)
 	assert.Equal(t, "testmodel", model.ModelName)
 	assert.Equal(t, "testowner", model.Author)
 	assert.Equal(t, 2, len(model.Tags))
@@ -73,9 +91,16 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 	assert.Equal(t, "2023-02-01T00:00:00Z", model.LastModified)
 	assert.False(t, model.Private)
 	assert.Equal(t, "text-classification", model.PipelineTag)
-	assert.Equal(t, "transformers", model.Library)
+	assert.Equal(t, "transformers", model.LibraryName)
 	assert.Equal(t, "mit", model.License)
-	assert.True(t, model.SafeTensors)
+	assert.Equal(t, "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8", model.SHA)
+	assert.False(t, model.Disabled)
+	assert.Equal(t, "manual", model.Gated)
+	assert.Equal(t, "warm", model.Inference)
+	assert.Equal(t, int64(217343257722), model.UsedStorage)
+	assert.Equal(t, 3, len(model.SiblingModels))
+	assert.Equal(t, ".gitattributes", model.SiblingModels[0].RFilename)
+	assert.NotNil(t, model.TransformersInfo)
 	assert.NotNil(t, model.CardData)
 	assert.Equal(t, 1, len(model.Metrics))
 	assert.Equal(t, "accuracy", model.Metrics[0].Type)
@@ -91,6 +116,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 		assert.Equal(t, "application/json", r.Header.Get("Accept"))
 
 		datasetResp := map[string]interface{}{
+			"_id":          "67ed3cd9290a7f9d3301f9c2",
 			"id":           "testowner/testdataset",
 			"datasetId":    "testdataset",
 			"author":       "testowner",
@@ -104,6 +130,15 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 			"citation":     "@article{test2023, title={Test Dataset}}",
 			"license":      "cc-by-4.0",
 			"size":         1048576,
+			"sha":          "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8",
+			"disabled":     false,
+			"gated":        "manual",
+			"usedStorage":  3145728,
+			"siblings": []map[string]interface{}{
+				{"rfilename": "README.md"},
+				{"rfilename": "dataset-info.json"},
+				{"rfilename": "dataset_dict.json"},
+			},
 			"cardData": map[string]interface{}{
 				"language": "en",
 				"license":  "cc-by-4.0",
@@ -125,6 +160,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, dataset)
 	assert.Equal(t, "testowner/testdataset", dataset.ID)
+	assert.Equal(t, "67ed3cd9290a7f9d3301f9c2", dataset.DatasetID)
 	assert.Equal(t, "testdataset", dataset.DatasetName)
 	assert.Equal(t, "testowner", dataset.Author)
 	assert.Equal(t, 2, len(dataset.Tags))
@@ -139,6 +175,12 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.Equal(t, "@article{test2023, title={Test Dataset}}", dataset.Citation)
 	assert.Equal(t, "cc-by-4.0", dataset.License)
 	assert.Equal(t, int64(1048576), dataset.Size)
+	assert.Equal(t, "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8", dataset.SHA)
+	assert.False(t, dataset.Disabled)
+	assert.Equal(t, "manual", dataset.Gated)
+	assert.Equal(t, int64(3145728), dataset.UsedStorage)
+	assert.Equal(t, 3, len(dataset.SiblingDatasets))
+	assert.Equal(t, "README.md", dataset.SiblingDatasets[0].RFilename)
 	assert.NotNil(t, dataset.CardData)
 	assert.NotNil(t, dataset.RawResponse)
 }
@@ -208,9 +250,26 @@ func TestHuggingFaceHubClient_E2E(t *testing.T) {
 			model: "Llama-4-Scout-17B-16E-Instruct",
 			assert: func(t *testing.T, model *HuggingFaceModel) {
 				assert.NotNil(t, model)
-				assert.Equal(t, "meta-llama/Llama-4-Scout-17B-16E-Instruct", model.ID)
-				assert.Equal(t, "Llama-4-Scout-17B-16E-Instruct", model.ModelName)
+				assert.Contains(t, model.ID, "meta-llama/Llama-4-Scout-17B-16E-Instruct")
 				assert.Equal(t, "meta-llama", model.Author)
+				
+				// Verify fields from the example JSON structure
+				assert.NotEmpty(t, model.ModelID)
+				assert.True(t, len(model.Tags) > 0)
+				assert.NotEmpty(t, model.SHA)
+				assert.NotNil(t, model.SiblingModels)
+				assert.Greater(t, model.Downloads, int64(0))
+				assert.Greater(t, model.Likes, 0)
+				assert.NotEmpty(t, model.CreatedAt)
+				assert.NotEmpty(t, model.LastModified)
+				
+				// Validate complex fields
+				if model.TransformersInfo != nil {
+					assert.NotEmpty(t, model.TransformersInfo["pipeline_tag"])
+				}
+				
+				// Verify SafeTensor details
+				assert.NotNil(t, model.SafeTensors)
 			},
 		},
 	}

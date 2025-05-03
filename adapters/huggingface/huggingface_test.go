@@ -5,11 +5,35 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func TestHuggingFaceHubClientImpl_AutoConfigureAPIToken(t *testing.T) {
+	t.Run("should auto-configure the API token from the environment variable", func(t *testing.T) {
+		os.Setenv("HF_TOKEN", "testtoken")
+		defer os.Unsetenv("HF_TOKEN")
+
+		client := NewHuggingFaceHubClient()
+		assert.Equal(t, "testtoken", client.apiToken)
+	})
+
+	t.Run("should not configure the API token if it is explicitly set", func(t *testing.T) {
+		os.Setenv("HF_TOKEN", "testtoken")
+		defer os.Unsetenv("HF_TOKEN")
+
+		client := NewHuggingFaceHubClient(WithAPIToken("explicit-token"))
+		assert.Equal(t, "explicit-token", client.apiToken)
+	})
+
+	t.Run("should not configure the API token if it is not set", func(t *testing.T) {
+		client := NewHuggingFaceHubClient()
+		assert.Equal(t, "", client.apiToken)
+	})
+}
 
 func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +95,7 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 		WithBaseURL(mockServer.URL),
 		WithAPIToken("testtoken"),
 		WithTimeout(5*time.Second),
+		WithHTTPClient(mockServer.Client()),
 	)
 
 	ctx := context.Background()

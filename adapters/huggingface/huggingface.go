@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
 
@@ -24,147 +25,48 @@ type HuggingFaceHubClient interface {
 	GetDataset(ctx context.Context, owner, name string) (*HuggingFaceDataset, error)
 }
 
-// HuggingFaceModel represents metadata about a model in HuggingFace Hub
-type HuggingFaceModel struct {
-	ID               string            `json:"id"`               // Unique identifier of the model (owner/name)
-	ModelID          string            `json:"_id,omitempty"`    // Internal ID in MongoDB format
-	ModelName        string            `json:"modelId"`          // Name of the model
-	Author           string            `json:"author"`           // Author of the model
-	Tags             []string          `json:"tags"`             // Tags associated with the model
-	Downloads        int64             `json:"downloads"`        // Number of downloads
-	Likes            int               `json:"likes"`            // Number of likes
-	CreatedAt        string            `json:"createdAt"`        // Creation date
-	LastModified     string            `json:"lastModified"`     // Last modification date
-	Private          bool              `json:"private"`          // Whether the model is private
-	PipelineTag      string            `json:"pipeline_tag"`     // Pipeline tag
-	LibraryName      string            `json:"library_name"`     // Library name for the model
-	Library          string            `json:"library"`          // Associated library (legacy)
-	CardData         map[string]any    `json:"cardData"`         // Model card data
-	SiblingModels    []SiblingFile     `json:"siblings"`         // Sibling models - array of file objects
-	ModelIndex       interface{}       `json:"model-index"`      // Model index information
-	Config           map[string]any    `json:"config"`           // Model configuration
-	SafeTensors      interface{}       `json:"safetensors"`      // Whether using safetensors or SafeTensor stats
-	License          string            `json:"license"`          // License information
-	Metrics          []MetricInfo      `json:"metrics"`          // Model metrics
-	Disabled         bool              `json:"disabled"`         // Whether the model is disabled
-	Gated            interface{}       `json:"gated"`            // Gating type - can be string or bool
-	SHA              string            `json:"sha"`              // SHA hash of the model
-	Spaces           []string          `json:"spaces"`           // Associated Spaces using this model
-	TransformersInfo map[string]string `json:"transformersInfo"` // Transformers-specific information
-	UsedStorage      int64             `json:"usedStorage"`      // Storage used by the model in bytes
-	Inference        string            `json:"inference"`        // Inference type/status
-	RawResponse      json.RawMessage   `json:"-"`                // Raw response from the API
-}
-
-// DatasetFeature represents a feature in a dataset
-type DatasetFeature struct {
-	Name  string `json:"name"`  // Name of the feature
-	Dtype string `json:"dtype"` // Data type of the feature
-}
-
-// DatasetSplit represents a split in a dataset
-type DatasetSplit struct {
-	Name        string `json:"name"`         // Name of the split (e.g. "train", "test")
-	NumBytes    int64  `json:"num_bytes"`    // Size of the split in bytes
-	NumExamples int64  `json:"num_examples"` // Number of examples in the split
-}
-
-// DatasetConfig represents a configuration of a dataset
-type DatasetConfig struct {
-	ConfigName string            `json:"config_name"` // Name of the configuration
-	DataFiles  []DatasetDataFile `json:"data_files"`  // Data files in the configuration
-}
-
-// DatasetDataFile represents a data file in a dataset configuration
-type DatasetDataFile struct {
-	Split string `json:"split"` // Split this file belongs to
-	Path  string `json:"path"`  // Path to the file
-}
-
-// DatasetInfo represents information about a dataset
-type DatasetInfo struct {
-	Features     []DatasetFeature `json:"features"`      // Features in the dataset
-	Splits       []DatasetSplit   `json:"splits"`        // Splits in the dataset
-	DownloadSize int64            `json:"download_size"` // Size of the download in bytes
-	DatasetSize  int64            `json:"dataset_size"`  // Total size of the dataset in bytes
-}
-
-// HuggingFaceDataset represents metadata about a dataset in HuggingFace Hub
-type HuggingFaceDataset struct {
-	ID              string         `json:"id"`                 // Unique identifier of the dataset (owner/name)
-	DatasetID       string         `json:"_id,omitempty"`      // Internal ID in MongoDB format
-	DatasetName     string         `json:"datasetId"`          // Name of the dataset
-	Author          string         `json:"author"`             // Author of the dataset
-	Tags            []string       `json:"tags"`               // Tags associated with the dataset
-	Downloads       int64          `json:"downloads"`          // Number of downloads
-	Likes           int            `json:"likes"`              // Number of likes
-	CreatedAt       string         `json:"createdAt"`          // Creation date
-	LastModified    string         `json:"lastModified"`       // Last modification date
-	Private         bool           `json:"private"`            // Whether the dataset is private
-	CardData        map[string]any `json:"cardData"`           // Dataset card data
-	SiblingDatasets []SiblingFile  `json:"siblings"`           // Sibling dataset files
-	Description     string         `json:"description"`        // Description of the dataset
-	Citation        string         `json:"citation,omitempty"` // Citation information
-	License         string         `json:"license,omitempty"`  // License information
-	SHA             string         `json:"sha,omitempty"`      // SHA hash of the dataset
-	Disabled        bool           `json:"disabled"`           // Whether the dataset is disabled
-	Gated           interface{}    `json:"gated"`              // Gating type - can be string or bool
-	UsedStorage     int64          `json:"usedStorage"`        // Storage used by the dataset in bytes
-
-	// New fields from the example JSON
-	PrettyName  string          `json:"pretty_name,omitempty"`  // Pretty name of the dataset
-	Configs     []DatasetConfig `json:"configs,omitempty"`      // Dataset configurations
-	DatasetInfo *DatasetInfo    `json:"dataset_info,omitempty"` // Dataset information
-
-	RawResponse json.RawMessage `json:"-"` // Raw response from the API
-}
-
-// SiblingFile represents a file in the model repository
-type SiblingFile struct {
-	RFilename string `json:"rfilename"` // Relative filename
-}
-
-// MetricInfo represents metrics information for a model
-type MetricInfo struct {
-	Type  string  `json:"type"`
-	Value float64 `json:"value"`
-	Name  string  `json:"name"`
-}
-
-// HuggingFaceHubClientImpl implements the HuggingFaceHubClient interface
-type HuggingFaceHubClientImpl struct {
+type huggingFaceHubClientImpl struct {
 	baseURL    string
 	httpClient *http.Client
 	apiToken   string
 }
 
-// HuggingFaceHubClientOption defines a function to configure the HuggingFaceHubClientImpl
-type HuggingFaceHubClientOption func(*HuggingFaceHubClientImpl)
+// HuggingFaceHubClientOption defines a function to configure the client
+type HuggingFaceHubClientOption func(*huggingFaceHubClientImpl)
 
 // WithBaseURL sets a custom base URL for the HuggingFace Hub API
 func WithBaseURL(baseURL string) HuggingFaceHubClientOption {
-	return func(c *HuggingFaceHubClientImpl) {
+	return func(c *huggingFaceHubClientImpl) {
 		c.baseURL = baseURL
 	}
 }
 
 // WithTimeout sets a custom timeout for HTTP requests
 func WithTimeout(timeout time.Duration) HuggingFaceHubClientOption {
-	return func(c *HuggingFaceHubClientImpl) {
+	return func(c *huggingFaceHubClientImpl) {
 		c.httpClient.Timeout = timeout
 	}
 }
 
 // WithAPIToken sets the authentication token for the HuggingFace Hub API
 func WithAPIToken(token string) HuggingFaceHubClientOption {
-	return func(c *HuggingFaceHubClientImpl) {
+	return func(c *huggingFaceHubClientImpl) {
 		c.apiToken = token
 	}
 }
 
+// WithHTTPClient sets a custom HTTP client for the HuggingFace Hub API
+func WithHTTPClient(httpClient *http.Client) HuggingFaceHubClientOption {
+	return func(c *huggingFaceHubClientImpl) {
+		c.httpClient = httpClient
+	}
+}
+
+var _ HuggingFaceHubClient = &huggingFaceHubClientImpl{}
+
 // NewHuggingFaceHubClient creates a new HuggingFaceHubClient
-func NewHuggingFaceHubClient(opts ...HuggingFaceHubClientOption) HuggingFaceHubClient {
-	client := &HuggingFaceHubClientImpl{
+func NewHuggingFaceHubClient(opts ...HuggingFaceHubClientOption) *huggingFaceHubClientImpl {
+	client := &huggingFaceHubClientImpl{
 		baseURL: defaultHuggingFaceHubAPIBaseURL,
 		httpClient: &http.Client{
 			Timeout: defaultTimeout,
@@ -175,11 +77,17 @@ func NewHuggingFaceHubClient(opts ...HuggingFaceHubClientOption) HuggingFaceHubC
 		opt(client)
 	}
 
+	// Auto-configure the API token from the environment variable
+	// if not explicitly set by the user
+	if client.apiToken == "" {
+		client.apiToken = os.Getenv("HF_TOKEN")
+	}
+
 	return client
 }
 
 // GetModel fetches metadata for a specific model from HuggingFace Hub
-func (c *HuggingFaceHubClientImpl) GetModel(ctx context.Context, owner, name string) (*HuggingFaceModel, error) {
+func (c *huggingFaceHubClientImpl) GetModel(ctx context.Context, owner, name string) (*HuggingFaceModel, error) {
 	path := fmt.Sprintf("/models/%s/%s", url.PathEscape(owner), url.PathEscape(name))
 
 	data, err := c.doRequest(ctx, path)
@@ -189,7 +97,7 @@ func (c *HuggingFaceHubClientImpl) GetModel(ctx context.Context, owner, name str
 
 	var model HuggingFaceModel
 	if err := json.Unmarshal(data, &model); err != nil {
-		return nil, Wrap(err, ErrInvalidResponse, "failed to parse model response")
+		return nil, wrap(err, ErrInvalidResponse, "failed to parse model response")
 	}
 
 	model.RawResponse = data
@@ -197,7 +105,7 @@ func (c *HuggingFaceHubClientImpl) GetModel(ctx context.Context, owner, name str
 }
 
 // GetDataset fetches metadata for a specific dataset from HuggingFace Hub
-func (c *HuggingFaceHubClientImpl) GetDataset(ctx context.Context, owner, name string) (*HuggingFaceDataset, error) {
+func (c *huggingFaceHubClientImpl) GetDataset(ctx context.Context, owner, name string) (*HuggingFaceDataset, error) {
 	path := fmt.Sprintf("/datasets/%s/%s", url.PathEscape(owner), url.PathEscape(name))
 
 	data, err := c.doRequest(ctx, path)
@@ -207,7 +115,7 @@ func (c *HuggingFaceHubClientImpl) GetDataset(ctx context.Context, owner, name s
 
 	var dataset HuggingFaceDataset
 	if err := json.Unmarshal(data, &dataset); err != nil {
-		return nil, Wrap(err, ErrInvalidResponse, "failed to parse dataset response")
+		return nil, wrap(err, ErrInvalidResponse, "failed to parse dataset response")
 	}
 
 	dataset.RawResponse = data
@@ -215,12 +123,12 @@ func (c *HuggingFaceHubClientImpl) GetDataset(ctx context.Context, owner, name s
 }
 
 // doRequest performs an HTTP request to the HuggingFace Hub API
-func (c *HuggingFaceHubClientImpl) doRequest(ctx context.Context, path string) ([]byte, error) {
+func (c *huggingFaceHubClientImpl) doRequest(ctx context.Context, path string) ([]byte, error) {
 	url := c.baseURL + path
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, Wrap(err, ErrInvalidRequest, "failed to create request")
+		return nil, wrap(err, ErrInvalidRequest, "failed to create request")
 	}
 
 	req.Header.Set("Accept", "application/json")
@@ -231,13 +139,13 @@ func (c *HuggingFaceHubClientImpl) doRequest(ctx context.Context, path string) (
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, Wrap(err, ErrNetworkError, "failed to send request")
+		return nil, wrap(err, ErrNetworkError, "failed to send request")
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, Wrap(err, ErrIOError, "failed to read response body")
+		return nil, wrap(err, ErrIOError, "failed to read response body")
 	}
 
 	if resp.StatusCode >= 400 {

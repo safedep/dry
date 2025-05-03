@@ -1,4 +1,4 @@
-package adapters
+package huggingface
 
 import (
 	"context"
@@ -64,15 +64,15 @@ type DatasetFeature struct {
 
 // DatasetSplit represents a split in a dataset
 type DatasetSplit struct {
-	Name        string `json:"name"`        // Name of the split (e.g. "train", "test")
-	NumBytes    int64  `json:"num_bytes"`   // Size of the split in bytes
+	Name        string `json:"name"`         // Name of the split (e.g. "train", "test")
+	NumBytes    int64  `json:"num_bytes"`    // Size of the split in bytes
 	NumExamples int64  `json:"num_examples"` // Number of examples in the split
 }
 
 // DatasetConfig represents a configuration of a dataset
 type DatasetConfig struct {
-	ConfigName string              `json:"config_name"` // Name of the configuration
-	DataFiles  []DatasetDataFile   `json:"data_files"`  // Data files in the configuration
+	ConfigName string            `json:"config_name"` // Name of the configuration
+	DataFiles  []DatasetDataFile `json:"data_files"`  // Data files in the configuration
 }
 
 // DatasetDataFile represents a data file in a dataset configuration
@@ -83,40 +83,40 @@ type DatasetDataFile struct {
 
 // DatasetInfo represents information about a dataset
 type DatasetInfo struct {
-	Features      []DatasetFeature `json:"features"`      // Features in the dataset
-	Splits        []DatasetSplit   `json:"splits"`        // Splits in the dataset
-	DownloadSize  int64            `json:"download_size"` // Size of the download in bytes
-	DatasetSize   int64            `json:"dataset_size"`  // Total size of the dataset in bytes
+	Features     []DatasetFeature `json:"features"`      // Features in the dataset
+	Splits       []DatasetSplit   `json:"splits"`        // Splits in the dataset
+	DownloadSize int64            `json:"download_size"` // Size of the download in bytes
+	DatasetSize  int64            `json:"dataset_size"`  // Total size of the dataset in bytes
 }
 
 // HuggingFaceDataset represents metadata about a dataset in HuggingFace Hub
 type HuggingFaceDataset struct {
-	ID              string          `json:"id"`              // Unique identifier of the dataset (owner/name)
-	DatasetID       string          `json:"_id,omitempty"`   // Internal ID in MongoDB format
-	DatasetName     string          `json:"datasetId"`       // Name of the dataset
-	Author          string          `json:"author"`          // Author of the dataset
-	Tags            []string        `json:"tags"`            // Tags associated with the dataset
-	Downloads       int64           `json:"downloads"`       // Number of downloads
-	Likes           int             `json:"likes"`           // Number of likes
-	CreatedAt       string          `json:"createdAt"`       // Creation date
-	LastModified    string          `json:"lastModified"`    // Last modification date
-	Private         bool            `json:"private"`         // Whether the dataset is private
-	CardData        map[string]any  `json:"cardData"`        // Dataset card data
-	SiblingDatasets []SiblingFile   `json:"siblings"`        // Sibling dataset files
-	Description     string          `json:"description"`     // Description of the dataset
-	Citation        string          `json:"citation,omitempty"` // Citation information
-	License         string          `json:"license,omitempty"`  // License information
-	SHA             string          `json:"sha,omitempty"`   // SHA hash of the dataset
-	Disabled        bool            `json:"disabled"`        // Whether the dataset is disabled
-	Gated           string          `json:"gated,omitempty"` // Gating type (e.g., "manual")
-	UsedStorage     int64           `json:"usedStorage"`     // Storage used by the dataset in bytes
-	
+	ID              string         `json:"id"`                 // Unique identifier of the dataset (owner/name)
+	DatasetID       string         `json:"_id,omitempty"`      // Internal ID in MongoDB format
+	DatasetName     string         `json:"datasetId"`          // Name of the dataset
+	Author          string         `json:"author"`             // Author of the dataset
+	Tags            []string       `json:"tags"`               // Tags associated with the dataset
+	Downloads       int64          `json:"downloads"`          // Number of downloads
+	Likes           int            `json:"likes"`              // Number of likes
+	CreatedAt       string         `json:"createdAt"`          // Creation date
+	LastModified    string         `json:"lastModified"`       // Last modification date
+	Private         bool           `json:"private"`            // Whether the dataset is private
+	CardData        map[string]any `json:"cardData"`           // Dataset card data
+	SiblingDatasets []SiblingFile  `json:"siblings"`           // Sibling dataset files
+	Description     string         `json:"description"`        // Description of the dataset
+	Citation        string         `json:"citation,omitempty"` // Citation information
+	License         string         `json:"license,omitempty"`  // License information
+	SHA             string         `json:"sha,omitempty"`      // SHA hash of the dataset
+	Disabled        bool           `json:"disabled"`           // Whether the dataset is disabled
+	Gated           string         `json:"gated,omitempty"`    // Gating type (e.g., "manual")
+	UsedStorage     int64          `json:"usedStorage"`        // Storage used by the dataset in bytes
+
 	// New fields from the example JSON
-	PrettyName      string            `json:"pretty_name,omitempty"`    // Pretty name of the dataset
-	Configs         []DatasetConfig   `json:"configs,omitempty"`        // Dataset configurations
-	DatasetInfo     *DatasetInfo      `json:"dataset_info,omitempty"`   // Dataset information
-	
-	RawResponse     json.RawMessage   `json:"-"`                        // Raw response from the API
+	PrettyName  string          `json:"pretty_name,omitempty"`  // Pretty name of the dataset
+	Configs     []DatasetConfig `json:"configs,omitempty"`      // Dataset configurations
+	DatasetInfo *DatasetInfo    `json:"dataset_info,omitempty"` // Dataset information
+
+	RawResponse json.RawMessage `json:"-"` // Raw response from the API
 }
 
 // SiblingFile represents a file in the model repository

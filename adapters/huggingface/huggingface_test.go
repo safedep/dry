@@ -1,4 +1,4 @@
-package adapters
+package huggingface
 
 import (
 	"context"
@@ -19,26 +19,26 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 		assert.Equal(t, "Bearer testtoken", r.Header.Get("Authorization"))
 
 		modelResp := map[string]interface{}{
-			"_id":           "67ed3cd9290a7f9d3301f9c1",
-			"id":            "testowner/testmodel",
-			"modelId":       "testmodel",
-			"author":        "testowner",
-			"tags":          []string{"nlp", "transformers"},
-			"downloads":     1000,
-			"likes":         42,
-			"createdAt":     "2023-01-01T00:00:00Z",
-			"lastModified":  "2023-02-01T00:00:00Z",
-			"private":       false,
-			"pipeline_tag":  "text-classification",
-			"library_name":  "transformers",
-			"sha":           "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8",
-			"disabled":      false,
-			"gated":         "manual",
-			"model-index":   nil,
-			"license":       "mit",
-			"safetensors":   true,
-			"inference":     "warm",
-			"usedStorage":   217343257722,
+			"_id":          "67ed3cd9290a7f9d3301f9c1",
+			"id":           "testowner/testmodel",
+			"modelId":      "testmodel",
+			"author":       "testowner",
+			"tags":         []string{"nlp", "transformers"},
+			"downloads":    1000,
+			"likes":        42,
+			"createdAt":    "2023-01-01T00:00:00Z",
+			"lastModified": "2023-02-01T00:00:00Z",
+			"private":      false,
+			"pipeline_tag": "text-classification",
+			"library_name": "transformers",
+			"sha":          "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8",
+			"disabled":     false,
+			"gated":        "manual",
+			"model-index":  nil,
+			"license":      "mit",
+			"safetensors":  true,
+			"inference":    "warm",
+			"usedStorage":  217343257722,
 			"transformersInfo": map[string]interface{}{
 				"auto_model":   "AutoModelForImageTextToText",
 				"pipeline_tag": "image-text-to-text",
@@ -225,19 +225,19 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.Equal(t, "manual", dataset.Gated)
 	assert.Equal(t, int64(3145728), dataset.UsedStorage)
 	assert.Equal(t, "Test Dataset", dataset.PrettyName)
-	
+
 	// Test new fields
 	assert.Equal(t, 3, len(dataset.SiblingDatasets))
 	assert.Equal(t, "README.md", dataset.SiblingDatasets[0].RFilename)
 	assert.NotNil(t, dataset.CardData)
-	
+
 	// Check configs
 	assert.Equal(t, 1, len(dataset.Configs))
 	assert.Equal(t, "default", dataset.Configs[0].ConfigName)
 	assert.Equal(t, 2, len(dataset.Configs[0].DataFiles))
 	assert.Equal(t, "train", dataset.Configs[0].DataFiles[0].Split)
 	assert.Equal(t, "data/train-*", dataset.Configs[0].DataFiles[0].Path)
-	
+
 	// Check dataset info
 	assert.NotNil(t, dataset.DatasetInfo)
 	assert.Equal(t, 2, len(dataset.DatasetInfo.Features))
@@ -248,7 +248,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.Equal(t, int64(10000), dataset.DatasetInfo.Splits[0].NumExamples)
 	assert.Equal(t, int64(1200000), dataset.DatasetInfo.DownloadSize)
 	assert.Equal(t, int64(1200000), dataset.DatasetInfo.DatasetSize)
-	
+
 	assert.NotNil(t, dataset.RawResponse)
 }
 
@@ -319,7 +319,7 @@ func TestHuggingFaceHubClient_E2E(t *testing.T) {
 				assert.NotNil(t, model)
 				assert.Contains(t, model.ID, "meta-llama/Llama-4-Scout-17B-16E-Instruct")
 				assert.Equal(t, "meta-llama", model.Author)
-				
+
 				// Verify fields from the example JSON structure
 				assert.NotEmpty(t, model.ModelID)
 				assert.True(t, len(model.Tags) > 0)
@@ -329,12 +329,12 @@ func TestHuggingFaceHubClient_E2E(t *testing.T) {
 				assert.Greater(t, model.Likes, 0)
 				assert.NotEmpty(t, model.CreatedAt)
 				assert.NotEmpty(t, model.LastModified)
-				
+
 				// Validate complex fields
 				if model.TransformersInfo != nil {
 					assert.NotEmpty(t, model.TransformersInfo["pipeline_tag"])
 				}
-				
+
 				// Verify SafeTensor details
 				assert.NotNil(t, model.SafeTensors)
 			},

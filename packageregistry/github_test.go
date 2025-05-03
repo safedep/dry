@@ -1,9 +1,10 @@
 package packageregistry
 
 import (
-	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
+
+	"github.com/safedep/dry/semver"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/safedep/dry/adapters"
@@ -83,7 +84,7 @@ func TestGithubPackageRegistryAdapter_GetPackage(t *testing.T) {
 
 				assert.GreaterOrEqual(t, len(pkg.Versions), testCase.expectedMinVersions)
 				if testCase.expectedLatestVersion != "" {
-					assert.True(t, semver.IsAheadOrEqual(pkg.LatestVersion, testCase.expectedLatestVersion))
+					assert.True(t, semver.IsAheadOrEqual(testCase.expectedLatestVersion, pkg.LatestVersion))
 				}
 			}
 		})

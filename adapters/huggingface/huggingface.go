@@ -47,7 +47,7 @@ type HuggingFaceModel struct {
 	License          string            `json:"license"`          // License information
 	Metrics          []MetricInfo      `json:"metrics"`          // Model metrics
 	Disabled         bool              `json:"disabled"`         // Whether the model is disabled
-	Gated            string            `json:"gated"`            // Gating type (e.g., "manual")
+	Gated            interface{}       `json:"gated"`            // Gating type - can be string or bool
 	SHA              string            `json:"sha"`              // SHA hash of the model
 	Spaces           []string          `json:"spaces"`           // Associated Spaces using this model
 	TransformersInfo map[string]string `json:"transformersInfo"` // Transformers-specific information
@@ -108,7 +108,7 @@ type HuggingFaceDataset struct {
 	License         string         `json:"license,omitempty"`  // License information
 	SHA             string         `json:"sha,omitempty"`      // SHA hash of the dataset
 	Disabled        bool           `json:"disabled"`           // Whether the dataset is disabled
-	Gated           string         `json:"gated,omitempty"`    // Gating type (e.g., "manual")
+	Gated           interface{}    `json:"gated"`              // Gating type - can be string or bool
 	UsedStorage     int64          `json:"usedStorage"`        // Storage used by the dataset in bytes
 
 	// New fields from the example JSON

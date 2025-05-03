@@ -95,7 +95,7 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 	assert.Equal(t, "mit", model.License)
 	assert.Equal(t, "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8", model.SHA)
 	assert.False(t, model.Disabled)
-	assert.Equal(t, "manual", model.Gated)
+	assert.Equal(t, "manual", model.Gated.(string))
 	assert.Equal(t, "warm", model.Inference)
 	assert.Equal(t, int64(217343257722), model.UsedStorage)
 	assert.Equal(t, 3, len(model.SiblingModels))
@@ -222,7 +222,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 	assert.Equal(t, "cc-by-4.0", dataset.License)
 	assert.Equal(t, "7dab2f5f854fe665b6b2f1eccbd3c48e5f627ad8", dataset.SHA)
 	assert.False(t, dataset.Disabled)
-	assert.Equal(t, "manual", dataset.Gated)
+	assert.Equal(t, "manual", dataset.Gated.(string))
 	assert.Equal(t, int64(3145728), dataset.UsedStorage)
 	assert.Equal(t, "Test Dataset", dataset.PrettyName)
 
@@ -304,18 +304,19 @@ func TestHuggingFaceHubClient_InvalidResponse(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to parse model response")
 }
 
-func TestHuggingFaceHubClient_E2E(t *testing.T) {
+func TestHuggingFaceHubClient_GetModel_E2E(t *testing.T) {
 	cases := []struct {
 		name   string
 		owner  string
 		model  string
-		assert func(t *testing.T, model *HuggingFaceModel)
+		assert func(t *testing.T, model *HuggingFaceModel, err error)
 	}{
 		{
 			name:  "Using a valid public model",
 			owner: "meta-llama",
 			model: "Llama-4-Scout-17B-16E-Instruct",
-			assert: func(t *testing.T, model *HuggingFaceModel) {
+			assert: func(t *testing.T, model *HuggingFaceModel, err error) {
+				assert.NoError(t, err)
 				assert.NotNil(t, model)
 				assert.Contains(t, model.ID, "meta-llama/Llama-4-Scout-17B-16E-Instruct")
 				assert.Equal(t, "meta-llama", model.Author)
@@ -339,14 +340,71 @@ func TestHuggingFaceHubClient_E2E(t *testing.T) {
 				assert.NotNil(t, model.SafeTensors)
 			},
 		},
+		{
+			name:  "Non-existent model",
+			owner: "nonexistent",
+			model: "nonexistent",
+			assert: func(t *testing.T, model *HuggingFaceModel, err error) {
+				assert.Nil(t, model)
+				assert.Error(t, err)
+			},
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			client := NewHuggingFaceHubClient()
 			model, err := client.GetModel(context.Background(), tc.owner, tc.model)
-			assert.NoError(t, err)
-			tc.assert(t, model)
+			tc.assert(t, model, err)
+		})
+	}
+}
+
+func TestHuggingFaceHubClient_GetDataset_E2E(t *testing.T) {
+	cases := []struct {
+		name    string
+		owner   string
+		dataset string
+		assert  func(t *testing.T, dataset *HuggingFaceDataset, err error)
+	}{
+		{
+			name:    "Using a valid public dataset",
+			owner:   "nvidia",
+			dataset: "OpenMathReasoning",
+			assert: func(t *testing.T, dataset *HuggingFaceDataset, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, dataset)
+				assert.Contains(t, dataset.ID, "nvidia/OpenMathReasoning")
+				assert.Equal(t, "nvidia", dataset.Author)
+
+				// Check Gated field which can be either a string or boolean
+				assert.NotNil(t, dataset.Gated)
+
+				// Check for other expected fields
+				assert.NotEmpty(t, dataset.SHA)
+				assert.Greater(t, dataset.Downloads, int64(0))
+				assert.Greater(t, dataset.Likes, 0)
+				assert.NotEmpty(t, dataset.CreatedAt)
+				assert.NotEmpty(t, dataset.LastModified)
+				assert.NotEmpty(t, dataset.Tags)
+			},
+		},
+		{
+			name:    "Non-existent dataset",
+			owner:   "nonexistent",
+			dataset: "nonexistent",
+			assert: func(t *testing.T, dataset *HuggingFaceDataset, err error) {
+				assert.Nil(t, dataset)
+				assert.Error(t, err)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := NewHuggingFaceHubClient()
+			dataset, err := client.GetDataset(context.Background(), tc.owner, tc.dataset)
+			tc.assert(t, dataset, err)
 		})
 	}
 }

@@ -2,6 +2,7 @@ package packageregistry
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -32,35 +33,12 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 	packageName := packageVersion.GetPackage().GetName()
 	version := packageVersion.GetVersion()
 
-	url := npmAPIEndpointPackageWithVersionURL(packageName, version)
-	res, err := http.Get(url)
+	npmpkg, err := npmGetPackageVersionDetails(packageName, version)
 	if err != nil {
-		return nil, ErrFailedToFetchPackage
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode == http.StatusNotFound {
-		return nil, ErrPackageNotFound
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return nil, ErrFailedToFetchPackage
-	}
-
-	// Publishers in case of NPM are all the Maintainers of the package
-	// Hense we only need to extract the Maintainers from the response
-	var npmpkg npmPackageMaintainerInfo
-	err = json.NewDecoder(res.Body).Decode(&npmpkg)
-	if err != nil {
-		return nil, ErrFailedToParsePackage
-	}
-
-	if len(npmpkg.Maintainers) == 0 {
-		return nil, ErrAuthorNotFound
+		return nil, fmt.Errorf("failed to get package version details: %w", err)
 	}
 
 	publishers := make([]Publisher, len(npmpkg.Maintainers))
-
 	for i, maintainer := range npmpkg.Maintainers {
 		publishers[i] = Publisher{
 			Name:  maintainer.Name,
@@ -114,6 +92,60 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 
 func (np *npmPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	return npmGetPackageDetails(packageName)
+}
+
+func (np *npmPackageDiscovery) GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error) {
+	npmpkg, err := npmGetPackageVersionDetails(packageName, packageVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	dependencies := make([]PackageDependencyInfo, 0)
+	for name, version := range npmpkg.Dependencies {
+		dependencies = append(dependencies, PackageDependencyInfo{
+			Name:        name,
+			VersionSpec: version,
+		})
+	}
+
+	devDependencies := make([]PackageDependencyInfo, 0)
+	for name, version := range npmpkg.DevDependencies {
+		devDependencies = append(devDependencies, PackageDependencyInfo{
+			Name:        name,
+			VersionSpec: version,
+		})
+	}
+
+	return &PackageDependencyList{
+		Dependencies:    dependencies,
+		DevDependencies: devDependencies,
+	}, nil
+}
+
+func npmGetPackageVersionDetails(packageName string, packageVersion string) (*npmPackageVersionInfo, error) {
+	url := npmAPIEndpointPackageWithVersionURL(packageName, packageVersion)
+
+	res, err := http.Get(url)
+	if err != nil {
+		return nil, ErrFailedToFetchPackage
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode == http.StatusNotFound {
+		return nil, ErrPackageNotFound
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, ErrFailedToFetchPackage
+	}
+
+	var npmpkg npmPackageVersionInfo
+	err = json.NewDecoder(res.Body).Decode(&npmpkg)
+	if err != nil {
+		return nil, ErrFailedToParsePackage
+	}
+
+	return &npmpkg, nil
 }
 
 func npmGetPackageDetails(packageName string) (*Package, error) {

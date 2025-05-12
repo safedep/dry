@@ -87,7 +87,7 @@ func TestHuggingFaceHubClientImpl_GetModel(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(modelResp)
+		_ = json.NewEncoder(w).Encode(modelResp)
 	}))
 	defer mockServer.Close()
 
@@ -216,7 +216,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(datasetResp)
+		_ = json.NewEncoder(w).Encode(datasetResp)
 	}))
 	defer mockServer.Close()
 
@@ -280,7 +280,7 @@ func TestHuggingFaceHubClientImpl_GetDataset(t *testing.T) {
 func TestHuggingFaceHubClient_APIError(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error": "Model not found"}`))
+		_, _ = w.Write([]byte(`{"error": "Model not found"}`))
 	}))
 	defer mockServer.Close()
 
@@ -314,7 +314,7 @@ func TestHuggingFaceHubClient_NetworkError(t *testing.T) {
 func TestHuggingFaceHubClient_InvalidResponse(t *testing.T) {
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"invalid`)) // Malformed JSON
+		_, _ = w.Write([]byte(`{"invalid`)) // Malformed JSON
 	}))
 	defer mockServer.Close()
 

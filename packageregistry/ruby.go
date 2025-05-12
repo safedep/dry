@@ -2,6 +2,7 @@ package packageregistry
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -101,6 +102,11 @@ func (np *rubyPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*
 	}
 
 	return packages, nil
+}
+
+func (np *rubyPackageDiscovery) GetPackageDependencies(packageName string,
+	packageVersion string) (*PackageDependencyList, error) {
+	return nil, fmt.Errorf("dependency resolution is not supported for Ruby adapter")
 }
 
 func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error) {

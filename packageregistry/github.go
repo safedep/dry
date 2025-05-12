@@ -97,6 +97,11 @@ func (ga *githubPackageRegistryPublisherDiscovery) GetPublisherPackages(publishe
 	return packages, nil
 }
 
+func (ga *githubPackageRegistryPackageDiscovery) GetPackageDependencies(packageName string,
+	packageVersion string) (*PackageDependencyList, error) {
+	return nil, fmt.Errorf("dependency resolution is not supported for GitHub adapter")
+}
+
 // GetPackage returns the package details from the package name
 // For GitHub the package name is the {owner}/{repo}
 func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) (*Package, error) {

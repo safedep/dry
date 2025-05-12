@@ -2,6 +2,7 @@ package packageregistry
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -69,6 +70,11 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 // Pypi does not support getting packages by publisher
 func (np *pypiPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	return nil, ErrNoPackagesFound
+}
+
+func (np *pypiPackageDiscovery) GetPackageDependencies(packageName string,
+	packageVersion string) (*PackageDependencyList, error) {
+	return nil, fmt.Errorf("dependency resolution is not supported for PyPI adapter")
 }
 
 func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error) {

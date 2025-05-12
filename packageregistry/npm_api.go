@@ -71,8 +71,10 @@ type npmPackageTime struct {
 	Modified time.Time `json:"modified"`
 }
 
-type npmPackageMaintainerInfo struct {
-	Maintainers []npmPackageAuthor `json:"maintainers"`
+type npmPackageVersionInfo struct {
+	Maintainers     []npmPackageAuthor `json:"maintainers"`
+	Dependencies    map[string]string  `json:"dependencies"`
+	DevDependencies map[string]string  `json:"devDependencies"`
 }
 
 // npmPublisherRecord represents the response from the NPM API for packages with author

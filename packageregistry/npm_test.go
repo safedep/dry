@@ -1,9 +1,10 @@
 package packageregistry
 
 import (
-	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
+
+	"github.com/safedep/dry/semver"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/stretchr/testify/assert"
@@ -253,6 +254,60 @@ func TestNpmGetPackageLatestVersion(t *testing.T) {
 				assert.NoError(t, err)
 				assert.True(t, semver.IsAheadOrEqual(test.expectedLatestVersion, pkg.LatestVersion))
 			}
+		})
+	}
+}
+
+func TestNpmGetPackageDependencies(t *testing.T) {
+	cases := []struct {
+		name       string
+		pkgName    string
+		pkgVersion string
+		assertFn   func(t *testing.T, dependencies *PackageDependencyList, err error)
+	}{
+		{
+			name:       "valid express package",
+			pkgName:    "express",
+			pkgVersion: "4.17.1",
+			assertFn: func(t *testing.T, dependencies *PackageDependencyList, err error) {
+				assert.NoError(t, err)
+				assert.Equal(t, 30, len(dependencies.Dependencies))
+				assert.Contains(t, dependencies.Dependencies, PackageDependencyInfo{
+					Name:        "debug",
+					VersionSpec: "2.6.9",
+				})
+				assert.Contains(t, dependencies.DevDependencies, PackageDependencyInfo{
+					Name:        "cookie-parser",
+					VersionSpec: "~1.4.4",
+				})
+			},
+		},
+		{
+			name:       "invalid package",
+			pkgName:    "invalid-package-name",
+			pkgVersion: "1.0.0",
+			assertFn: func(t *testing.T, dependencies *PackageDependencyList, err error) {
+				assert.ErrorIs(t, err, ErrPackageNotFound)
+			},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			adapter, err := NewNpmAdapter()
+			if err != nil {
+				t.Fatalf("failed to create package registry npm adapter: %v", err)
+			}
+
+			pd, err := adapter.PackageDiscovery()
+			if err != nil {
+				t.Fatalf("failed to create package discovery client in npm adapter")
+			}
+
+			dependencies, err := pd.GetPackageDependencies(test.pkgName, test.pkgVersion)
+			test.assertFn(t, dependencies, err)
 		})
 	}
 }

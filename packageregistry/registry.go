@@ -26,6 +26,20 @@ type Publisher struct {
 	VerificationStatus *PublisherVerificationStatus `json:"verification_status"`
 }
 
+type PackageDependencyInfo struct {
+	// Name of the dependency
+	Name string `json:"name"`
+
+	// Version spec of the dependency. Almost all package registries
+	// use a semver spec to denote a supported version range. Example: ~1.4.4
+	VersionSpec string `json:"version_spec"`
+}
+
+type PackageDependencyList struct {
+	Dependencies    []PackageDependencyInfo `json:"dependencies"`
+	DevDependencies []PackageDependencyInfo `json:"devDependencies"`
+}
+
 // PackagePublisherInfo represents the publisher of a package in a package registry.
 type PackagePublisherInfo struct {
 	Publishers []Publisher `json:"publishers"`
@@ -77,6 +91,9 @@ type Package struct {
 type PackageDiscovery interface {
 	// GetPackage returns the package metadata for the given package name
 	GetPackage(packageName string) (*Package, error)
+
+	// GetPackageDependencies returns the dependencies for the given package version.
+	GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error)
 }
 
 // Contract for implementing publisher discovery for a package registry.

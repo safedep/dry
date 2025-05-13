@@ -53,6 +53,7 @@ const (
 	loggerKeyEnvLogFileName   = "APP_LOG_FILE"
 	loggerKeyEnvLogLevel      = "APP_LOG_LEVEL"
 	loggerKeySkipStdoutLogger = "APP_LOG_SKIP_STDOUT_LOGGER"
+	loggerKeyCliStdout        = "APP_LOG_CLI_STDOUT"
 )
 
 // Initialize logger for the given service name

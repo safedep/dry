@@ -12,7 +12,17 @@ import (
 // InitZapLogger initializes a zap based logger
 // and sets it as the default logger using SetGlobal
 func InitZapLogger(name, env string) {
-	logger, err := newZapLogger(name, env)
+	skipStdoutLogger, err := strconv.ParseBool(os.Getenv(loggerKeySkipStdoutLogger))
+	logStdout := true // default behavior
+	if err == nil && skipStdoutLogger {
+		logStdout = false // overriden behavior
+	}
+
+	logger, err := newZapLogger(name, env, zapLoggerConfig{
+		logLevel:  os.Getenv(loggerKeyEnvLogLevel),
+		logFile:   os.Getenv(loggerKeyEnvLogFileName),
+		logStdout: logStdout,
+	})
 	if err != nil {
 		panic(err)
 	}
@@ -25,13 +35,18 @@ type zapLoggerWrapper struct {
 	sugaredLogger *zap.SugaredLogger
 }
 
-func newZapLogger(name, env string) (Logger, error) {
+type zapLoggerConfig struct {
+	logLevel  string // Log level (debug, info, warn, error)
+	logFile   string // Log file path
+	logStdout bool   // Whether to log to stdout
+}
+
+func newZapLogger(name, env string, config zapLoggerConfig) (Logger, error) {
 	// Start with the default log level
 	level := zap.NewAtomicLevelAt(zapcore.InfoLevel)
 
 	// Override based on env configuration
-	logLevelFromEnv := os.Getenv(loggerKeyEnvLogLevel)
-	switch logLevelFromEnv {
+	switch config.logLevel {
 	case logLevelNameDebug:
 		level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
 	case logLevelNameWarn:
@@ -43,8 +58,7 @@ func newZapLogger(name, env string) (Logger, error) {
 	// Create zap cores that will be populated based on env configuration
 	cores := []zapcore.Core{}
 
-	skipStdoutLogger, err := strconv.ParseBool(os.Getenv(loggerKeySkipStdoutLogger))
-	if err != nil || !skipStdoutLogger {
+	if config.logStdout {
 		// Our default console logger using development config
 		developmentConfig := zap.NewDevelopmentEncoderConfig()
 		developmentConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -54,14 +68,13 @@ func newZapLogger(name, env string) (Logger, error) {
 	}
 
 	// Add the file core with production config only when enabled
-	logFile := os.Getenv(loggerKeyEnvLogFileName)
-	if logFile != "" {
+	if config.logFile != "" {
 		productionConfig := zap.NewProductionEncoderConfig()
 		productionConfig.TimeKey = "timestamp"
 		productionConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 		file := zapcore.AddSync(&lumberjack.Logger{
-			Filename:   logFile,
+			Filename:   config.logFile,
 			MaxSize:    100,
 			MaxBackups: 3,
 			MaxAge:     7,

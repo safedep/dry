@@ -37,7 +37,6 @@ func TestProductionLoggerToFile(t *testing.T) {
 		t.Setenv(loggerKeyEnvLogFileName, path)
 		t.Setenv(loggerKeyEnvLogLevel, logLevelNameDebug)
 
-		InitZapLogger("TestSvc", "test")
 		l, err := newZapLogger("TestSvc", "test", zapLoggerConfig{
 			logLevel: logLevelNameDebug,
 			logFile:  path,

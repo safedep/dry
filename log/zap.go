@@ -13,7 +13,10 @@ import (
 // and sets it as the default logger using SetGlobal
 func InitZapLogger(name, env string) {
 	skipStdoutLogger, err := strconv.ParseBool(os.Getenv(loggerKeySkipStdoutLogger))
-	logStdout := err != nil || !skipStdoutLogger
+	logStdout := true // default behavior
+	if err == nil && skipStdoutLogger {
+		logStdout = false // overriden behavior
+	}
 
 	logger, err := newZapLogger(name, env, zapLoggerConfig{
 		logLevel:  os.Getenv(loggerKeyEnvLogLevel),

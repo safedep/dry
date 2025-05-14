@@ -70,7 +70,7 @@ func StartGrpcServer(name, host, port string, sopts []grpc.ServerOption,
 	server := grpc.NewServer(sopts...)
 	configure(server)
 
-	log.Infof("Starting %s gRPC server on %s:%s", name, host, port)
+	log.Debugf("Starting %s gRPC server on %s:%s", name, host, port)
 	err = server.Serve(listener)
 
 	log.Errorf("gRPC Server exit: %s", err.Error())
@@ -149,7 +149,7 @@ func GrpcSecureClient(name, host, port string, token string, headers http.Header
 }
 
 func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
-	log.Infof("[%s] Connecting to gRPC server %s:%s", name, host, port)
+	log.Debugf("[%s] Connecting to gRPC server %s:%s", name, host, port)
 
 	dopts = append(dopts, grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()))
 	dopts = append(dopts, grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()))
@@ -163,7 +163,7 @@ func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer ...
 	}, func(arg retry.RetryFuncArg) error {
 		conn, err = grpc.Dial(net.JoinHostPort(host, port), dopts...)
 		if err != nil {
-			log.Infof("[%s] Failed to connect to gRPC server %d/%d : %v",
+			log.Errorf("[%s] Failed to connect to gRPC server %d/%d : %v",
 				name, arg.Current, arg.Total, err)
 		}
 

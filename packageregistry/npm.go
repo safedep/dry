@@ -217,7 +217,16 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 	return &pkg, nil
 }
 
-func npmGetPackageDownloadsForPeriod(packageName string, period string) (uint64, error) {
+type npmDownloadPeriod string
+
+const (
+	npmDownloadsPeriodLastDay   npmDownloadPeriod = "last-day"
+	npmDownloadsPeriodLastWeek  npmDownloadPeriod = "last-week"
+	npmDownloadsPeriodLastMonth npmDownloadPeriod = "last-month"
+	npmDownloadsPeriodLastYear  npmDownloadPeriod = "last-year"
+)
+
+func npmGetPackageDownloadsForPeriod(packageName string, period npmDownloadPeriod) (uint64, error) {
 	url := npmAPIEndpointPackageDownloadsURL(packageName, period)
 
 	res, err := http.Get(url)
@@ -244,20 +253,26 @@ func npmGetPackageDownloadsForPeriod(packageName string, period string) (uint64,
 }
 
 func npmGetPackageDownloads(packageName string) (DownloadStats, error) {
-	periods := []string{"last-day", "last-week", "last-month", "last-year"}
-	downloads := make([]uint64, len(periods))
+	downloadPeriods := []npmDownloadPeriod{
+		npmDownloadsPeriodLastDay,
+		npmDownloadsPeriodLastWeek,
+		npmDownloadsPeriodLastMonth,
+		npmDownloadsPeriodLastYear,
+	}
+	periodWiseDownloads := make(map[npmDownloadPeriod]uint64)
+
 	var err error
-	for i, period := range periods {
-		downloads[i], err = npmGetPackageDownloadsForPeriod(packageName, period)
+	for _, period := range downloadPeriods {
+		periodWiseDownloads[period], err = npmGetPackageDownloadsForPeriod(packageName, period)
 		if err != nil {
 			return DownloadStats{}, err
 		}
 	}
 
 	return DownloadStats{
-		Daily:   downloads[0],
-		Weekly:  downloads[1],
-		Monthly: downloads[2],
-		Total:   downloads[3],
+		Daily:   periodWiseDownloads[npmDownloadsPeriodLastDay],
+		Weekly:  periodWiseDownloads[npmDownloadsPeriodLastWeek],
+		Monthly: periodWiseDownloads[npmDownloadsPeriodLastMonth],
+		Total:   periodWiseDownloads[npmDownloadsPeriodLastYear],
 	}, nil
 }

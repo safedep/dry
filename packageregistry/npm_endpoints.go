@@ -19,6 +19,6 @@ func npmAPIEndpointPackageSearchWithAuthorURL(author string) string {
 
 // Gets the download count for a package in the specified period
 // periodPoint can be "last-day", "last-week", "last-month", "last-year"
-func npmAPIEndpointPackageDownloadsURL(packageName string, periodPoint string) string {
+func npmAPIEndpointPackageDownloadsURL(packageName string, periodPoint npmDownloadPeriod) string {
 	return fmt.Sprintf("https://api.npmjs.org/downloads/point/%s/%s", periodPoint, packageName)
 }

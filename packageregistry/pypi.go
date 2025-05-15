@@ -140,7 +140,7 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		Maintainers:         maintainers,
 		LatestVersion:       pypipkg.Info.LatestVersion,
 		Versions:            pkgVersions,
-		// No offical way to get downloads
+		// No official way to get downloads
 		// Though, we can use pypi.tech
 		// https://api.pepy.tech/api/v2/projects/requests
 		// But it require API key

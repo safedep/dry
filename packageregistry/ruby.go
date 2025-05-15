@@ -9,6 +9,10 @@ import (
 )
 
 type rubyAdapter struct{}
+
+// Verify that rubyAdapter implements the Client interface
+var _ Client = (*rubyAdapter)(nil)
+
 type rubyPublisherDiscovery struct{}
 type rubyPackageDiscovery struct{}
 
@@ -153,9 +157,11 @@ func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 		SourceRepositoryUrl: sourceGitURL,
 		LatestVersion:       gemObject.LatestVersion,
 		Versions:            pkgVersions,
-		Downloads: OptionalInt{
-			Value: gemObject.TotalDownloads,
-			Valid: gemObject.TotalDownloads > 0,
+		Downloads: DownloadStats{
+			Daily:   0,
+			Weekly:  0,
+			Monthly: 0,
+			Total:   gemObject.TotalDownloads,
 		},
 		CreatedAt: gemObject.CreatedAt,
 		Author: Publisher{

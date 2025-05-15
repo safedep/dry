@@ -205,7 +205,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		LatestVersion:       npmpkg.DistTags.Latest,
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,
-		Downloads:           OptionalInt{Value: downloads, Valid: downloads > 0},
+		Downloads:           downloads,
 		Author: Publisher{
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
@@ -217,8 +217,8 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 	return &pkg, nil
 }
 
-func npmGetPackageDownloads(packageName string) (uint64, error) {
-	url := npmAPIEndpointPackageDownloadsURL(packageName)
+func npmGetPackageDownloadsForPeriod(packageName string, period string) (uint64, error) {
+	url := npmAPIEndpointPackageDownloadsURL(packageName, period)
 
 	res, err := http.Get(url)
 	if err != nil {
@@ -241,4 +241,23 @@ func npmGetPackageDownloads(packageName string) (uint64, error) {
 	}
 
 	return downloadObject.Downloads, nil
+}
+
+func npmGetPackageDownloads(packageName string) (DownloadStats, error) {
+	periods := []string{"last-day", "last-week", "last-month", "last-year"}
+	downloads := make([]uint64, len(periods))
+	var err error
+	for i, period := range periods {
+		downloads[i], err = npmGetPackageDownloadsForPeriod(packageName, period)
+		if err != nil {
+			return DownloadStats{}, err
+		}
+	}
+
+	return DownloadStats{
+		Daily:   downloads[0],
+		Weekly:  downloads[1],
+		Monthly: downloads[2],
+		Total:   downloads[3],
+	}, nil
 }

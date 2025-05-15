@@ -1,9 +1,10 @@
 package packageregistry
 
 import (
-	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
+
+	"github.com/safedep/dry/semver"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/stretchr/testify/assert"

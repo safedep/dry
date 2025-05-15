@@ -51,6 +51,13 @@ type PackageVersionInfo struct {
 	Version string `json:"version"`
 }
 
+type DownloadStats struct {
+	Daily   uint64 `json:"daily"`
+	Weekly  uint64 `json:"weekly"`
+	Monthly uint64 `json:"monthly"`
+	Total   uint64 `json:"total"`
+}
+
 // Package represents a package in a package registry.
 // Example: `requests` in PyPI, `rails` in RubyGems.
 type Package struct {
@@ -76,8 +83,8 @@ type Package struct {
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
 
-	// Number of downloads of the package
-	Downloads OptionalInt `json:"downloads"`
+	// Download stats of the package
+	Downloads DownloadStats `json:"downloads"`
 
 	// Package creation timestamps
 	CreatedAt time.Time `json:"created_at"`

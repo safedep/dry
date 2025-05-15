@@ -14,6 +14,9 @@ type githubPackageRegistryAdapter struct {
 	gitHubClient *adapters.GithubClient
 }
 
+// Verify that githubPackageRegistryAdapter implements the Client interface
+var _ Client = (*githubPackageRegistryAdapter)(nil)
+
 type githubPackageRegistryPublisherDiscovery struct {
 	gitHubClient *adapters.GithubClient
 }

@@ -148,26 +148,35 @@ func TestNpmGetPackage(t *testing.T) {
 	cases := []struct {
 		pkgName string
 
-		expectedError        error
-		expectedMinDownloads uint64
-		expectedRepoURL      string
-		expectedPublishers   Publisher
+		expectedError               error
+		expectedMinDailyDownloads   uint64
+		expectedMinWeeklyDownloads  uint64
+		expectedMinMonthlyDownloads uint64
+		expectedMinTotalDownloads   uint64
+		expectedRepoURL             string
+		expectedPublishers          Publisher
 	}{
 		{
-			pkgName:              "express",
-			expectedError:        nil,
-			expectedMinDownloads: 1658725727, // express downoads on last year, we will check >= this
-			expectedRepoURL:      "https://github.com/expressjs/express",
+			pkgName:                     "express",
+			expectedError:               nil,
+			expectedMinDailyDownloads:   5000000,
+			expectedMinWeeklyDownloads:  30000000,
+			expectedMinMonthlyDownloads: 100000000,
+			expectedMinTotalDownloads:   1658725727, // express downoads on last year, we will check >= this
+			expectedRepoURL:             "https://github.com/expressjs/express",
 			expectedPublishers: Publisher{
 				Name:  "TJ Holowaychuk",
 				Email: "tj@vision-media.ca",
 			},
 		},
 		{
-			pkgName:              "@kunalsin9h/load-gql",
-			expectedError:        nil,
-			expectedMinDownloads: 90,
-			expectedRepoURL:      "https://github.com/kunalsin9h/load-gql",
+			pkgName:                     "@kunalsin9h/load-gql",
+			expectedError:               nil,
+			expectedMinDailyDownloads:   0,
+			expectedMinWeeklyDownloads:  0,
+			expectedMinMonthlyDownloads: 0,
+			expectedMinTotalDownloads:   50,
+			expectedRepoURL:             "https://github.com/kunalsin9h/load-gql",
 			expectedPublishers: Publisher{
 				Name:  "Kunal Singh",
 				Email: "kunal@kunalsin9h.com",
@@ -202,8 +211,10 @@ func TestNpmGetPackage(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkg)
 				// Downloads data
-				assert.True(t, pkg.Downloads.Valid)
-				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
+				assert.GreaterOrEqual(t, pkg.Downloads.Daily, test.expectedMinDailyDownloads)
+				assert.GreaterOrEqual(t, pkg.Downloads.Weekly, test.expectedMinWeeklyDownloads)
+				assert.GreaterOrEqual(t, pkg.Downloads.Monthly, test.expectedMinMonthlyDownloads)
+				assert.GreaterOrEqual(t, pkg.Downloads.Total, test.expectedMinTotalDownloads)
 
 				// Repository data
 				assert.Equal(t, test.expectedRepoURL, pkg.SourceRepositoryUrl)

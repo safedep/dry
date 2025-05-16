@@ -160,7 +160,7 @@ func TestNpmPackageDiscoveryDownloadStats(t *testing.T) {
 			expectedMinDailyDownloads:   5000000,
 			expectedMinWeeklyDownloads:  30000000,
 			expectedMinMonthlyDownloads: 100000000,
-			expectedMinTotalDownloads:   1658725727, // express downoads on last year, we will check >= this
+			expectedMinTotalDownloads:   1658725727, // express downloads on last year, we will check >= this
 		},
 		{
 			pkgName:                     "@kunalsin9h/load-gql",

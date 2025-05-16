@@ -1,9 +1,10 @@
 package packageregistry
 
 import (
-	"github.com/safedep/dry/semver"
 	"reflect"
 	"testing"
+
+	"github.com/safedep/dry/semver"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/stretchr/testify/assert"
@@ -137,9 +138,8 @@ func TestRubyGetPackage(t *testing.T) {
 		assert               func(t *testing.T, pkg *Package)
 	}{
 		{
-			name:    "Correct ruby package",
-			pkgName: "rails",
-
+			name:                 "Correct ruby package",
+			pkgName:              "rails",
 			expectedError:        nil,
 			expectedPackageName:  "rails",
 			expectedDescription:  true,
@@ -182,6 +182,7 @@ func TestRubyGetPackage(t *testing.T) {
 					assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
 				}
 				assert.Equal(t, pkg.SourceRepositoryUrl, test.expectedRepoURL)
+				assert.True(t, pkg.Downloads.Valid)
 				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
 				assert.Equal(t, pkg.Author.Name, test.expectedAuthorName)
 				assert.GreaterOrEqual(t, len(pkg.Versions), test.expectedMinVersions)

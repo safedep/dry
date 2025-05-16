@@ -139,6 +139,10 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 	return githubRegistryCreatePackageWrapper(repository, latestVersion, pkgVersions), nil
 }
 
+func (ga *githubPackageRegistryPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, nil
+}
+
 // getGitHubRepositoryLatestVersion returns the latest version of the repository
 // If there is no release, it returns the default branch
 // We only return RateLimitError if the rate limit is exceeded

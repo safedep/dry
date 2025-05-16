@@ -83,8 +83,8 @@ type Package struct {
 	// Published versions of the project.
 	Versions []PackageVersionInfo `json:"versions"`
 
-	// Download stats of the package
-	Downloads DownloadStats `json:"downloads"`
+	// Number of downloads of the package
+	Downloads OptionalInt `json:"downloads"`
 
 	// Package creation timestamps
 	CreatedAt time.Time `json:"created_at"`
@@ -101,6 +101,9 @@ type PackageDiscovery interface {
 
 	// GetPackageDependencies returns the dependencies for the given package version.
 	GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error)
+
+	// GetPackageDownloadStats returns the download stats for the given package.
+	GetPackageDownloadStats(packageName string) (DownloadStats, error)
 }
 
 // Contract for implementing publisher discovery for a package registry.

@@ -140,6 +140,10 @@ func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	return convertGemObjectToPackage(gemObject)
 }
 
+func (np *rubyPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, nil
+}
+
 func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 	pkgVersions, err := getPackageVersions(gemObject.Name)
 	if err != nil {
@@ -157,11 +161,9 @@ func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 		SourceRepositoryUrl: sourceGitURL,
 		LatestVersion:       gemObject.LatestVersion,
 		Versions:            pkgVersions,
-		Downloads: DownloadStats{
-			Daily:   0,
-			Weekly:  0,
-			Monthly: 0,
-			Total:   gemObject.TotalDownloads,
+		Downloads: OptionalInt{
+			Value: gemObject.TotalDownloads,
+			Valid: gemObject.TotalDownloads > 0,
 		},
 		CreatedAt: gemObject.CreatedAt,
 		Author: Publisher{

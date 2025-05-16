@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -144,17 +145,14 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 	}
 }
 
-func TestNpmGetPackage(t *testing.T) {
+func TestNpmPackageDiscoveryDownloadStats(t *testing.T) {
 	cases := []struct {
-		pkgName string
-
+		pkgName                     string
 		expectedError               error
 		expectedMinDailyDownloads   uint64
 		expectedMinWeeklyDownloads  uint64
 		expectedMinMonthlyDownloads uint64
 		expectedMinTotalDownloads   uint64
-		expectedRepoURL             string
-		expectedPublishers          Publisher
 	}{
 		{
 			pkgName:                     "express",
@@ -163,11 +161,6 @@ func TestNpmGetPackage(t *testing.T) {
 			expectedMinWeeklyDownloads:  30000000,
 			expectedMinMonthlyDownloads: 100000000,
 			expectedMinTotalDownloads:   1658725727, // express downoads on last year, we will check >= this
-			expectedRepoURL:             "https://github.com/expressjs/express",
-			expectedPublishers: Publisher{
-				Name:  "TJ Holowaychuk",
-				Email: "tj@vision-media.ca",
-			},
 		},
 		{
 			pkgName:                     "@kunalsin9h/load-gql",
@@ -176,7 +169,58 @@ func TestNpmGetPackage(t *testing.T) {
 			expectedMinWeeklyDownloads:  0,
 			expectedMinMonthlyDownloads: 0,
 			expectedMinTotalDownloads:   50,
-			expectedRepoURL:             "https://github.com/kunalsin9h/load-gql",
+		},
+		{
+			pkgName:       "random-package-name-that-does-not-exist-1246890",
+			expectedError: ErrPackageNotFound,
+		},
+	}
+	packageDiscovery := npmPackageDiscovery{}
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			downloadStats, err := packageDiscovery.GetPackageDownloadStats(test.pkgName)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, downloadStats)
+
+				// Downloads data
+				assert.GreaterOrEqual(t, downloadStats.Daily, test.expectedMinDailyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Weekly, test.expectedMinWeeklyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Monthly, test.expectedMinMonthlyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Total, test.expectedMinTotalDownloads)
+			}
+		})
+	}
+}
+
+func TestNpmGetPackage(t *testing.T) {
+	cases := []struct {
+		pkgName string
+
+		expectedError        error
+		expectedMinDownloads uint64
+		expectedRepoURL      string
+		expectedPublishers   Publisher
+	}{
+		{
+			pkgName:              "express",
+			expectedError:        nil,
+			expectedMinDownloads: 1658725727, // express downoads on last year, we will check >= this
+			expectedRepoURL:      "https://github.com/expressjs/express",
+			expectedPublishers: Publisher{
+				Name:  "TJ Holowaychuk",
+				Email: "tj@vision-media.ca",
+			},
+		},
+		{
+			pkgName:              "@kunalsin9h/load-gql",
+			expectedError:        nil,
+			expectedMinDownloads: 50,
+			expectedRepoURL:      "https://github.com/kunalsin9h/load-gql",
 			expectedPublishers: Publisher{
 				Name:  "Kunal Singh",
 				Email: "kunal@kunalsin9h.com",
@@ -211,10 +255,8 @@ func TestNpmGetPackage(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, pkg)
 				// Downloads data
-				assert.GreaterOrEqual(t, pkg.Downloads.Daily, test.expectedMinDailyDownloads)
-				assert.GreaterOrEqual(t, pkg.Downloads.Weekly, test.expectedMinWeeklyDownloads)
-				assert.GreaterOrEqual(t, pkg.Downloads.Monthly, test.expectedMinMonthlyDownloads)
-				assert.GreaterOrEqual(t, pkg.Downloads.Total, test.expectedMinTotalDownloads)
+				assert.True(t, pkg.Downloads.Valid)
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
 
 				// Repository data
 				assert.Equal(t, test.expectedRepoURL, pkg.SourceRepositoryUrl)

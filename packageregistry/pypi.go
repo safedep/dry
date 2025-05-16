@@ -144,8 +144,15 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		// Though, we can use pypi.tech
 		// https://api.pepy.tech/api/v2/projects/requests
 		// But it require API key
-		Downloads: DownloadStats{},
+		Downloads: OptionalInt{
+			Valid: false,
+			Value: 0,
+		},
 	}
 
 	return &pkg, nil
+}
+
+func (np *pypiPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, nil
 }

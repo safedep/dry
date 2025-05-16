@@ -182,10 +182,8 @@ func TestRubyGetPackage(t *testing.T) {
 					assert.GreaterOrEqual(t, len(pkg.Description), 1) // Description is not empty
 				}
 				assert.Equal(t, pkg.SourceRepositoryUrl, test.expectedRepoURL)
-				assert.Equal(t, pkg.Downloads.Daily, uint64(0))   // Not implemented for ruby ecosystem
-				assert.Equal(t, pkg.Downloads.Weekly, uint64(0))  // Not implemented for ruby ecosystem
-				assert.Equal(t, pkg.Downloads.Monthly, uint64(0)) // Not implemented for ruby ecosystem
-				assert.GreaterOrEqual(t, pkg.Downloads.Total, test.expectedMinDownloads)
+				assert.True(t, pkg.Downloads.Valid)
+				assert.GreaterOrEqual(t, pkg.Downloads.Value, test.expectedMinDownloads)
 				assert.Equal(t, pkg.Author.Name, test.expectedAuthorName)
 				assert.GreaterOrEqual(t, len(pkg.Versions), test.expectedMinVersions)
 			}

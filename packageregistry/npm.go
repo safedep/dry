@@ -122,6 +122,31 @@ func (np *npmPackageDiscovery) GetPackageDependencies(packageName string, packag
 	}, nil
 }
 
+func (np *npmPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	downloadPeriods := []npmDownloadPeriod{
+		npmDownloadsPeriodLastDay,
+		npmDownloadsPeriodLastWeek,
+		npmDownloadsPeriodLastMonth,
+		npmDownloadsPeriodLastYear,
+	}
+	periodWiseDownloads := make(map[npmDownloadPeriod]uint64)
+
+	var err error
+	for _, period := range downloadPeriods {
+		periodWiseDownloads[period], err = npmGetPackageDownloadsForPeriod(packageName, period)
+		if err != nil {
+			return DownloadStats{}, err
+		}
+	}
+
+	return DownloadStats{
+		Daily:   periodWiseDownloads[npmDownloadsPeriodLastDay],
+		Weekly:  periodWiseDownloads[npmDownloadsPeriodLastWeek],
+		Monthly: periodWiseDownloads[npmDownloadsPeriodLastMonth],
+		Total:   periodWiseDownloads[npmDownloadsPeriodLastYear],
+	}, nil
+}
+
 func npmGetPackageVersionDetails(packageName string, packageVersion string) (*npmPackageVersionInfo, error) {
 	url := npmAPIEndpointPackageWithVersionURL(packageName, packageVersion)
 
@@ -187,7 +212,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		})
 	}
 
-	downloads, err := npmGetPackageDownloads(packageName)
+	downloads, err := npmGetPackageDownloadsForPeriod(packageName, npmDownloadsPeriodLastYear)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +230,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		LatestVersion:       npmpkg.DistTags.Latest,
 		CreatedAt:           npmpkg.Time.Created,
 		UpdatedAt:           npmpkg.Time.Modified,
-		Downloads:           downloads,
+		Downloads:           OptionalInt{Value: downloads, Valid: downloads > 0},
 		Author: Publisher{
 			Name:  npmpkg.Author.Name,
 			Email: npmpkg.Author.Email,
@@ -235,12 +260,12 @@ func npmGetPackageDownloadsForPeriod(packageName string, period npmDownloadPerio
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		return 0, ErrFailedToFetchPackage
-	}
-
 	if res.StatusCode == http.StatusNotFound {
 		return 0, ErrPackageNotFound
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return 0, ErrFailedToFetchPackage
 	}
 
 	var downloadObject npmDownloadObject
@@ -250,29 +275,4 @@ func npmGetPackageDownloadsForPeriod(packageName string, period npmDownloadPerio
 	}
 
 	return downloadObject.Downloads, nil
-}
-
-func npmGetPackageDownloads(packageName string) (DownloadStats, error) {
-	downloadPeriods := []npmDownloadPeriod{
-		npmDownloadsPeriodLastDay,
-		npmDownloadsPeriodLastWeek,
-		npmDownloadsPeriodLastMonth,
-		npmDownloadsPeriodLastYear,
-	}
-	periodWiseDownloads := make(map[npmDownloadPeriod]uint64)
-
-	var err error
-	for _, period := range downloadPeriods {
-		periodWiseDownloads[period], err = npmGetPackageDownloadsForPeriod(packageName, period)
-		if err != nil {
-			return DownloadStats{}, err
-		}
-	}
-
-	return DownloadStats{
-		Daily:   periodWiseDownloads[npmDownloadsPeriodLastDay],
-		Weekly:  periodWiseDownloads[npmDownloadsPeriodLastWeek],
-		Monthly: periodWiseDownloads[npmDownloadsPeriodLastMonth],
-		Total:   periodWiseDownloads[npmDownloadsPeriodLastYear],
-	}, nil
 }

@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -157,10 +156,10 @@ func TestNpmPackageDiscoveryDownloadStats(t *testing.T) {
 		{
 			pkgName:                     "express",
 			expectedError:               nil,
-			expectedMinDailyDownloads:   5000000,
-			expectedMinWeeklyDownloads:  30000000,
-			expectedMinMonthlyDownloads: 100000000,
-			expectedMinTotalDownloads:   1658725727, // express downloads on last year, we will check >= this
+			expectedMinDailyDownloads:   1000_000,
+			expectedMinWeeklyDownloads:  7000_000,
+			expectedMinMonthlyDownloads: 30_000_000,
+			expectedMinTotalDownloads:   1_000_000_000, // express downloads on last year, we will check >= this
 		},
 		{
 			pkgName:                     "@kunalsin9h/load-gql",

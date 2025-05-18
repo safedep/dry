@@ -154,5 +154,5 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 }
 
 func (np *pypiPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
-	return DownloadStats{}, nil
+	return DownloadStats{}, fmt.Errorf("download stats is not supported for PyPI adapter")
 }

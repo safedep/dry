@@ -141,7 +141,7 @@ func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error)
 }
 
 func (np *rubyPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
-	return DownloadStats{}, nil
+	return DownloadStats{}, fmt.Errorf("download stats are not supported for Ruby adapter")
 }
 
 func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {

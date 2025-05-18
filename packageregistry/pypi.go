@@ -9,6 +9,10 @@ import (
 )
 
 type pypiAdapter struct{}
+
+// Verify that pypiAdapter implements the Client interface
+var _ Client = (*pypiAdapter)(nil)
+
 type pypiPublisherDiscovery struct{}
 type pypiPackageDiscovery struct{}
 
@@ -136,8 +140,8 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 		Maintainers:         maintainers,
 		LatestVersion:       pypipkg.Info.LatestVersion,
 		Versions:            pkgVersions,
-		// Do offical way to get downloads
-		// Thought we can use pypi.tech
+		// No official way to get downloads
+		// Though, we can use pypi.tech
 		// https://api.pepy.tech/api/v2/projects/requests
 		// But it require API key
 		Downloads: OptionalInt{
@@ -147,4 +151,8 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	}
 
 	return &pkg, nil
+}
+
+func (np *pypiPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, fmt.Errorf("download stats is not supported for PyPI adapter")
 }

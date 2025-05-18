@@ -122,6 +122,31 @@ func (np *npmPackageDiscovery) GetPackageDependencies(packageName string, packag
 	}, nil
 }
 
+func (np *npmPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	downloadPeriods := []npmDownloadPeriod{
+		npmDownloadsPeriodLastDay,
+		npmDownloadsPeriodLastWeek,
+		npmDownloadsPeriodLastMonth,
+		npmDownloadsPeriodLastYear,
+	}
+	periodWiseDownloads := make(map[npmDownloadPeriod]uint64)
+
+	var err error
+	for _, period := range downloadPeriods {
+		periodWiseDownloads[period], err = npmGetPackageDownloadsForPeriod(packageName, period)
+		if err != nil {
+			return DownloadStats{}, err
+		}
+	}
+
+	return DownloadStats{
+		Daily:   periodWiseDownloads[npmDownloadsPeriodLastDay],
+		Weekly:  periodWiseDownloads[npmDownloadsPeriodLastWeek],
+		Monthly: periodWiseDownloads[npmDownloadsPeriodLastMonth],
+		Total:   periodWiseDownloads[npmDownloadsPeriodLastYear],
+	}, nil
+}
+
 func npmGetPackageVersionDetails(packageName string, packageVersion string) (*npmPackageVersionInfo, error) {
 	url := npmAPIEndpointPackageWithVersionURL(packageName, packageVersion)
 
@@ -187,7 +212,7 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		})
 	}
 
-	downloads, err := npmGetPackageDownloads(packageName)
+	downloads, err := npmGetPackageDownloadsForPeriod(packageName, npmDownloadsPeriodLastYear)
 	if err != nil {
 		return nil, err
 	}
@@ -217,8 +242,17 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 	return &pkg, nil
 }
 
-func npmGetPackageDownloads(packageName string) (uint64, error) {
-	url := npmAPIEndpointPackageDownloadsURL(packageName)
+type npmDownloadPeriod string
+
+const (
+	npmDownloadsPeriodLastDay   npmDownloadPeriod = "last-day"
+	npmDownloadsPeriodLastWeek  npmDownloadPeriod = "last-week"
+	npmDownloadsPeriodLastMonth npmDownloadPeriod = "last-month"
+	npmDownloadsPeriodLastYear  npmDownloadPeriod = "last-year"
+)
+
+func npmGetPackageDownloadsForPeriod(packageName string, period npmDownloadPeriod) (uint64, error) {
+	url := npmAPIEndpointPackageDownloadsURL(packageName, period)
 
 	res, err := http.Get(url)
 	if err != nil {
@@ -226,12 +260,12 @@ func npmGetPackageDownloads(packageName string) (uint64, error) {
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode != http.StatusOK {
-		return 0, ErrFailedToFetchPackage
-	}
-
 	if res.StatusCode == http.StatusNotFound {
 		return 0, ErrPackageNotFound
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return 0, ErrFailedToFetchPackage
 	}
 
 	var downloadObject npmDownloadObject

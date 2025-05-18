@@ -14,6 +14,9 @@ type githubPackageRegistryAdapter struct {
 	gitHubClient *adapters.GithubClient
 }
 
+// Verify that githubPackageRegistryAdapter implements the Client interface
+var _ Client = (*githubPackageRegistryAdapter)(nil)
+
 type githubPackageRegistryPublisherDiscovery struct {
 	gitHubClient *adapters.GithubClient
 }
@@ -134,6 +137,10 @@ func (ga *githubPackageRegistryPackageDiscovery) GetPackage(packageName string) 
 	}
 
 	return githubRegistryCreatePackageWrapper(repository, latestVersion, pkgVersions), nil
+}
+
+func (ga *githubPackageRegistryPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, fmt.Errorf("download stats are not supported for GitHub adapter")
 }
 
 // getGitHubRepositoryLatestVersion returns the latest version of the repository

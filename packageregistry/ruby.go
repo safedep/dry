@@ -9,6 +9,10 @@ import (
 )
 
 type rubyAdapter struct{}
+
+// Verify that rubyAdapter implements the Client interface
+var _ Client = (*rubyAdapter)(nil)
+
 type rubyPublisherDiscovery struct{}
 type rubyPackageDiscovery struct{}
 
@@ -134,6 +138,10 @@ func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	}
 
 	return convertGemObjectToPackage(gemObject)
+}
+
+func (np *rubyPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, fmt.Errorf("download stats are not supported for Ruby adapter")
 }
 
 func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {

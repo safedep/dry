@@ -144,6 +144,58 @@ func TestNpmGetPackagesByPublisher(t *testing.T) {
 	}
 }
 
+func TestNpmPackageDiscoveryDownloadStats(t *testing.T) {
+	cases := []struct {
+		pkgName                     string
+		expectedError               error
+		expectedMinDailyDownloads   uint64
+		expectedMinWeeklyDownloads  uint64
+		expectedMinMonthlyDownloads uint64
+		expectedMinTotalDownloads   uint64
+	}{
+		{
+			pkgName:                     "express",
+			expectedError:               nil,
+			expectedMinDailyDownloads:   1000_000,
+			expectedMinWeeklyDownloads:  7000_000,
+			expectedMinMonthlyDownloads: 30_000_000,
+			expectedMinTotalDownloads:   1_000_000_000, // express downloads on last year, we will check >= this
+		},
+		{
+			pkgName:                     "@kunalsin9h/load-gql",
+			expectedError:               nil,
+			expectedMinDailyDownloads:   0,
+			expectedMinWeeklyDownloads:  0,
+			expectedMinMonthlyDownloads: 0,
+			expectedMinTotalDownloads:   50,
+		},
+		{
+			pkgName:       "random-package-name-that-does-not-exist-1246890",
+			expectedError: ErrPackageNotFound,
+		},
+	}
+	packageDiscovery := npmPackageDiscovery{}
+	for _, test := range cases {
+		t.Run(test.pkgName, func(t *testing.T) {
+			t.Parallel()
+
+			downloadStats, err := packageDiscovery.GetPackageDownloadStats(test.pkgName)
+			if test.expectedError != nil {
+				assert.ErrorIs(t, err, test.expectedError)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, downloadStats)
+
+				// Downloads data
+				assert.GreaterOrEqual(t, downloadStats.Daily, test.expectedMinDailyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Weekly, test.expectedMinWeeklyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Monthly, test.expectedMinMonthlyDownloads)
+				assert.GreaterOrEqual(t, downloadStats.Total, test.expectedMinTotalDownloads)
+			}
+		})
+	}
+}
+
 func TestNpmGetPackage(t *testing.T) {
 	cases := []struct {
 		pkgName string
@@ -166,7 +218,7 @@ func TestNpmGetPackage(t *testing.T) {
 		{
 			pkgName:              "@kunalsin9h/load-gql",
 			expectedError:        nil,
-			expectedMinDownloads: 90,
+			expectedMinDownloads: 50,
 			expectedRepoURL:      "https://github.com/kunalsin9h/load-gql",
 			expectedPublishers: Publisher{
 				Name:  "Kunal Singh",

@@ -51,6 +51,13 @@ type PackageVersionInfo struct {
 	Version string `json:"version"`
 }
 
+type DownloadStats struct {
+	Daily   uint64 `json:"daily"`
+	Weekly  uint64 `json:"weekly"`
+	Monthly uint64 `json:"monthly"`
+	Total   uint64 `json:"total"`
+}
+
 // Package represents a package in a package registry.
 // Example: `requests` in PyPI, `rails` in RubyGems.
 type Package struct {
@@ -94,6 +101,9 @@ type PackageDiscovery interface {
 
 	// GetPackageDependencies returns the dependencies for the given package version.
 	GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error)
+
+	// GetPackageDownloadStats returns the download stats for the given package.
+	GetPackageDownloadStats(packageName string) (DownloadStats, error)
 }
 
 // Contract for implementing publisher discovery for a package registry.

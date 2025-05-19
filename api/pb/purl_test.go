@@ -74,6 +74,13 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "1.0.0",
 		},
 		{
+			name:          "purl without version",
+			purl:          "pkg:golang/github.com/golang/protobuf",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/golang/protobuf",
+			wantVersion:   "",
+		},
+		{
 			name: "invalid purl",
 			purl: "pkg:invalid",
 			err:  errors.New("invalid purl"),
@@ -91,6 +98,10 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 				assert.Equal(t, test.wantEcosystem, h.Ecosystem())
 				assert.Equal(t, test.wantName, h.Name())
 				assert.Equal(t, test.wantVersion, h.Version())
+
+				assert.Equal(t, test.wantEcosystem, h.PackageVersion().GetPackage().GetEcosystem())
+				assert.Equal(t, test.wantName, h.PackageVersion().GetPackage().GetName())
+				assert.Equal(t, test.wantVersion, h.PackageVersion().GetVersion())
 			}
 		})
 	}

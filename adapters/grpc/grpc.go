@@ -18,9 +18,6 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
-
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
-	grpcotel "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
 type GrpcAdapterConfigurer func(server *grpc.Server)
@@ -55,14 +52,12 @@ func StartGrpcServer(name, host, port string, sopts []grpc.ServerOption,
 
 	sopts = append(sopts, grpc.UnaryInterceptor(
 		grpc_middleware.ChainUnaryServer(
-			grpcotel.UnaryServerInterceptor(),
 			grpc_validator.UnaryServerInterceptor(),
 		),
 	))
 
 	sopts = append(sopts, grpc.StreamInterceptor(
 		grpc_middleware.ChainStreamServer(
-			grpcotel.StreamServerInterceptor(),
 			grpc_validator.StreamServerInterceptor(),
 		),
 	))
@@ -150,9 +145,6 @@ func GrpcSecureClient(name, host, port string, token string, headers http.Header
 
 func grpcClient(name, host, port string, dopts []grpc.DialOption, configurer ...GrpcClientConfigurer) (*grpc.ClientConn, error) {
 	log.Debugf("[%s] Connecting to gRPC server %s:%s", name, host, port)
-
-	dopts = append(dopts, grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()))
-	dopts = append(dopts, grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()))
 
 	var conn *grpc.ClientConn
 	var err error

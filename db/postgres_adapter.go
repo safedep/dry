@@ -79,7 +79,7 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 	log.Debugf("PostgreSQL database connection established")
 
 	if config.EnableTracing {
-		if err := db.Use(tracing.NewPlugin(tracing.WithDBName(config.TracingDBName))); err != nil {
+		if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem(config.TracingDBName))); err != nil {
 			return nil, err
 		}
 	}

@@ -103,7 +103,7 @@ type PackageDiscovery interface {
 	GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error)
 
 	// GetPackageDownloadStats returns the download stats for the given package.
-	GetPackageDownloadStats(packageName string) (DownloadStats, error)
+	GetPackageDownloadStats(packageName string) (*DownloadStats, error)
 }
 
 // Contract for implementing publisher discovery for a package registry.
@@ -167,6 +167,8 @@ func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegistryAdapterCo
 		return NewPypiAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:
 		return NewRubyAdapter()
+	case packagev1.Ecosystem_ECOSYSTEM_GO:
+		return NewGoAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		if config == nil || config.GitHubClient == nil {
 			return nil, fmt.Errorf("github client is required for github ecosystems")

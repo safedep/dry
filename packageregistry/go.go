@@ -67,9 +67,9 @@ func (g goPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	return &Package{
 		Name:                packageName,
 		Versions:            pkgAllVersions,
-		LatestVersion:       goPkgVersion.version,
-		SourceRepositoryUrl: goPkgVersion.origin.url,
-		CreatedAt:           goPkgVersion.time,
+		LatestVersion:       goPkgVersion.Version,
+		SourceRepositoryUrl: goPkgVersion.Origin.URL,
+		CreatedAt:           goPkgVersion.Time,
 	}, nil
 }
 
@@ -103,7 +103,6 @@ func (g goPackageDiscovery) GetPackageDependencies(packageName string, packageVe
 	}
 
 	deps := make([]PackageDependencyInfo, 0)
-	devDeps := make([]PackageDependencyInfo, 0)
 
 	for _, req := range file.Require {
 		deps = append(deps, PackageDependencyInfo{
@@ -112,20 +111,13 @@ func (g goPackageDiscovery) GetPackageDependencies(packageName string, packageVe
 		})
 	}
 
-	for _, tool := range file.Tool {
-		devDeps = append(devDeps, PackageDependencyInfo{
-			Name: tool.Path,
-		})
-	}
-
 	return &PackageDependencyList{
-		Dependencies:    deps,
-		DevDependencies: devDeps,
+		Dependencies: deps,
 	}, nil
 }
 
-func (g goPackageDiscovery) GetPackageDownloadStats(packageName string) (*DownloadStats, error) {
-	return nil, nil
+func (g goPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
+	return DownloadStats{}, nil
 }
 
 func (g goPackageDiscovery) getPackageAllVersion(packageName string) ([]PackageVersionInfo, error) {

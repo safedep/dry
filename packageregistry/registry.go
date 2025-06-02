@@ -103,7 +103,7 @@ type PackageDiscovery interface {
 	GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error)
 
 	// GetPackageDownloadStats returns the download stats for the given package.
-	GetPackageDownloadStats(packageName string) (*DownloadStats, error)
+	GetPackageDownloadStats(packageName string) (DownloadStats, error)
 }
 
 // Contract for implementing publisher discovery for a package registry.

@@ -38,8 +38,6 @@ type AsyncRequestResponseService interface {
 // Async request response RPC client interface
 // This is our opinionated way of calling a gRPC service
 // over an async channel using conventional topic names
-//
-//go:generate mockery --name AsyncRpcClient
 type AsyncRpcClient interface {
 	AsyncRequestResponseService
 

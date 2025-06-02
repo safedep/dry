@@ -27,6 +27,9 @@ jobs:
     - name: Download Mods
       run: go mod tidy
 
+    - name: Generate mockery mocks
+      run: go tool mockery
+
     - name: Generate Code
       run: go generate -v ./...
 

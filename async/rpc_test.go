@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
-	"github.com/safedep/dry/async/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"google.golang.org/protobuf/proto"
@@ -127,7 +126,7 @@ func TestNamespacedRpcTopicName(t *testing.T) {
 func TestRpcInvokeWithNamespace(t *testing.T) {
 	cases := []struct {
 		name              string
-		setup             func(t *testing.T, mockClient *mocks.AsyncRpcClient)
+		setup             func(t *testing.T, mockClient *MockAsyncRpcClient)
 		namespace         string
 		fullProcedureName string
 		input             proto.Message
@@ -136,7 +135,7 @@ func TestRpcInvokeWithNamespace(t *testing.T) {
 	}{
 		{
 			name: "namespaced valid call",
-			setup: func(t *testing.T, mockClient *mocks.AsyncRpcClient) {
+			setup: func(t *testing.T, mockClient *MockAsyncRpcClient) {
 				mockClient.On("Call", mock.Anything, "namespaced.namespace.service.a.b.method", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			namespace:         "namespace",
@@ -147,7 +146,7 @@ func TestRpcInvokeWithNamespace(t *testing.T) {
 		},
 		{
 			name:              "namespaced invalid call",
-			setup:             func(t *testing.T, mockClient *mocks.AsyncRpcClient) {},
+			setup:             func(t *testing.T, mockClient *MockAsyncRpcClient) {},
 			namespace:         "namespace",
 			fullProcedureName: "service.method",
 			input:             &packagev1.PackageManifest{},
@@ -156,7 +155,7 @@ func TestRpcInvokeWithNamespace(t *testing.T) {
 		},
 		{
 			name: "namespace is empty",
-			setup: func(t *testing.T, mockClient *mocks.AsyncRpcClient) {
+			setup: func(t *testing.T, mockClient *MockAsyncRpcClient) {
 				mockClient.On("Call", mock.Anything, "service.a.b.method", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			namespace:         "",
@@ -167,7 +166,7 @@ func TestRpcInvokeWithNamespace(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			mockClient := mocks.NewAsyncRpcClient(t)
+			mockClient := NewMockAsyncRpcClient(t)
 			test.setup(t, mockClient)
 
 			err := RpcInvokeWithNamespace(context.Background(),

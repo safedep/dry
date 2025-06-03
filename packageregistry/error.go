@@ -12,4 +12,6 @@ var (
 	ErrAuthorNotFound       = errors.New("author not found")
 
 	ErrGitHubRateLimitExceeded = errors.New("github api rate limit exceeded")
+
+	ErrOperationNotSupported = errors.New("option not supported")
 )

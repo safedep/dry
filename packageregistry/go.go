@@ -30,11 +30,11 @@ func (na *goAdapter) PackageDiscovery() (PackageDiscovery, error) {
 }
 
 func (g goPublisherDiscovery) GetPackagePublisher(_ *packagev1.PackageVersion) (*PackagePublisherInfo, error) {
-	return nil, nil
+	return nil, ErrOperationNotSupported
 }
 
 func (g goPublisherDiscovery) GetPublisherPackages(_ Publisher) ([]*Package, error) {
-	return nil, nil
+	return nil, ErrOperationNotSupported
 }
 
 func (g goPackageDiscovery) GetPackage(packageName string) (*Package, error) {
@@ -117,7 +117,7 @@ func (g goPackageDiscovery) GetPackageDependencies(packageName string, packageVe
 }
 
 func (g goPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
-	return DownloadStats{}, nil
+	return DownloadStats{}, ErrOperationNotSupported
 }
 
 func (g goPackageDiscovery) getPackageAllVersion(packageName string) ([]PackageVersionInfo, error) {

@@ -59,28 +59,28 @@ type mavenGAVResponse struct {
 }
 
 // POM XML parsing structures for dependency resolution
-type MavenPOM struct {
+type mavenPOM struct {
 	XMLName      xml.Name              `xml:"project"`
 	GroupId      string                `xml:"groupId"`
 	ArtifactId   string                `xml:"artifactId"`
 	Version      string                `xml:"version"`
 	Packaging    string                `xml:"packaging"`
-	Parent       *MavenPOMParent       `xml:"parent"`
-	Dependencies *MavenPOMDependencies `xml:"dependencies"`
-	Properties   *MavenPOMProperties   `xml:"properties"`
+	Parent       *mavenPOMParent       `xml:"parent"`
+	Dependencies *mavenPOMDependencies `xml:"dependencies"`
+	Properties   *mavenPOMProperties   `xml:"properties"`
 }
 
-type MavenPOMParent struct {
+type mavenPOMParent struct {
 	GroupId    string `xml:"groupId"`
 	ArtifactId string `xml:"artifactId"`
 	Version    string `xml:"version"`
 }
 
-type MavenPOMDependencies struct {
-	Dependencies []MavenPOMDependency `xml:"dependency"`
+type mavenPOMDependencies struct {
+	Dependencies []mavenPOMDependency `xml:"dependency"`
 }
 
-type MavenPOMDependency struct {
+type mavenPOMDependency struct {
 	GroupId    string `xml:"groupId"`
 	ArtifactId string `xml:"artifactId"`
 	Version    string `xml:"version"`
@@ -89,13 +89,13 @@ type MavenPOMDependency struct {
 	Optional   string `xml:"optional"`
 }
 
-type MavenPOMProperties struct {
+type mavenPOMProperties struct {
 	// We'll use a custom unmarshaler to handle arbitrary properties
 	Properties map[string]string
 }
 
 // Custom XML unmarshaling for properties to handle any property name
-func (p *MavenPOMProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+func (p *mavenPOMProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	p.Properties = make(map[string]string)
 
 	for {

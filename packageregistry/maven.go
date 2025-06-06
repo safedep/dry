@@ -303,7 +303,7 @@ func mavenParseTimestamp(timestamp int64) time.Time {
 }
 
 // mavenFetchAndParsePOM fetches the pom.xml file for a given package version and parses it
-func mavenFetchAndParsePOM(groupId, artifactId, version string) (*MavenPOM, error) {
+func mavenFetchAndParsePOM(groupId, artifactId, version string) (*mavenPOM, error) {
 	url := mavenAPIEndpointPomURL(groupId, artifactId, version)
 
 	res, err := http.Get(url)
@@ -320,7 +320,7 @@ func mavenFetchAndParsePOM(groupId, artifactId, version string) (*MavenPOM, erro
 		return nil, fmt.Errorf("failed to fetch POM file, status: %d", res.StatusCode)
 	}
 
-	var pom MavenPOM
+	var pom mavenPOM
 	err = xml.NewDecoder(res.Body).Decode(&pom)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse POM XML: %w", err)
@@ -331,7 +331,7 @@ func mavenFetchAndParsePOM(groupId, artifactId, version string) (*MavenPOM, erro
 
 // mavenResolveProperty resolves Maven properties in version strings
 // This is a simplified implementation that handles basic property resolution
-func mavenResolveProperty(version string, pom *MavenPOM) string {
+func mavenResolveProperty(version string, pom *mavenPOM) string {
 	if version == "" {
 		return ""
 	}

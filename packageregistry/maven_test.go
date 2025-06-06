@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
+	"github.com/safedep/dry/semver"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -368,4 +369,29 @@ func TestNewMavenAdapter(t *testing.T) {
 	packageDiscovery, err := adapter.PackageDiscovery()
 	assert.NoError(t, err)
 	assert.NotNil(t, packageDiscovery)
+}
+
+func TestMavenGetLatestVersion(t *testing.T) {
+	adapter, err := NewMavenAdapter()
+	assert.NoError(t, err)
+	assert.NotNil(t, adapter)
+
+	packageDiscovery, err := adapter.PackageDiscovery()
+	assert.NoError(t, err)
+	assert.NotNil(t, packageDiscovery)
+
+	t.Run("junit:junit", func(t *testing.T) {
+		pkg, err := packageDiscovery.GetPackage("junit:junit")
+		assert.NoError(t, err)
+		assert.NotNil(t, pkg)
+
+		assert.Equal(t, "junit:junit", pkg.Name)
+		assert.True(t, semver.IsAheadOrEqual("4.13.2", pkg.LatestVersion))
+	})
+
+	t.Run("non-existent package", func(t *testing.T) {
+		pkg, err := packageDiscovery.GetPackage("non.existent:non-existent")
+		assert.ErrorIs(t, err, ErrPackageNotFound)
+		assert.Nil(t, pkg)
+	})
 }

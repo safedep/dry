@@ -18,6 +18,16 @@ type mavenPackageDiscovery struct{}
 // Verify that mavenAdapter implements the Client interface
 var _ Client = (*mavenAdapter)(nil)
 
+// parseMavenCoordinates parses a Maven package name in the format "groupId:artifactId"
+// and returns the groupId and artifactId components, or an error if the format is invalid
+func parseMavenCoordinates(packageName string) (groupId, artifactId string, err error) {
+	parts := strings.Split(packageName, ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid Maven package name format: %s (expected groupId:artifactId)", packageName)
+	}
+	return parts[0], parts[1], nil
+}
+
 // NewMavenAdapter creates a new Maven registry adapter
 func NewMavenAdapter() (Client, error) {
 	return &mavenAdapter{}, nil
@@ -36,12 +46,10 @@ func (mp *mavenPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1
 	packageName := packageVersion.GetPackage().GetName()
 
 	// For Maven, we need to parse the package name to get groupId and artifactId
-	parts := strings.Split(packageName, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid Maven package name format: %s (expected groupId:artifactId)", packageName)
+	groupId, artifactId, err := parseMavenCoordinates(packageName)
+	if err != nil {
+		return nil, err
 	}
-
-	groupId, artifactId := parts[0], parts[1]
 
 	// Get package details
 	searchResult, err := mavenGetPackageSearchResult(groupId, artifactId)
@@ -110,23 +118,20 @@ func (mp *mavenPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]
 
 func (mp *mavenPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	// Parse Maven package name (groupId:artifactId)
-	parts := strings.Split(packageName, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid Maven package name format: %s (expected groupId:artifactId)", packageName)
+	groupId, artifactId, err := parseMavenCoordinates(packageName)
+	if err != nil {
+		return nil, err
 	}
 
-	groupId, artifactId := parts[0], parts[1]
 	return mavenGetPackageDetails(groupId, artifactId)
 }
 
 func (mp *mavenPackageDiscovery) GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error) {
 	// Parse Maven package name (groupId:artifactId)
-	parts := strings.Split(packageName, ":")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid Maven package name format: %s (expected groupId:artifactId)", packageName)
+	groupId, artifactId, err := parseMavenCoordinates(packageName)
+	if err != nil {
+		return nil, err
 	}
-
-	groupId, artifactId := parts[0], parts[1]
 
 	// Fetch and parse the pom.xml file
 	pom, err := mavenFetchAndParsePOM(groupId, artifactId, packageVersion)
@@ -255,7 +260,7 @@ func convertMavenDocToPackage(doc mavenDoc) (*Package, error) {
 			Value: 0,
 		},
 		CreatedAt: time.Time{}, // Not available in search API
-		UpdatedAt: parseTimestamp(doc.Timestamp),
+		UpdatedAt: mavenParseTimestamp(doc.Timestamp),
 	}
 
 	return &pkg, nil
@@ -290,7 +295,7 @@ func mavenGetAllVersions(groupId, artifactId string) ([]PackageVersionInfo, erro
 	return versions, nil
 }
 
-func parseTimestamp(timestamp int64) time.Time {
+func mavenParseTimestamp(timestamp int64) time.Time {
 	if timestamp == 0 {
 		return time.Time{}
 	}

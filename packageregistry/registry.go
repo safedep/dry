@@ -169,6 +169,8 @@ func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegistryAdapterCo
 		return NewRubyAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_GO:
 		return NewGoAdapter()
+	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
+		return NewMavenAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		if config == nil || config.GitHubClient == nil {
 			return nil, fmt.Errorf("github client is required for github ecosystems")

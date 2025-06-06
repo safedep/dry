@@ -54,7 +54,7 @@ func (np *npmPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.P
 func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	url := npmAPIEndpointPackageSearchWithAuthorURL(publisher.Name)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -150,7 +150,7 @@ func (np *npmPackageDiscovery) GetPackageDownloadStats(packageName string) (Down
 func npmGetPackageVersionDetails(packageName string, packageVersion string) (*npmPackageVersionInfo, error) {
 	url := npmAPIEndpointPackageWithVersionURL(packageName, packageVersion)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -176,7 +176,7 @@ func npmGetPackageVersionDetails(packageName string, packageVersion string) (*np
 func npmGetPackageDetails(packageName string) (*Package, error) {
 	url := npmAPIEndpointPackageURL(packageName)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -254,7 +254,7 @@ const (
 func npmGetPackageDownloadsForPeriod(packageName string, period npmDownloadPeriod) (uint64, error) {
 	url := npmAPIEndpointPackageDownloadsURL(packageName, period)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return 0, ErrFailedToFetchPackage
 	}

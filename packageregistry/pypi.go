@@ -3,7 +3,6 @@ package packageregistry
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
@@ -36,7 +35,7 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	version := packageVersion.GetVersion()
 
 	packageURL := pypiAPIEndpointPackageWithVersionURL(packageName, version)
-	res, err := http.Get(packageURL)
+	res, err := httpClient().Get(packageURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -84,7 +83,7 @@ func (np *pypiPackageDiscovery) GetPackageDependencies(packageName string,
 func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	url := pypiAPIEndpointPackageURL(packageName)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}

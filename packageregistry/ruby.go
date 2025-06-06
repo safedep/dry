@@ -3,7 +3,6 @@ package packageregistry
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
@@ -34,7 +33,7 @@ func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 	packageName := packageVersion.GetPackage().GetName()
 
 	packageURL := rubyAPIEndpointGetPublishersForPackageURL(packageName)
-	res, err := http.Get(packageURL)
+	res, err := httpClient().Get(packageURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -73,7 +72,7 @@ func (np *rubyPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 func (np *rubyPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	publisherURL := rubyAPIEndpointPackageByAuthorURL(publisher.Name)
 
-	res, err := http.Get(publisherURL)
+	res, err := httpClient().Get(publisherURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -116,7 +115,7 @@ func (np *rubyPackageDiscovery) GetPackageDependencies(packageName string,
 func (np *rubyPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	packageURL := rubyAPIEndpointPackageURL(packageName)
 
-	res, err := http.Get(packageURL)
+	res, err := httpClient().Get(packageURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -177,7 +176,7 @@ func convertGemObjectToPackage(gemObject gemObject) (*Package, error) {
 func getPackageVersions(packageName string) ([]PackageVersionInfo, error) {
 	packageURL := rubyAPIEndpointAllVersionsURL(packageName)
 
-	res, err := http.Get(packageURL)
+	res, err := httpClient().Get(packageURL)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}

@@ -6,25 +6,29 @@ import (
 	"strings"
 )
 
+const (
+	mavenSearchRows = 100
+)
+
 // Maven Central Search API Endpoints
 // Docs: https://central.sonatype.org/search/rest-api-guide/
 
 func mavenAPIEndpointPackageURL(groupId, artifactId string) string {
 	// Search for specific groupId and artifactId
 	query := fmt.Sprintf("g:%s AND a:%s", groupId, artifactId)
-	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&rows=50&wt=json", url.QueryEscape(query))
+	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&rows=%d&wt=json", url.QueryEscape(query), mavenSearchRows)
 }
 
 func mavenAPIEndpointPackagesByGroupURL(groupId string) string {
 	// Search for all packages in a specific groupId
 	query := fmt.Sprintf("g:%s", groupId)
-	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&rows=100&wt=json", url.QueryEscape(query))
+	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&rows=%d&wt=json", url.QueryEscape(query), mavenSearchRows)
 }
 
 func mavenAPIEndpointPackageVersionsURL(groupId, artifactId string) string {
 	// Search for all versions of a specific artifact
 	query := fmt.Sprintf("g:%s AND a:%s", groupId, artifactId)
-	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&core=gav&rows=100&wt=json", url.QueryEscape(query))
+	return fmt.Sprintf("https://search.maven.org/solrsearch/select?q=%s&core=gav&rows=%d&wt=json", url.QueryEscape(query), mavenSearchRows)
 }
 
 // mavenAPIEndpointPomURL constructs the URL to fetch the pom.xml file for a specific package version

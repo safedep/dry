@@ -76,11 +76,12 @@ func (mp *mavenPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1
 }
 
 // GetPublisherPackages returns all packages published by a given publisher
+// This is limited to max limit. See mavenSearchRows constant in maven_endpoints.go
 func (mp *mavenPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*Package, error) {
 	// Search for packages by groupId (using publisher name as groupId)
 	url := mavenAPIEndpointPackagesByGroupURL(publisher.Name)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -106,6 +107,8 @@ func (mp *mavenPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]
 
 	packages := make([]*Package, 0)
 	for _, doc := range searchResult.Response.Docs {
+		// N+1 query here to get the package details. There is no way to avoid this.
+		// We need to fetch the package details to get the publisher information.
 		pkg, err := convertMavenDocToPackage(doc)
 		if err != nil {
 			continue // Skip packages with conversion errors
@@ -182,7 +185,7 @@ func (mp *mavenPackageDiscovery) GetPackageDownloadStats(packageName string) (Do
 func mavenGetPackageSearchResult(groupId, artifactId string) (*mavenSearchResponse, error) {
 	url := mavenAPIEndpointPackageURL(groupId, artifactId)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -269,7 +272,7 @@ func convertMavenDocToPackage(doc mavenDoc) (*Package, error) {
 func mavenGetAllVersions(groupId, artifactId string) ([]PackageVersionInfo, error) {
 	url := mavenAPIEndpointPackageVersionsURL(groupId, artifactId)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +309,7 @@ func mavenParseTimestamp(timestamp int64) time.Time {
 func mavenFetchAndParsePOM(groupId, artifactId, version string) (*mavenPOM, error) {
 	url := mavenAPIEndpointPomURL(groupId, artifactId, version)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch POM file: %w", err)
 	}

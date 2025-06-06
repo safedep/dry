@@ -1,12 +1,13 @@
 package packageregistry
 
 import (
-	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"encoding/json"
-	"golang.org/x/mod/modfile"
 	"io"
 	"net/http"
 	"strings"
+
+	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
+	"golang.org/x/mod/modfile"
 )
 
 type goAdapter struct{}
@@ -40,7 +41,7 @@ func (g goPublisherDiscovery) GetPublisherPackages(_ Publisher) ([]*Package, err
 func (g goPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 	url := goProxyAPIEndpointPackageLatestVersionURL(packageName)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}
@@ -75,7 +76,7 @@ func (g goPackageDiscovery) GetPackage(packageName string) (*Package, error) {
 
 func (g goPackageDiscovery) GetPackageDependencies(packageName string, packageVersion string) (*PackageDependencyList, error) {
 	url := goProxyAPIEndpointGetPackageModFileFromVersion(packageName, packageVersion)
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
@@ -123,7 +124,7 @@ func (g goPackageDiscovery) GetPackageDownloadStats(packageName string) (Downloa
 func (g goPackageDiscovery) getPackageAllVersion(packageName string) ([]PackageVersionInfo, error) {
 	url := goProxyAPIEndpointPackageListAllVersions(packageName)
 
-	res, err := http.Get(url)
+	res, err := httpClient().Get(url)
 	if err != nil {
 		return nil, ErrFailedToFetchPackage
 	}

@@ -3,7 +3,6 @@ package obs
 import (
 	"fmt"
 	dryhttp "github.com/safedep/dry/adapters/http"
-	"strings"
 )
 
 // Counter is a metric that represents a single numerical value
@@ -119,13 +118,7 @@ func StartMetricsServer(config *MetricsServerConfig) error {
 		return fmt.Errorf("failed to create metrics server: %v", err)
 	}
 
-	port := config.Port
-	if !strings.HasPrefix(port, ":") {
-		// used just specified "8080", not ":8080"
-		port = ":" + port
-	}
-
-	err = router.ListenAndServe(port)
+	err = router.ListenAndServe(config.Port)
 	if err != nil {
 		return fmt.Errorf("failed to start metrics server: %v", err)
 	}

@@ -1,10 +1,5 @@
 package obs
 
-import (
-	"fmt"
-	dryhttp "github.com/safedep/dry/adapters/http"
-)
-
 // Counter is a metric that represents a single numerical value
 // that only ever goes up.
 type Counter interface {
@@ -100,28 +95,4 @@ func NewHistogram(name, desc string) Histogram {
 // before any other function in this package.
 func InitPrometheusMetricsProvider(namespace, subsystem string) {
 	__provider = NewPrometheusMetricsProvider(namespace, subsystem)
-}
-
-type MetricsServerConfig struct {
-	ServiceName string
-	Port        string
-}
-
-const DefaultMetricServerPort = ":8080"
-
-func StartMetricsServer(config *MetricsServerConfig) error {
-	router, err := dryhttp.NewEchoRouter(dryhttp.EchoRouterConfig{
-		ServiceName: config.ServiceName,
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to create metrics server: %v", err)
-	}
-
-	err = router.ListenAndServe(config.Port)
-	if err != nil {
-		return fmt.Errorf("failed to start metrics server: %v", err)
-	}
-
-	return nil
 }

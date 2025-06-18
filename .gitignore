@@ -15,3 +15,6 @@
 # vendor/
 
 **/.claude/settings.local.json
+
+# MacOS specific files
+**/.DS_Store

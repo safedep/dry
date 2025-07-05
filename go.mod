@@ -3,7 +3,7 @@ module github.com/safedep/dry
 go 1.24.3
 
 require (
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.6-20250610075857-7cfdb61a0bfa.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.6-20250705071048-7ad8e6be7c05.1
 	cloud.google.com/go/storage v1.55.0
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/antihax/optional v1.0.0

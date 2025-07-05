@@ -109,6 +109,8 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 	// https://github.com/package-url/purl-spec/issues/287
 	case "vscode", "vsix", "vsx":
 		return packagev1.Ecosystem_ECOSYSTEM_VSCODE
+	case "openvsx":
+		return packagev1.Ecosystem_ECOSYSTEM_OPENVSX
 	default:
 		return packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED
 	}

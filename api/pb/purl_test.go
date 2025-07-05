@@ -81,6 +81,13 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "",
 		},
 		{
+			name:          "openvsx extension - openvsx",
+			purl:          "pkg:openvsx/castwide.solargraph@0.24.1",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_OPENVSX,
+			wantName:      "castwide.solargraph",
+			wantVersion:   "0.24.1",
+		},
+		{
 			name: "invalid purl",
 			purl: "pkg:invalid",
 			err:  errors.New("invalid purl"),

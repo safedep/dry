@@ -87,6 +87,9 @@ type StreamControlPlane interface {
 	DeleteStreamAccess(ctx context.Context, accessID string) error
 }
 
+// StreamSerializer is the contract for serializing and deserializing records
+// This is application specific. The only assumption is, all stream providers
+// allow reading and writing byte arrays.
 type StreamSerializer[T any] interface {
 	// Serialize converts a record of type T into a byte slice.
 	Serialize(record *T) ([]byte, error)
@@ -110,6 +113,8 @@ type StreamListener[T any] interface {
 	Listen(ctx context.Context, offset int64, limit int) (<-chan *StreamEntity[T], error)
 }
 
+// StreamWriter is the contract for writing records to a stream.
+// Implementations must perform provider specific validation
 type StreamWriter[T any] interface {
 	AppendOne(ctx context.Context, record *StreamEntity[T]) error
 	AppendMany(ctx context.Context, records []*StreamEntity[T]) error

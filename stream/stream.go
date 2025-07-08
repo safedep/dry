@@ -6,6 +6,7 @@ package stream
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -36,15 +37,18 @@ type Stream struct {
 // While individual provider may have its naming conventions, we want to
 // guarantee isolation for multi-tenant streams
 func (s Stream) ID() (string, error) {
+	var parts []string
+
 	if s.IsMultiTenant {
 		if s.TenantID == "" {
 			return "", ErrMissingTenantID
 		}
 
-		return s.TenantID + ":" + s.Namespace + ":" + s.Name, nil
-	} else {
-		return s.Namespace + ":" + s.Name, nil
+		parts = append(parts, s.TenantID)
 	}
+
+	parts = append(parts, s.Namespace, s.Name)
+	return strings.Join(parts, ":"), nil
 }
 
 type StreamAccessRole int

@@ -12,8 +12,8 @@ type protoJsonSerializer[T proto.Message] struct{}
 
 var _ StreamEntitySerializer[proto.Message] = &protoJsonSerializer[proto.Message]{}
 
-// NewProtoJsonSerializer creates a new StreamEntitySerializer that serializes
-// that use ProtoJSON to serialize and deserialize protocol buffers messages.
+// NewProtoJsonSerializer creates a new StreamEntitySerializer that uses
+// ProtoJSON to serialize and deserialize protocol buffers messages (stream entities)
 func NewProtoJsonSerializer[T proto.Message]() (StreamEntitySerializer[T], error) {
 	return &protoJsonSerializer[T]{}, nil
 }

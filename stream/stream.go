@@ -32,6 +32,15 @@ type Stream struct {
 	IsMultiTenant bool
 }
 
+func (s Stream) WithTenant(tenantId string) Stream {
+	return Stream{
+		TenantID:      tenantId,
+		Namespace:     s.Namespace,
+		Name:          s.Name,
+		IsMultiTenant: true,
+	}
+}
+
 // ID returns a unique identifier for the stream based on its properties.
 // This is used to connect to the stream and perform operations on it.
 // While individual provider may have its naming conventions, we want to

@@ -85,7 +85,7 @@ func NewS2StreamWriter[T proto.Message](config S2StreamProviderConfig,
 		return nil, fmt.Errorf("batch size must be less than or equal to 100")
 	}
 
-	basin, err := basinResolver.GetBasin(context.TODO(), stream.Namespace, stream.TenantID)
+	basin, err := basinResolver.GetBasin(context.Background(), stream.Namespace, stream.TenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get basin: %w", err)
 	}
@@ -115,6 +115,10 @@ func (s *s2StreamWriter[T]) AppendMany(ctx context.Context, records []*StreamEnt
 	// We create an empty batch and append the records to it.
 	appendRecordBatch, _ := s2.NewAppendRecordBatchWithMaxCapacity(s.config.AppendBatchSize)
 	for _, record := range records {
+		if appendRecordBatch.IsFull() {
+			return fmt.Errorf("failed to append record: batch is full")
+		}
+
 		recordBytes, err := s.serializer.Serialize(record.Record)
 		if err != nil {
 			return fmt.Errorf("failed to serialize record: %w", err)
@@ -123,10 +127,6 @@ func (s *s2StreamWriter[T]) AppendMany(ctx context.Context, records []*StreamEnt
 		headers := make([]s2.Header, 0, len(record.Headers))
 		for k, v := range record.Headers {
 			headers = append(headers, s2.Header{Name: []byte(k), Value: []byte(v)})
-		}
-
-		if appendRecordBatch.IsFull() {
-			return fmt.Errorf("failed to append record: batch is full")
 		}
 
 		if ret := appendRecordBatch.Append(s2.AppendRecord{

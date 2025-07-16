@@ -37,8 +37,15 @@ type Stream struct {
 // While individual provider may have its naming conventions, we want to
 // guarantee isolation for multi-tenant streams
 func (s Stream) ID() (string, error) {
-	var parts []string
+	if s.Namespace == "" {
+		return "", errors.New("namespace is required for stream ID")
+	}
 
+	if s.Name == "" {
+		return "", errors.New("name is required for stream ID")
+	}
+
+	var parts []string
 	if s.IsMultiTenant {
 		if s.TenantID == "" {
 			return "", ErrMissingTenantID
@@ -90,15 +97,15 @@ type StreamControlPlane interface {
 // StreamSerializer is the contract for serializing and deserializing records
 // This is application specific. The only assumption is, all stream providers
 // allow reading and writing byte arrays.
-type StreamSerializer[T any] interface {
+type StreamEntitySerializer[T any] interface {
 	// Serialize converts a record of type T into a byte slice.
-	Serialize(record *T) ([]byte, error)
+	Serialize(record T) ([]byte, error)
 	// Deserialize converts a byte slice into a record of type T.
-	Deserialize(data []byte) (*T, error)
+	Deserialize(data []byte, record T) error
 }
 
 type StreamEntity[T any] struct {
-	Record *T
+	Record T
 
 	// Various metadata about the record.
 	Headers map[string]string

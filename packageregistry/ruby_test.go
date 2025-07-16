@@ -1,7 +1,6 @@
 package packageregistry
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/safedep/dry/semver"
@@ -65,9 +64,19 @@ func TestRubyGetPublisher(t *testing.T) {
 				assert.NotNil(t, publisherInfo)
 				assert.Equal(t, len(publisherInfo.Publishers), len(test.expectedPublishers))
 
-				if !reflect.DeepEqual(publisherInfo.Publishers, test.expectedPublishers) {
-					t.Errorf("expected: %v, got: %v", test.expectedPublishers, publisherInfo.Publishers)
+				publisherNames := make([]string, len(publisherInfo.Publishers))
+				for i, publisher := range publisherInfo.Publishers {
+					publisherNames[i] = publisher.Name
 				}
+
+				expectedNames := make([]string, len(test.expectedPublishers))
+				for i, publisher := range test.expectedPublishers {
+					expectedNames[i] = publisher.Name
+				}
+
+				// We are matching only names to avoid tests being flaky. We saw emails being changed
+				// or updated.
+				assert.ElementsMatch(t, expectedNames, publisherNames)
 			}
 		})
 	}

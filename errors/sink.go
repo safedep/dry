@@ -214,6 +214,10 @@ func (b *sinkErrorBatcher) startInternal() error {
 					log.Errorf("failed to handle error with sink driver: %v", err)
 				}
 			case <-b.ctx.Done():
+				// Timeout to prevent the goroutine from blocking indefinitely
+				ctxWithTimeout, cancel := context.WithTimeout(context.Background(), b.config.CloseTimeout)
+				defer cancel()
+
 				// Context cancelled, process remaining errors and exit
 				for {
 					select {
@@ -225,6 +229,10 @@ func (b *sinkErrorBatcher) startInternal() error {
 						if err != nil {
 							log.Errorf("failed to handle error with sink driver during shutdown: %v", err)
 						}
+					case <-ctxWithTimeout.Done():
+						// Timeout reached, exit the Goroutine
+						log.Warnf("sink error batcher shutdown timeout after %v, some errors may be lost", b.config.CloseTimeout)
+						return
 					default:
 						// No more errors to process
 						return

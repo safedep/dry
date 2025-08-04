@@ -15,6 +15,7 @@ type apiErrWrap struct {
 	apiErr *api.ApiError
 }
 
+// Deprecated: Use gRPC errors instead
 // AsApiError safely performs type conversion
 // or build a generic Api Error object with message
 func AsApiError(err error) (*apiErrWrap, bool) {
@@ -35,6 +36,7 @@ func AsApiError(err error) (*apiErrWrap, bool) {
 	}, false
 }
 
+// Deprecated: Use gRPC errors instead
 func BuildApiError(errType api.ApiErrorType, errCode api.ApiErrorCode,
 	message string) *apiErrWrap {
 	return &apiErrWrap{
@@ -46,6 +48,7 @@ func BuildApiError(errType api.ApiErrorType, errCode api.ApiErrorCode,
 	}
 }
 
+// Deprecated: Use gRPC errors instead
 func UnmarshalApiError(body []byte) (*apiErrWrap, bool) {
 	apiErr := api.ApiError{}
 	err := json.Unmarshal(body, &apiErr)

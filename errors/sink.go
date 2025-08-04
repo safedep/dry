@@ -201,6 +201,14 @@ func (b *sinkErrorBatcher) startInternal() error {
 	b.wg.Add(1)
 	go func() {
 		defer b.wg.Done()
+
+		handleError := func(em *errorWithMeta, context string) {
+			err := b.driverHandler(em)
+			if err != nil {
+				log.Errorf("failed to handle error with sink driver%s: %v", context, err)
+			}
+		}
+
 		for {
 			select {
 			case em, ok := <-b.errors:
@@ -209,10 +217,7 @@ func (b *sinkErrorBatcher) startInternal() error {
 					return
 				}
 
-				err := b.driverHandler(&em)
-				if err != nil {
-					log.Errorf("failed to handle error with sink driver: %v", err)
-				}
+				handleError(&em, "")
 			case <-b.ctx.Done():
 				// Context cancelled, process remaining errors and exit
 				for {
@@ -222,10 +227,7 @@ func (b *sinkErrorBatcher) startInternal() error {
 							return
 						}
 
-						err := b.driverHandler(&em)
-						if err != nil {
-							log.Errorf("failed to handle error with sink driver during shutdown: %v", err)
-						}
+						handleError(&em, " during shutdown")
 					default:
 						// No more errors to process
 						return

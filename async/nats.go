@@ -34,12 +34,18 @@ type NatsMessagingConfig struct {
 
 	// Stream listener acknowledgement wait time
 	StreamListenerAckWait time.Duration
+
+	// Maximum number of deliveries for the stream when
+	// callback is not acknowledged
+	StreamMaxDeliveries int
 }
 
 const (
-	natsJetStreamMaxMessages          = 100000
-	natsJetStreamMaxMessagesHardLimit = 1000000
-	natsJetStreamAckWait              = 30 * time.Second
+	natsJetStreamMaxMessages            = 100000
+	natsJetStreamMaxMessagesHardLimit   = 1000000
+	natsJetStreamAckWait                = 30 * time.Second
+	natsJetStreamMaxDeliveries          = 5
+	natsJetStreamMaxDeliveriesHardLimit = 100
 )
 
 type natsMessaging struct {
@@ -54,6 +60,10 @@ func NewNatsMessagingService(config NatsMessagingConfig) (MessagingService, erro
 		if config.NatsURL == "" {
 			config.NatsURL = nats.DefaultURL
 		}
+	}
+
+	if config.StreamMaxDeliveries > natsJetStreamMaxDeliveriesHardLimit {
+		return nil, fmt.Errorf("StreamMaxDeliveries cannot exceed %d", natsJetStreamMaxDeliveriesHardLimit)
 	}
 
 	log.Infof("Connecting to NATS server at %s", config.NatsURL)
@@ -212,9 +222,10 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 	}
 
 	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Name:    n.config.StreamListenerName,
-		Durable: n.config.StreamListenerName,
-		AckWait: ackWait,
+		Name:       n.config.StreamListenerName,
+		Durable:    n.config.StreamListenerName,
+		AckWait:    ackWait,
+		MaxDeliver: max(natsJetStreamMaxDeliveries, n.config.StreamMaxDeliveries),
 	})
 	if err != nil {
 		return fmt.Errorf("error creating JetStream consumer: %v", err)
@@ -253,6 +264,7 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 					defer cancel()
 				}
 
+				// Mutating the outer error variable
 				err = callback(ctx, msg.Data(), MessageExtra{
 					Subject: msg.Subject(),
 					ReplyTo: msg.Reply(),
@@ -265,7 +277,12 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 
 			wg.Wait()
 
-			err = msg.Ack()
+			if err != nil {
+				err = msg.Nak()
+			} else {
+				err = msg.Ack()
+			}
+
 			if err != nil {
 				log.Errorf("Error acknowledging message: %v", err)
 			}

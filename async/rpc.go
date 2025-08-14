@@ -46,24 +46,22 @@ func RpcNamespacedResponseTopicName(serviceName, methodName, namespace string) s
 	return rpcResponseTopicName(RpcNamespacedTopicName(serviceName, methodName, namespace))
 }
 
+// RpcGetServiceAndMethodFromFullProcedureName extracts service and method names
+// from a full procedure name using our conventions.
+func RpcGetServiceAndMethodFromFullProcedureName(fullProcedureName string) (string, string, error) {
+	return rpcGetServiceAndMethodFromFullProcedureName(fullProcedureName)
+}
+
 // RpcTopicNameFromFullProcedureName generates a topic name from a full procedure name
 // using our conventions. Originally created for gRPC, but generic enough to be used
 // for other RPC systems as well.
 func RpcTopicNameFromFullProcedureName(fullProcedureName string) string {
-	if len(fullProcedureName) == 0 {
+	serviceName, methodName, err := rpcGetServiceAndMethodFromFullProcedureName(fullProcedureName)
+	if err != nil {
 		return ""
 	}
 
-	if fullProcedureName[0] == '/' {
-		fullProcedureName = fullProcedureName[1:]
-	}
-
-	parts := strings.SplitN(fullProcedureName, "/", 2)
-	if len(parts) < 2 {
-		return ""
-	}
-
-	return RpcTopicName(parts[0], parts[1])
+	return RpcTopicName(serviceName, methodName)
 }
 
 type RpcCallOptions struct {
@@ -120,6 +118,23 @@ func rpcNamespacedTopicName(topicName, namespace string) string {
 	}
 
 	return fmt.Sprintf("namespaced.%s.%s", namespace, topicName)
+}
+
+func rpcGetServiceAndMethodFromFullProcedureName(fullProcedureName string) (string, string, error) {
+	if len(fullProcedureName) == 0 {
+		return "", "", fmt.Errorf("full procedure name cannot be empty")
+	}
+
+	if fullProcedureName[0] == '/' {
+		fullProcedureName = fullProcedureName[1:]
+	}
+
+	parts := strings.SplitN(fullProcedureName, "/", 2)
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid full procedure name: %s", fullProcedureName)
+	}
+
+	return parts[0], parts[1], nil
 }
 
 func rpcRequestTopicName(topicName string) string {

@@ -30,6 +30,25 @@ func RpcNamespacedTopicName(serviceName, methodName, namespace string) string {
 	return rpcNamespacedTopicName(RpcTopicName(serviceName, methodName), namespace)
 }
 
+// RpcNamespacedRequestTopicName creates a namespaced request topic name
+// This is a convention driven approach to create a request topic name from a gRPC
+// service and method name, along with a namespace. This is required when we are
+// in streaming mode and need two streams: one for requests and one for responses.
+func RpcNamespacedRequestTopicName(serviceName, methodName, namespace string) string {
+	return rpcRequestTopicName(RpcNamespacedTopicName(serviceName, methodName, namespace))
+}
+
+// RpcNamespacedResponseTopicName creates a namespaced response topic namespace
+// This is a convention driven approach to create a response topic name from a gRPC
+// service and method name, along with a namespace. This is required when we are
+// in streaming mode and need two streams: one for requests and one for responses.
+func RpcNamespacedResponseTopicName(serviceName, methodName, namespace string) string {
+	return rpcResponseTopicName(RpcNamespacedTopicName(serviceName, methodName, namespace))
+}
+
+// RpcTopicNameFromFullProcedureName generates a topic name from a full procedure name
+// using our conventions. Originally created for gRPC, but generic enough to be used
+// for other RPC systems as well.
 func RpcTopicNameFromFullProcedureName(fullProcedureName string) string {
 	if len(fullProcedureName) == 0 {
 		return ""
@@ -52,7 +71,7 @@ type RpcCallOptions struct {
 	Timeout time.Duration
 }
 
-// Invoke an RPC procedure over an AsyncRpcClient using our conventions.
+// RpcInvoke invokes an RPC procedure over an AsyncRpcClient using our conventions.
 func RpcInvoke[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
 	fullProcedureName string, input I, output O, options RpcCallOptions) error {
 	topicName := RpcTopicNameFromFullProcedureName(fullProcedureName)
@@ -64,7 +83,7 @@ func RpcInvoke[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
 }
 
 // RpcInvokeWithNamespace invokes an RPC procedure over an AsyncRpcClient using a namespaced
-// topic name. If the namespace is empty, the behaviour is exactly same as RpcInvoke.
+// topic name. If the namespace is empty, the behavior is exactly same as RpcInvoke.
 func RpcInvokeWithNamespace[I, O proto.Message](ctx context.Context, client AsyncRpcClient,
 	namespace, fullProcedureName string, input I, output O, options RpcCallOptions) error {
 	topicName := RpcTopicNameFromFullProcedureName(fullProcedureName)
@@ -101,4 +120,12 @@ func rpcNamespacedTopicName(topicName, namespace string) string {
 	}
 
 	return fmt.Sprintf("namespaced.%s.%s", namespace, topicName)
+}
+
+func rpcRequestTopicName(topicName string) string {
+	return fmt.Sprintf("%s.request", topicName)
+}
+
+func rpcResponseTopicName(topicName string) string {
+	return fmt.Sprintf("%s.response", topicName)
 }

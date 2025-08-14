@@ -187,3 +187,95 @@ func TestRpcInvokeWithNamespace(t *testing.T) {
 		})
 	}
 }
+
+func TestRpcNamespacedRequestTopicName(t *testing.T) {
+	cases := []struct {
+		name        string
+		namespace   string
+		serviceName string
+		methodName  string
+		expected    string
+	}{
+		{
+			name:        "simple",
+			namespace:   "namespace",
+			serviceName: "service",
+			methodName:  "method",
+			expected:    "namespaced.namespace.service.method.request",
+		},
+		{
+			name:        "simple with slash",
+			namespace:   "namespace",
+			serviceName: "/service",
+			methodName:  "/method",
+			expected:    "namespaced.namespace.service.method.request",
+		},
+		{
+			name:        "service with multiple slash",
+			namespace:   "namespace",
+			serviceName: "/service/a/b/c",
+			methodName:  "/method",
+			expected:    "namespaced.namespace.service.a.b.c.method.request",
+		},
+		{
+			name:        "empty namespace",
+			namespace:   "",
+			serviceName: "service",
+			methodName:  "method",
+			expected:    "service.method.request",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			actual := RpcNamespacedRequestTopicName(test.serviceName, test.methodName, test.namespace)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}
+
+func TestRpcNamespacedResponseTopicName(t *testing.T) {
+	cases := []struct {
+		name        string
+		namespace   string
+		serviceName string
+		methodName  string
+		expected    string
+	}{
+		{
+			name:        "simple",
+			namespace:   "namespace",
+			serviceName: "service",
+			methodName:  "method",
+			expected:    "namespaced.namespace.service.method.response",
+		},
+		{
+			name:        "simple with slash",
+			namespace:   "namespace",
+			serviceName: "/service",
+			methodName:  "/method",
+			expected:    "namespaced.namespace.service.method.response",
+		},
+		{
+			name:        "service with multiple slash",
+			namespace:   "namespace",
+			serviceName: "/service/a/b/c",
+			methodName:  "/method",
+			expected:    "namespaced.namespace.service.a.b.c.method.response",
+		},
+		{
+			name:        "empty namespace",
+			namespace:   "",
+			serviceName: "service",
+			methodName:  "method",
+			expected:    "service.method.response",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			actual := RpcNamespacedResponseTopicName(test.serviceName, test.methodName, test.namespace)
+			assert.Equal(t, test.expected, actual)
+		})
+	}
+}

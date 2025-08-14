@@ -279,3 +279,42 @@ func TestRpcNamespacedResponseTopicName(t *testing.T) {
 		})
 	}
 }
+
+func TestRpcGetServiceAndMethodFromFullProcedureName(t *testing.T) {
+	cases := []struct {
+		name              string
+		fullProcedureName string
+		expectedService   string
+		expectedMethod    string
+		expectedError     error
+	}{
+		{
+			name:              "valid procedure name",
+			fullProcedureName: "/safedep.services.malysis.v1.MalwareAnalysisService/InternalAnalyzePackage",
+			expectedService:   "safedep.services.malysis.v1.MalwareAnalysisService",
+			expectedMethod:    "InternalAnalyzePackage",
+		},
+		{
+			name:              "invalid procedure name",
+			fullProcedureName: "invalid",
+			expectedService:   "",
+			expectedMethod:    "",
+			expectedError:     errors.New("invalid full procedure name: invalid"),
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			service, method, err := RpcGetServiceAndMethodFromFullProcedureName(test.fullProcedureName)
+
+			if test.expectedError != nil {
+				assert.Error(t, err)
+				assert.ErrorContains(t, err, test.expectedError.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedService, service)
+				assert.Equal(t, test.expectedMethod, method)
+			}
+		})
+	}
+}

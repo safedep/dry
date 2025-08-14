@@ -14,3 +14,4 @@ packages:
   github.com/safedep/dry/async:
     interfaces:
       AsyncRpcClient:
+      MessagingService:

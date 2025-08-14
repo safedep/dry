@@ -1,6 +1,7 @@
 package packageregistry
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/safedep/dry/semver"
@@ -235,7 +236,8 @@ func TestRubyGetPackageLatestVersion(t *testing.T) {
 				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.True(t, semver.IsAheadOrEqual(test.expectedLatestVersion, pkg.LatestVersion))
+				assert.True(t, semver.IsAheadOrEqual(test.expectedLatestVersion, pkg.LatestVersion),
+					fmt.Sprintf("expected latest version %s to be ahead or equal to %s", pkg.LatestVersion, test.expectedLatestVersion))
 			}
 		})
 	}

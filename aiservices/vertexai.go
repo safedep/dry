@@ -21,57 +21,57 @@ type VertexAIModelConfig struct {
 	CredentialsFile string
 }
 
-type GoogleVertexAIFastModel struct {
+type googleVertexAIFastModel struct {
 	baseModel model.ToolCallingChatModel
 	config    VertexAIModelConfig
 }
 
-var _ Model = &GoogleVertexAIFastModel{}
+var _ Model = &googleVertexAIFastModel{}
 
-func NewGoogleVertexAIFastModel(ctx context.Context, config VertexAIModelConfig) (*GoogleVertexAIFastModel, error) {
+func NewGoogleVertexAIFastModel(ctx context.Context, config VertexAIModelConfig) (Model, error) {
 	chatModel, err := createVertexAIChatModel(ctx, vertexAIFastModelId, config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create chat model")
 	}
 
-	return &GoogleVertexAIFastModel{
+	return &googleVertexAIFastModel{
 		baseModel: chatModel,
 		config:    config,
 	}, nil
 }
 
-func (g GoogleVertexAIFastModel) GetProvider() ModelProviderIdentifier {
+func (g googleVertexAIFastModel) GetProvider() ModelProviderIdentifier {
 	return GoogleVertex
 }
 
-func (g GoogleVertexAIFastModel) GetId() string {
+func (g googleVertexAIFastModel) GetId() string {
 	return vertexAIFastModelId
 }
 
-type GoogleVertexAIReasoningModel struct {
+type googleVertexAIReasoningModel struct {
 	baseModel model.ToolCallingChatModel
 	config    VertexAIModelConfig
 }
 
-var _ Model = &GoogleVertexAIReasoningModel{}
+var _ Model = &googleVertexAIReasoningModel{}
 
-func NewGoogleVertexAIReasoningModel(ctx context.Context, config VertexAIModelConfig) (*GoogleVertexAIReasoningModel, error) {
+func NewGoogleVertexAIReasoningModel(ctx context.Context, config VertexAIModelConfig) (Model, error) {
 	chatModel, err := createVertexAIChatModel(ctx, vertexAIReasoningModelId, config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create chat model")
 	}
 
-	return &GoogleVertexAIReasoningModel{
+	return &googleVertexAIReasoningModel{
 		baseModel: chatModel,
 		config:    config,
 	}, nil
 }
 
-func (g GoogleVertexAIReasoningModel) GetProvider() ModelProviderIdentifier {
+func (g googleVertexAIReasoningModel) GetProvider() ModelProviderIdentifier {
 	return GoogleVertex
 }
 
-func (g GoogleVertexAIReasoningModel) GetId() string {
+func (g googleVertexAIReasoningModel) GetId() string {
 	return vertexAIReasoningModelId
 }
 
@@ -118,15 +118,15 @@ func createVertexAIChatModel(ctx context.Context, modelId string, config VertexA
 	return chatModel, nil
 }
 
-type GoogleVertexAIModelProvider struct {
+type googleVertexAIModelProvider struct {
 	config VertexAIModelConfig
 }
 
-func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) *GoogleVertexAIModelProvider {
-	return &GoogleVertexAIModelProvider{config: config}
+func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (ModelProvider, error) {
+	return &googleVertexAIModelProvider{config: config}, nil
 }
 
-func (g GoogleVertexAIModelProvider) GetFastModel() (Model, error) {
+func (g googleVertexAIModelProvider) GetFastModel() (Model, error) {
 	fastModel, err := NewGoogleVertexAIFastModel(context.Background(), g.config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
@@ -134,7 +134,7 @@ func (g GoogleVertexAIModelProvider) GetFastModel() (Model, error) {
 	return fastModel, nil
 }
 
-func (g GoogleVertexAIModelProvider) GetReasoningModel() (Model, error) {
+func (g googleVertexAIModelProvider) GetReasoningModel() (Model, error) {
 	reasoningModel, err := NewGoogleVertexAIReasoningModel(context.Background(), g.config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
@@ -142,7 +142,7 @@ func (g GoogleVertexAIModelProvider) GetReasoningModel() (Model, error) {
 	return reasoningModel, nil
 }
 
-func (g GoogleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
+func (g googleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
 	switch s {
 	case vertexAIFastModelId:
 		return g.GetFastModel()

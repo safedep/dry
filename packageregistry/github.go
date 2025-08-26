@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
-	"github.com/google/go-github/v70/github"
+	"github.com/google/go-github/v74/github"
 	"github.com/safedep/dry/adapters"
 )
 

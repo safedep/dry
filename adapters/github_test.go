@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func generateTestRSAKey(t *testing.T) []byte {
 	return privateKeyPEM
 }
 
-func TestGithubClient_CreateAppAuthenticationJWT(t *testing.T) {
+func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 	invalidPEM := []byte("invalid pem data")
 
@@ -68,7 +69,7 @@ func TestGithubClient_CreateAppAuthenticationJWT(t *testing.T) {
 			name:          "empty app ID",
 			privateKey:    validKey,
 			appID:         "",
-			validateToken: true,
+			expectedError: "app ID is not configured",
 		},
 		{
 			name:          "numeric app ID",
@@ -86,13 +87,15 @@ func TestGithubClient_CreateAppAuthenticationJWT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &GithubClient{
-				Config: GitHubClientConfig{
+			client := &GitHubAppClient{
+				Config: GitHubAppClientConfig{
 					AppAuthenticationPrivateKey: tt.privateKey,
+					AppID:                       tt.appID,
+					EnableJWTTokenCache:         false, // Disable caching for table-driven tests to ensure consistent behavior
 				},
 			}
 
-			token, err := client.CreateAppAuthenticationJWT(tt.appID)
+			token, err := client.CreateAppAuthenticationJWT()
 
 			if tt.expectedError != "" {
 				assert.Error(t, err)
@@ -157,7 +160,7 @@ func TestGithubClient_CreateAppAuthenticationJWT(t *testing.T) {
 	}
 }
 
-func TestGithubClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T) {
+func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
 	// Test that environment variables don't interfere with the method
@@ -167,13 +170,15 @@ func TestGithubClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "token-from-env")
 	t.Setenv("GITHUB_CLIENT_ID", "client-id-from-env")
 
-	client := &GithubClient{
-		Config: GitHubClientConfig{
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
 			AppAuthenticationPrivateKey: validKey,
+			AppID:                       "test-app",
+			EnableJWTTokenCache:         false, // Disable caching to test core functionality
 		},
 	}
 
-	token, err := client.CreateAppAuthenticationJWT("test-app")
+	token, err := client.CreateAppAuthenticationJWT()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
@@ -197,4 +202,153 @@ func TestGithubClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T) {
 	iss, ok := claims["iss"]
 	assert.True(t, ok)
 	assert.Equal(t, "test-app", iss)
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT_MissingAppID(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
+			AppAuthenticationPrivateKey: validKey,
+			EnableJWTTokenCache:         false,
+			// AppID is intentionally not set
+		},
+	}
+
+	token, err := client.CreateAppAuthenticationJWT()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "app ID is not configured")
+	assert.Empty(t, token)
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingEnabled(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
+			AppAuthenticationPrivateKey: validKey,
+			AppID:                       "test-app",
+			EnableJWTTokenCache:         true,
+		},
+	}
+
+	// First call should generate a new token
+	token1, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token1)
+
+	// Second call should return the cached token (same token)
+	token2, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token2)
+	assert.Equal(t, token1, token2)
+
+	// Verify the cache fields are set
+	assert.NotEmpty(t, client.cachedToken)
+	assert.True(t, client.cachedTokenExp.After(time.Now()))
+	assert.True(t, client.cachedTokenExp.Before(time.Now().Add(10*time.Minute)))
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingDisabled(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
+			AppAuthenticationPrivateKey: validKey,
+			AppID:                       "test-app",
+			EnableJWTTokenCache:         false,
+		},
+	}
+
+	// First call should generate a token
+	token1, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token1)
+
+	// Second call should also generate a token successfully
+	token2, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token2)
+
+	// Most importantly, verify the cache fields are never set when caching is disabled
+	assert.Empty(t, client.cachedToken)
+	assert.True(t, client.cachedTokenExp.IsZero())
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT_CacheExpiration(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
+			AppAuthenticationPrivateKey: validKey,
+			AppID:                       "test-app",
+			EnableJWTTokenCache:         true,
+		},
+	}
+
+	// Generate first token
+	token1, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token1)
+
+	// Verify token is cached
+	assert.Equal(t, token1, client.cachedToken)
+	originalExpiry := client.cachedTokenExp
+
+	// Manually expire the cached token by setting expiry to past
+	client.m.Lock()
+	client.cachedTokenExp = time.Now().Add(-1 * time.Minute)
+	client.m.Unlock()
+
+	// Next call should generate a new token since the cached one is expired
+	token2, err := client.CreateAppAuthenticationJWT()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token2)
+
+	// Verify cache was updated with new token and new expiry
+	assert.Equal(t, token2, client.cachedToken)
+	assert.True(t, client.cachedTokenExp.After(time.Now()))
+	assert.True(t, client.cachedTokenExp.After(originalExpiry)) // New expiry should be later than original
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT_ConcurrentAccess(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	client := &GitHubAppClient{
+		Config: GitHubAppClientConfig{
+			AppAuthenticationPrivateKey: validKey,
+			AppID:                       "test-app",
+			EnableJWTTokenCache:         true,
+		},
+	}
+
+	const numGoroutines = 10
+	tokens := make([]string, numGoroutines)
+	var wg sync.WaitGroup
+
+	// Launch multiple goroutines that try to get JWT tokens concurrently
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			token, err := client.CreateAppAuthenticationJWT()
+			assert.NoError(t, err)
+			assert.NotEmpty(t, token)
+			tokens[index] = token
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All tokens should be identical due to caching
+	firstToken := tokens[0]
+	assert.NotEmpty(t, firstToken)
+
+	for i, token := range tokens {
+		assert.Equal(t, firstToken, token, "Token at index %d should match first token", i)
+	}
+
+	// Verify cache state is consistent
+	assert.Equal(t, firstToken, client.cachedToken)
+	assert.True(t, client.cachedTokenExp.After(time.Now()))
 }

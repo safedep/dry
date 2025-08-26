@@ -12,7 +12,6 @@ require (
 	github.com/goark/go-cvss v1.6.7
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang/protobuf v1.5.4
-	github.com/google/go-github/v70 v70.0.0
 	github.com/google/go-github/v74 v74.0.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
 	github.com/labstack/echo-contrib v0.17.4

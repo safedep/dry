@@ -23,7 +23,6 @@ type VertexAIModelConfig struct {
 
 type googleVertexAIFastModel struct {
 	baseModel model.ToolCallingChatModel
-	config    VertexAIModelConfig
 }
 
 var _ Model = &googleVertexAIFastModel{}
@@ -36,7 +35,6 @@ func NewGoogleVertexAIFastModel(ctx context.Context, config VertexAIModelConfig)
 
 	return &googleVertexAIFastModel{
 		baseModel: chatModel,
-		config:    config,
 	}, nil
 }
 
@@ -50,7 +48,6 @@ func (g googleVertexAIFastModel) GetId() string {
 
 type googleVertexAIReasoningModel struct {
 	baseModel model.ToolCallingChatModel
-	config    VertexAIModelConfig
 }
 
 var _ Model = &googleVertexAIReasoningModel{}
@@ -63,7 +60,6 @@ func NewGoogleVertexAIReasoningModel(ctx context.Context, config VertexAIModelCo
 
 	return &googleVertexAIReasoningModel{
 		baseModel: chatModel,
-		config:    config,
 	}, nil
 }
 
@@ -116,39 +112,4 @@ func createVertexAIChatModel(ctx context.Context, modelId string, config VertexA
 	}
 
 	return chatModel, nil
-}
-
-type googleVertexAIModelProvider struct {
-	config VertexAIModelConfig
-}
-
-func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (ModelProvider, error) {
-	return &googleVertexAIModelProvider{config: config}, nil
-}
-
-func (g googleVertexAIModelProvider) GetFastModel() (Model, error) {
-	fastModel, err := NewGoogleVertexAIFastModel(context.Background(), g.config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
-	}
-	return fastModel, nil
-}
-
-func (g googleVertexAIModelProvider) GetReasoningModel() (Model, error) {
-	reasoningModel, err := NewGoogleVertexAIReasoningModel(context.Background(), g.config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
-	}
-	return reasoningModel, nil
-}
-
-func (g googleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
-	switch s {
-	case vertexAIFastModelId:
-		return g.GetFastModel()
-	case vertexAIReasoningModelId:
-		return g.GetReasoningModel()
-	default:
-		return nil, errors.New("invalid model ID")
-	}
 }

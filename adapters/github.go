@@ -1,10 +1,13 @@
 package adapters
 
 import (
+	"fmt"
 	"net/http"
 	"os"
+	"time"
 
-	"github.com/google/go-github/v70/github"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/go-github/v74/github"
 	"github.com/safedep/dry/log"
 )
 
@@ -17,6 +20,11 @@ type GitHubClientConfig struct {
 	// App credentials usually have higher rate limits
 	ClientId     string
 	ClientSecret string
+
+	// AppAuthenticationPrivateKey is the PEM encoded private key for a GitHub App
+	// JWT based authentication
+	// https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
+	AppAuthenticationPrivateKey []byte
 
 	// Enterprise GitHub URLs
 	// eg. EnterpriseBaseURL = "https://github.yourdomain.com/api/v3"
@@ -38,13 +46,29 @@ func DefaultGitHubClientConfig() GitHubClientConfig {
 	enterpriseBaseURL, enterpriseUploadURL := os.Getenv("GITHUB_BASE_URL"),
 		os.Getenv("GITHUB_UPLOAD_URL")
 
+	// Try to read the private key from the environment variable
+	// Fallback to reading from a file if the env var is not set
+	appAuthenticationPrivateKey := os.Getenv("GITHUB_APP_PRIVATE_KEY")
+	if appAuthenticationPrivateKey == "" {
+		fromFile := os.Getenv("GITHUB_APP_PRIVATE_KEY_FILE")
+		if fromFile != "" {
+			data, err := os.ReadFile(fromFile)
+			if err != nil {
+				log.Warnf("Failed to read GITHUB_APP_JWT_FILE: %v", err)
+			} else {
+				appAuthenticationPrivateKey = string(data)
+			}
+		}
+	}
+
 	return GitHubClientConfig{
-		Token:               token,
-		ClientId:            clientId,
-		ClientSecret:        clientSecret,
-		EnterpriseBaseURL:   enterpriseBaseURL,
-		EnterpriseUploadURL: enterpriseUploadURL,
-		HTTPClient:          http.DefaultClient,
+		Token:                       token,
+		ClientId:                    clientId,
+		ClientSecret:                clientSecret,
+		EnterpriseBaseURL:           enterpriseBaseURL,
+		EnterpriseUploadURL:         enterpriseUploadURL,
+		HTTPClient:                  http.DefaultClient,
+		AppAuthenticationPrivateKey: []byte(appAuthenticationPrivateKey),
 	}
 }
 
@@ -101,4 +125,33 @@ func NewGithubClient(config GitHubClientConfig) (*GithubClient, error) {
 		Client: client,
 		Config: config,
 	}, nil
+}
+
+// CreateAppAuthenticationJWT creates a JWT for GitHub App authentication
+// following instructions from: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
+func (g *GithubClient) CreateAppAuthenticationJWT(appID string) (string, error) {
+	if len(g.Config.AppAuthenticationPrivateKey) == 0 {
+		return "", fmt.Errorf("app authentication private key is not configured")
+	}
+
+	// Parse the RSA private key from PEM
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(g.Config.AppAuthenticationPrivateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse app authentication private key: %v", err)
+	}
+
+	// Create the JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iat": jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)), // Issued at time, 1 minute in the past to allow for clock skew
+		"exp": jwt.NewNumericDate(time.Now().Add(10 * time.Minute)), // Expiration time, 10 minutes from now
+		"iss": appID,                                                // GitHub App ID
+	})
+
+	// Sign the token with the private key
+	signedToken, err := token.SignedString(key)
+	if err != nil {
+		return "", err
+	}
+
+	return signedToken, nil
 }

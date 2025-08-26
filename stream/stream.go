@@ -14,6 +14,19 @@ var (
 	ErrMissingTenantID = errors.New("missing tenant ID for multi-tenant stream")
 )
 
+// StreamMeta defines metadata for the stream. This may be exposed over API
+// for public streams. This allows us to treat streams as declarative source of truth
+type StreamMeta struct {
+	// Description is a human readable description of the stream.
+	Description string
+
+	// Public indicates if the stream is public or private.
+	Public bool
+
+	// DocumentatonURL is a link to the documentation for the stream if available.
+	DocumentatonURL string
+}
+
 // Stream is a minimal description of a stream as a first class citizen.
 // Implementations can use this to create a stream, read from it, write to it,
 type Stream struct {
@@ -30,15 +43,26 @@ type Stream struct {
 	// Special flags for declarative configuration of the stream specific
 	// to our platform requirements.
 	IsMultiTenant bool
+
+	// Metadata for the stream
+	Meta StreamMeta
+
+	// resourceID is an optional identifier for the underlying resource.
+	resourceID string
 }
 
 func (s Stream) WithTenant(tenantId string) Stream {
-	return Stream{
-		TenantID:      tenantId,
-		Namespace:     s.Namespace,
-		Name:          s.Name,
-		IsMultiTenant: true,
-	}
+	newStream := s
+	newStream.TenantID = tenantId
+
+	return newStream
+}
+
+func (s Stream) WithResourceID(resourceID string) Stream {
+	newStream := s
+	newStream.resourceID = resourceID
+
+	return newStream
 }
 
 // ID returns a unique identifier for the stream based on its properties.
@@ -64,6 +88,11 @@ func (s Stream) ID() (string, error) {
 	}
 
 	parts = append(parts, s.Namespace, s.Name)
+
+	if s.resourceID != "" {
+		parts = append(parts, s.resourceID)
+	}
+
 	return strings.Join(parts, ":"), nil
 }
 

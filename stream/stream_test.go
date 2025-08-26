@@ -36,6 +36,15 @@ func TestStreamID(t *testing.T) {
 			},
 			expectError: true,
 		},
+		{
+			name: "Stream with resource ID",
+			stream: Stream{
+				Namespace:  "namespace1",
+				Name:       "test-stream",
+				resourceID: "resource123",
+			},
+			expectedID: "namespace1:test-stream:resource123",
+		},
 	}
 
 	for _, tt := range tests {

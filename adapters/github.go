@@ -48,12 +48,6 @@ type GitHubAppClientConfig struct {
 	ClientId     string
 	ClientSecret string
 
-	// Enterprise GitHub URLs
-	// eg. EnterpriseBaseURL = "https://github.yourdomain.com/api/v3"
-	// eg. EnterpriseUploadURL = "https://github.yourdomain.com/api/uploads"
-	EnterpriseBaseURL   string
-	EnterpriseUploadURL string
-
 	// This is useful when we want to supply a client that
 	// can handle rate limiting, etc.
 	HTTPClient *http.Client
@@ -81,9 +75,6 @@ func DefaultGitHubClientConfig() GitHubClientConfig {
 // DefaultGitHubAppClientConfig creates a default configuration for GitHub App authentication
 // using environment variables
 func DefaultGitHubAppClientConfig() GitHubAppClientConfig {
-	enterpriseBaseURL, enterpriseUploadURL := os.Getenv("GITHUB_BASE_URL"),
-		os.Getenv("GITHUB_UPLOAD_URL")
-
 	// Try to read the private key from the environment variable
 	// Fallback to reading from a file if the env var is not set
 	appAuthenticationPrivateKey := os.Getenv("GITHUB_APP_PRIVATE_KEY")
@@ -109,8 +100,6 @@ func DefaultGitHubAppClientConfig() GitHubAppClientConfig {
 		EnableJWTTokenCache:         true,
 		ClientId:                    clientId,
 		ClientSecret:                clientSecret,
-		EnterpriseBaseURL:           enterpriseBaseURL,
-		EnterpriseUploadURL:         enterpriseUploadURL,
 		HTTPClient:                  http.DefaultClient,
 	}
 }
@@ -122,7 +111,6 @@ type GithubClient struct {
 
 // GitHubAppClient is a specialized client for GitHub App authentication
 type GitHubAppClient struct {
-	Client *github.Client
 	Config GitHubAppClientConfig
 
 	m              sync.Mutex
@@ -196,26 +184,7 @@ func NewGithubClient(config GitHubClientConfig) (*GithubClient, error) {
 
 // NewGitHubAppClient creates a new GitHub App client with JWT-based authentication
 func NewGitHubAppClient(config GitHubAppClientConfig) (*GitHubAppClient, error) {
-	if config.HTTPClient == nil {
-		config.HTTPClient = http.DefaultClient
-	}
-
-	client := github.NewClient(config.HTTPClient)
-
-	// Configure enterprise URLs if provided
-	if config.EnterpriseBaseURL != "" && config.EnterpriseUploadURL != "" {
-		log.Debugf("Using GitHub Enterprise URLs for App client: base=%s, upload=%s",
-			config.EnterpriseBaseURL, config.EnterpriseUploadURL)
-
-		var err error
-		client, err = client.WithEnterpriseURLs(config.EnterpriseBaseURL, config.EnterpriseUploadURL)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &GitHubAppClient{
-		Client: client,
 		Config: config,
 	}, nil
 }
@@ -267,4 +236,55 @@ func (g *GitHubAppClient) CreateAppAuthenticationJWT() (string, error) {
 	}
 
 	return signedToken, nil
+}
+
+// AuthenticatedClient returns a GitHub client authenticated using the Github App
+// clientId and clientSecret. We use different functions because we need
+// different round trippers for JWT vs basic auth.
+func (g *GitHubAppClient) AuthenticatedClient() (*github.Client, error) {
+	if g.Config.ClientId == "" || g.Config.ClientSecret == "" {
+		return nil, fmt.Errorf("client ID and client secret must be provided for authenticated client")
+	}
+
+	httpClient := g.Config.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	// Create a new client to avoid modifying the original client's transport
+	authClient := github.NewClient(httpClient)
+
+	// Use basic authentication with clientId and clientSecret
+	authClient.Client().Transport = &basicAuthTransportWrapper{
+		Transport: authClient.Client().Transport,
+		Username:  g.Config.ClientId,
+		Password:  g.Config.ClientSecret,
+	}
+
+	return authClient, nil
+}
+
+// AuthenticatedAppClient returns a GitHub client authenticated as the GitHub App
+// using a JWT token.
+func (g *GitHubAppClient) AuthenticatedAppClient() (*github.Client, error) {
+	jwtToken, err := g.CreateAppAuthenticationJWT()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app authentication JWT: %v", err)
+	}
+
+	httpClient := g.Config.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	// Create a new client to avoid modifying the original client's transport
+	appClient := github.NewClient(httpClient)
+
+	// Use JWT authentication for GitHub App
+	appClient.Client().Transport = &jwtAuthTransportWrapper{
+		Transport: appClient.Client().Transport,
+		Token:     jwtToken,
+	}
+
+	return appClient, nil
 }

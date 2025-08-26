@@ -327,7 +327,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_ConcurrentAccess(t *testing.
 	var wg sync.WaitGroup
 
 	// Launch multiple goroutines that try to get JWT tokens concurrently
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()

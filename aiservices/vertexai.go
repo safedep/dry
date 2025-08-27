@@ -39,11 +39,11 @@ func (g googleVertexAIModel) GetId() string {
 
 func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIModelConfig) (Model, error) {
 	if config.Project == "" {
-		return nil, errors.New("project is required for Vertex AI model")
+		return nil, NewInvalidConfigError(GoogleVertex, "project is required for Vertex AI model")
 	}
 
 	if config.Location == "" {
-		return nil, errors.New("location is required for Vertex AI model")
+		return nil, NewInvalidConfigError(GoogleVertex, "location is required for Vertex AI model")
 	}
 
 	// Load credentials from a service account key file
@@ -53,7 +53,8 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 	})
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load credentials")
+		err := errors.Wrap(err, "failed to load credentials for vertex ai model")
+		return nil, NewAuthenticationError(GoogleVertex, err.Error())
 	}
 
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
@@ -64,7 +65,8 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 	})
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create gemini client")
+		err := errors.Wrap(err, "failed to create gemini client")
+		return nil, NewAuthenticationError(GoogleVertex, err.Error())
 	}
 
 	// Create and configure ChatModel
@@ -74,7 +76,8 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 	})
 
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create gemini model")
+		err := errors.Wrap(err, "failed to create gemini chat model")
+		return nil, NewAuthenticationError(GoogleVertex, err.Error())
 	}
 
 	return &googleVertexAIModel{

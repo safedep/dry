@@ -11,6 +11,7 @@ type ErrorType string
 const (
 	// Model-related errors
 	ErrorTypeRateLimit        ErrorType = "rate_limit"
+	ErrorTypeInvalidConfig    ErrorType = "invalid_config"
 	ErrorTypeAuthentication   ErrorType = "authentication"
 	ErrorTypeModelUnavailable ErrorType = "model_unavailable"
 	ErrorTypeInvalidRequest   ErrorType = "invalid_request"
@@ -89,6 +90,16 @@ func NewRateLimitError(provider ModelProviderIdentifier, modelID, message string
 		ModelID:   modelID,
 		Message:   message,
 		Retryable: true,
+	}
+}
+
+// NewInvalidConfigError creates an invalid config error.
+func NewInvalidConfigError(provider ModelProviderIdentifier, message string) *ModelError {
+	return &ModelError{
+		Type:      ErrorTypeInvalidConfig,
+		Provider:  provider,
+		Message:   message,
+		Retryable: false,
 	}
 }
 

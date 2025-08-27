@@ -187,6 +187,16 @@ func IsRateLimitError(err error) bool {
 	return false
 }
 
+// IsInvalidConfigError checks if an error is an invalid config error.
+func IsInvalidConfigError(err error) bool {
+	var modelErr *ModelError
+	if errors.As(err, &modelErr) {
+		return modelErr.Type == ErrorTypeInvalidConfig
+	}
+
+	return false
+}
+
 // IsAuthenticationError checks if an error is an authentication error.
 func IsAuthenticationError(err error) bool {
 	var modelErr *ModelError

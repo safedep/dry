@@ -2,6 +2,7 @@ package aiservices
 
 import (
 	"context"
+	"strings"
 )
 
 type googleVertexAIModelProvider struct {
@@ -31,6 +32,10 @@ func (g googleVertexAIModelProvider) GetReasoningModel() (Model, error) {
 }
 
 func (g googleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, NewInvalidConfigError(GoogleVertex, "model ID cannot be empty")
+	}
+
 	customModel, err := newVertexAIChatModel(context.Background(), s, g.config)
 	if err != nil {
 		return nil, err

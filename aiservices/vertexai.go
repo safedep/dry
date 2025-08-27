@@ -21,7 +21,9 @@ type VertexAIModelConfig struct {
 	Project         string
 	Location        string
 	CredentialsFile string
-	ResponseSchema  *openapi3.Schema
+	// ResponseSchema is a OpenAPI v3 Schema which LLM will use as reference to generate JSON output
+	// It helps in manual JSON schema definition in txt prompts
+	ResponseSchema *openapi3.Schema
 }
 
 type googleVertexAIModel struct {

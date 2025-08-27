@@ -18,14 +18,14 @@ func flattenResponseMessage(response *schema.Message) string {
 }
 
 // modelInferenceOptionsToEinoModelOptions is a helper function to convert framework generic ModelInferenceOptions
-// to enio model.Option, which is then used in GenerateSingle like inference functions
+// to eino's model.Option, which is then used in GenerateSingle like inference functions
 func modelInferenceOptionsToEinoModelOptions(opts []inferenceOptionFn) []model.Option {
 	modelInferenceOptions := new(ModelInferenceOptions)
 	for _, opt := range opts {
 		opt(modelInferenceOptions)
 	}
 
-	// generateOptions are eino preventive used when calling GenerateSingle
+	// generateOptions are eino primitive used when calling GenerateSingle
 	var generateOptions []model.Option
 	if modelInferenceOptions.Temperature != nil {
 		generateOptions = append(generateOptions, model.WithTemperature(*modelInferenceOptions.Temperature))

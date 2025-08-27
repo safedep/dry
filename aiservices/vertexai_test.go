@@ -81,7 +81,7 @@ func TestVertexAI_CustomResponseSchema(t *testing.T) {
 	config := VertexAIModelConfig{
 		Project:         "text-project",
 		Location:        "us-central1",
-		CredentialsFile: "./testdata/vertexai_cred.json", // Invalid credentials file
+		CredentialsFile: "./testdata/vertexai_cred.json",
 		ResponseSchema:  schema,
 	}
 

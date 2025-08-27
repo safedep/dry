@@ -6,6 +6,8 @@ import (
 	"cloud.google.com/go/auth/credentials"
 	"github.com/cloudwego/eino-ext/components/model/gemini"
 	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 	"google.golang.org/genai"
 )
@@ -19,6 +21,7 @@ type VertexAIModelConfig struct {
 	Project         string
 	Location        string
 	CredentialsFile string
+	ResponseSchema  *openapi3.Schema
 }
 
 type googleVertexAIModel struct {
@@ -26,18 +29,10 @@ type googleVertexAIModel struct {
 	modelId   string
 }
 
+var _ LLM = &googleVertexAIModel{}
 var _ Model = &googleVertexAIModel{}
 
-
-func (g googleVertexAIModel) GetProvider() ModelProviderIdentifier {
-	return GoogleVertex
-}
-
-func (g googleVertexAIModel) GetId() string {
-	return g.modelId
-}
-
-func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIModelConfig) (Model, error) {
+func newVertexAIChatModel(modelId string, config VertexAIModelConfig) (LLM, error) {
 	if config.Project == "" {
 		return nil, NewInvalidConfigError(GoogleVertex, "project is required for Vertex AI model")
 	}
@@ -57,7 +52,7 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 		return nil, NewAuthenticationError(GoogleVertex, err.Error())
 	}
 
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
+	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
 		Project:     config.Project,
 		Location:    config.Location,
 		Backend:     genai.BackendVertexAI,
@@ -71,8 +66,9 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 
 	// Create and configure ChatModel
 	chatModel, err := gemini.NewChatModel(context.Background(), &gemini.Config{
-		Model:  modelId,
-		Client: client,
+		Model:          modelId,
+		Client:         client,
+		ResponseSchema: config.ResponseSchema,
 	})
 
 	if err != nil {
@@ -82,6 +78,32 @@ func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIMo
 
 	return &googleVertexAIModel{
 		baseModel: chatModel,
-		modelId:  modelId,
+		modelId:   modelId,
 	}, nil
+}
+
+func (g googleVertexAIModel) GetProvider() ModelProviderIdentifier {
+	return GoogleVertex
+}
+
+func (g googleVertexAIModel) GetId() string {
+	return g.modelId
+}
+
+func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, opts ...inferenceOptionFn) (string, error) {
+	generateOptions := modelInferenceOptionsToEinoModelOptions(opts)
+
+	response, err := g.baseModel.Generate(ctx, []*schema.Message{
+		{
+			Role:    schema.User,
+			Content: input,
+		},
+	}, generateOptions...)
+
+	if err != nil {
+		err := errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
+		return "", NewModelUnavailableError(GoogleVertex, g.GetId(), err.Error())
+	}
+
+	return flattenResponseMessage(response), nil
 }

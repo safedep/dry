@@ -1,7 +1,6 @@
 package aiservices
 
 import (
-	"context"
 	"strings"
 )
 
@@ -9,34 +8,34 @@ type googleVertexAIModelProvider struct {
 	config VertexAIModelConfig
 }
 
-var _ ModelProvider = &googleVertexAIModelProvider{}
+var _ LLMProvider = &googleVertexAIModelProvider{}
 
-func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (ModelProvider, error) {
+func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (LLMProvider, error) {
 	return &googleVertexAIModelProvider{config: config}, nil
 }
 
-func (g googleVertexAIModelProvider) GetFastModel() (Model, error) {
-	fastModel, err := newVertexAIChatModel(context.Background(), vertexAIFastModelId, g.config)
+func (g googleVertexAIModelProvider) GetFastModel() (LLM, error) {
+	fastModel, err := newVertexAIChatModel(vertexAIFastModelId, g.config)
 	if err != nil {
 		return nil, err
 	}
 	return fastModel, nil
 }
 
-func (g googleVertexAIModelProvider) GetReasoningModel() (Model, error) {
-	reasoningModel, err := newVertexAIChatModel(context.Background(), vertexAIReasoningModelId, g.config)
+func (g googleVertexAIModelProvider) GetReasoningModel() (LLM, error) {
+	reasoningModel, err := newVertexAIChatModel(vertexAIReasoningModelId, g.config)
 	if err != nil {
 		return nil, err
 	}
 	return reasoningModel, nil
 }
 
-func (g googleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
+func (g googleVertexAIModelProvider) GetModelByID(s string) (LLM, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, NewInvalidConfigError(GoogleVertex, "model ID cannot be empty")
 	}
 
-	customModel, err := newVertexAIChatModel(context.Background(), s, g.config)
+	customModel, err := newVertexAIChatModel(s, g.config)
 	if err != nil {
 		return nil, err
 	}

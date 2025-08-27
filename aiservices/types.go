@@ -22,11 +22,11 @@ type Model interface {
 	GetId() string
 }
 
-// ModelConfig contains general configuration for a Large Language Model
+// ModelInferenceOptions contains general configuration for a Large Language Model
 // inference request.
 type ModelInferenceOptions struct {
-	Temperature *float64
-	TopP        *float64
+	Temperature *float32
+	TopP        *float32
 	MaxTokens   *int
 	StopWords   []string
 }
@@ -35,14 +35,14 @@ type inferenceOptionFn func(*ModelInferenceOptions)
 
 // WithTemperature sets the temperature for the model configuration.
 // If not set, the model's default temperature will be used.
-func WithTemperature(temperature float64) inferenceOptionFn {
+func WithTemperature(temperature float32) inferenceOptionFn {
 	return func(mc *ModelInferenceOptions) {
 		mc.Temperature = &temperature
 	}
 }
 
 // WithTopP sets the top_p for the model configuration.
-func WithTopP(topP float64) inferenceOptionFn {
+func WithTopP(topP float32) inferenceOptionFn {
 	return func(mc *ModelInferenceOptions) {
 		mc.TopP = &topP
 	}
@@ -74,15 +74,15 @@ type LLM interface {
 	GenerateSingle(context.Context, string, ...inferenceOptionFn) (string, error)
 }
 
-// ModelProvider is an interface that all model providers must implement.
-// This is our opinionated abstraction over different AI model providers.
-type ModelProvider interface {
+// LLMProvider is an interface that all llm providers must implement.
+// This is our opinionated abstraction over different AI llm interface providers.
+type LLMProvider interface {
 	// GetFastModel returns a Model that is optimized for speed.
-	GetFastModel() (Model, error)
+	GetFastModel() (LLM, error)
 
 	// GetReasoningModel returns a Model that is optimized for reasoning.
-	GetReasoningModel() (Model, error)
+	GetReasoningModel() (LLM, error)
 
 	// GetModelByID returns a Model by its unique identifier.
-	GetModelByID(string) (Model, error)
+	GetModelByID(string) (LLM, error)
 }

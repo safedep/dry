@@ -3,6 +3,9 @@ package aiservices
 import (
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3gen"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -37,7 +40,7 @@ func TestNewVertexAIModel(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			model, err := newVertexAIChatModel(t.Context(), tc.modelId, config)
+			model, err := newVertexAIChatModel(tc.modelId, config)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -57,11 +60,46 @@ func TestNewVertexAI_AuthenticationError(t *testing.T) {
 		CredentialsFile: "./testdata/invalid_cred.json", // Invalid credentials file
 	}
 
-	model, err := newVertexAIChatModel(t.Context(), vertexAIFastModelId, config)
+	model, err := newVertexAIChatModel(vertexAIFastModelId, config)
 	if err == nil {
 		t.Fatal("expected an error due to invalid credentials, got nil")
 	}
 
 	assert.Nil(t, model)
 	assert.True(t, IsAuthenticationError(err), "expected an authentication error")
+}
+
+func TestVertexAI_CustomResponseSchema(t *testing.T) {
+	type testCustomResponseSchema struct {
+		Answer string `json:"answer"`
+		Error  string `json:"error"`
+	}
+
+	schema, err := generateOpenapiSchema(&testCustomResponseSchema{})
+	assert.NoError(t, err)
+
+	config := VertexAIModelConfig{
+		Project:         "text-project",
+		Location:        "us-central1",
+		CredentialsFile: "./testdata/vertexai_cred.json", // Invalid credentials file
+		ResponseSchema:  schema,
+	}
+
+	model, err := newVertexAIChatModel(vertexAIFastModelId, config)
+	assert.NoError(t, err)
+
+	assert.NotNil(t, model)
+}
+
+// generateOpenapiSchema helper function to convert Go struct into OpenAPI Schema
+// Since its open standard, we are not providing it for clients, they need to handle it.
+func generateOpenapiSchema(T any) (*openapi3.Schema, error) {
+	schemas := make(openapi3.Schemas)
+
+	schemaRef, err := openapi3gen.NewSchemaRefForValue(T, schemas)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create schema ref")
+	}
+
+	return schemaRef.Value, nil
 }

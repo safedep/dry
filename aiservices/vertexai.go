@@ -21,57 +21,23 @@ type VertexAIModelConfig struct {
 	CredentialsFile string
 }
 
-type googleVertexAIFastModel struct {
+type googleVertexAIModel struct {
 	baseModel model.ToolCallingChatModel
+	modelId   string
 }
 
-var _ Model = &googleVertexAIFastModel{}
+var _ Model = &googleVertexAIModel{}
 
-func NewGoogleVertexAIFastModel(ctx context.Context, config VertexAIModelConfig) (Model, error) {
-	chatModel, err := createVertexAIChatModel(ctx, vertexAIFastModelId, config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create chat model")
-	}
 
-	return &googleVertexAIFastModel{
-		baseModel: chatModel,
-	}, nil
-}
-
-func (g googleVertexAIFastModel) GetProvider() ModelProviderIdentifier {
+func (g googleVertexAIModel) GetProvider() ModelProviderIdentifier {
 	return GoogleVertex
 }
 
-func (g googleVertexAIFastModel) GetId() string {
-	return vertexAIFastModelId
+func (g googleVertexAIModel) GetId() string {
+	return g.modelId
 }
 
-type googleVertexAIReasoningModel struct {
-	baseModel model.ToolCallingChatModel
-}
-
-var _ Model = &googleVertexAIReasoningModel{}
-
-func NewGoogleVertexAIReasoningModel(ctx context.Context, config VertexAIModelConfig) (Model, error) {
-	chatModel, err := createVertexAIChatModel(ctx, vertexAIReasoningModelId, config)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create chat model")
-	}
-
-	return &googleVertexAIReasoningModel{
-		baseModel: chatModel,
-	}, nil
-}
-
-func (g googleVertexAIReasoningModel) GetProvider() ModelProviderIdentifier {
-	return GoogleVertex
-}
-
-func (g googleVertexAIReasoningModel) GetId() string {
-	return vertexAIReasoningModelId
-}
-
-func createVertexAIChatModel(ctx context.Context, modelId string, config VertexAIModelConfig) (model.ToolCallingChatModel, error) {
+func newVertexAIChatModel(ctx context.Context, modelId string, config VertexAIModelConfig) (Model, error) {
 	if config.Project == "" {
 		return nil, errors.New("project is required for Vertex AI model")
 	}
@@ -111,5 +77,8 @@ func createVertexAIChatModel(ctx context.Context, modelId string, config VertexA
 		return nil, errors.Wrap(err, "failed to create gemini model")
 	}
 
-	return chatModel, nil
+	return &googleVertexAIModel{
+		baseModel: chatModel,
+		modelId:  modelId,
+	}, nil
 }

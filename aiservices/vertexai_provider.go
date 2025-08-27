@@ -10,12 +10,14 @@ type googleVertexAIModelProvider struct {
 	config VertexAIModelConfig
 }
 
+var _ ModelProvider = &googleVertexAIModelProvider{}
+
 func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (ModelProvider, error) {
 	return &googleVertexAIModelProvider{config: config}, nil
 }
 
 func (g googleVertexAIModelProvider) GetFastModel() (Model, error) {
-	fastModel, err := NewGoogleVertexAIFastModel(context.Background(), g.config)
+	fastModel, err := newVertexAIChatModel(context.Background(), vertexAIFastModelId, g.config)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
 	}
@@ -23,20 +25,17 @@ func (g googleVertexAIModelProvider) GetFastModel() (Model, error) {
 }
 
 func (g googleVertexAIModelProvider) GetReasoningModel() (Model, error) {
-	reasoningModel, err := NewGoogleVertexAIReasoningModel(context.Background(), g.config)
+	reasoningModel, err := newVertexAIChatModel(context.Background(), vertexAIReasoningModelId, g.config)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create vertex ai fast model")
+		return nil, errors.Wrap(err, "failed to create vertex ai reasoning model")
 	}
 	return reasoningModel, nil
 }
 
 func (g googleVertexAIModelProvider) GetModelByID(s string) (Model, error) {
-	switch s {
-	case vertexAIFastModelId:
-		return g.GetFastModel()
-	case vertexAIReasoningModelId:
-		return g.GetReasoningModel()
-	default:
-		return nil, errors.New("invalid model ID")
+	customModel, err := newVertexAIChatModel(context.Background(), s, g.config)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to create vertex ai model id: %s", s)
 	}
+	return customModel, nil
 }

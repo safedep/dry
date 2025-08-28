@@ -142,6 +142,12 @@ func TestIsAhead(t *testing.T) {
 			"1.2.3-alpha",
 			false,
 		},
+		{
+			"development version is ahead, but this is not semvar",
+			"8.0.2",
+			"8.0.2.1",
+			false, // this is not a valid semver
+		},
 	}
 
 	for _, test := range cases {

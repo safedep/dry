@@ -208,8 +208,8 @@ func TestRubyGetPackageLatestVersion(t *testing.T) {
 		expectedLatestVersion string
 	}{
 		{
-			pkgName:               "rails",
-			expectedLatestVersion: "8.0.2",
+			pkgName:               "http-cookie",
+			expectedLatestVersion: "1.0.8",
 		},
 		{
 			pkgName:               "sql_enum",
@@ -236,6 +236,7 @@ func TestRubyGetPackageLatestVersion(t *testing.T) {
 				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
+				fmt.Println("Latest version found: ", pkg.LatestVersion)
 				assert.True(t, semver.IsAheadOrEqual(test.expectedLatestVersion, pkg.LatestVersion),
 					fmt.Sprintf("expected latest version %s to be ahead or equal to %s", pkg.LatestVersion, test.expectedLatestVersion))
 			}

@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
@@ -30,7 +31,18 @@ type EchoRouter struct {
 
 func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 	router := echo.New()
-	router.Logger.SetLevel(log.INFO)
+
+	// Default log level to disable unnecessary logs
+	router.Logger.SetLevel(log.ERROR)
+
+	// Optionally override log level from environment variable
+	routerLogLevel := os.Getenv("APP_HTTP_ROUTER_LOG_LEVEL")
+	switch routerLogLevel {
+	case "info":
+		router.Logger.SetLevel(log.INFO)
+	case "debug":
+		router.Logger.SetLevel(log.DEBUG)
+	}
 
 	router.Use(middleware.Logger())
 	router.Use(middleware.Recover())

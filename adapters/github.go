@@ -161,7 +161,7 @@ func NewGithubClient(config GitHubClientConfig) (*GithubClient, error) {
 	if config.ClientId != "" && config.ClientSecret != "" {
 		log.Debugf("Using client credentials for GitHub authentication")
 		httpClient.Transport = &basicAuthTransportWrapper{
-			Transport: httpClient.Transport,
+			Transport: http.DefaultTransport,
 			Username:  config.ClientId,
 			Password:  config.ClientSecret,
 		}
@@ -272,7 +272,7 @@ func (g *GitHubAppClient) AuthenticatedClient() (*github.Client, error) {
 	}
 
 	httpClient.Transport = &basicAuthTransportWrapper{
-		Transport: httpClient.Transport,
+		Transport: http.DefaultTransport,
 		Username:  g.Config.ClientId,
 		Password:  g.Config.ClientSecret,
 	}
@@ -296,7 +296,7 @@ func (g *GitHubAppClient) AuthenticatedAppClient() (*github.Client, error) {
 	}
 
 	httpClient.Transport = &jwtAuthTransportWrapper{
-		Transport: httpClient.Transport,
+		Transport: http.DefaultTransport,
 		Token:     jwtToken,
 	}
 

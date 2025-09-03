@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -220,13 +221,18 @@ func (g *GitHubAppClient) CreateAppAuthenticationJWT() (string, error) {
 		}
 	}
 
-	// Parse the RSA private key from PEM
+	// Convert AppID from string to int for JWT issuer claim
+	// GitHub requires the issuer to be a numeric App ID, not a string
+	appID, err := strconv.Atoi(g.Config.AppID)
+	if err != nil {
+		return "", fmt.Errorf("invalid app ID format, must be numeric: %v", err)
+	}
 
 	// Create the JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
 		"iat": jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)), // Issued at time, 1 minute in the past to allow for clock skew
 		"exp": jwt.NewNumericDate(time.Now().Add(10 * time.Minute)), // Expiration time, 10 minutes from now
-		"iss": g.Config.AppID,                                       // GitHub App ID
+		"iss": appID,                                                // GitHub App ID as integer
 	})
 
 	// Sign the token with the private key

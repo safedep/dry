@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func TestNewGitHubAppClient(t *testing.T) {
 		{
 			name:       "app ID with special characters",
 			privateKey: validKey,
-			appID:      "app-123_test",
+			appID:      "12345",
 		},
 	}
 
@@ -128,9 +129,9 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 			validateToken: true,
 		},
 		{
-			name:          "app ID with special characters",
+			name:          "valid numeric app ID",
 			privateKey:    validKey,
-			appID:         "app-123_test",
+			appID:         "12345",
 			validateToken: true,
 		},
 	}
@@ -172,10 +173,12 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 				claims, ok := parsedToken.Claims.(jwt.MapClaims)
 				assert.True(t, ok)
 
-				// Check issuer claim
+				// Check issuer claim (should be numeric)
 				iss, ok := claims["iss"]
 				assert.True(t, ok)
-				assert.Equal(t, tt.appID, iss)
+				expectedAppID, err := strconv.Atoi(tt.appID)
+				require.NoError(t, err)
+				assert.Equal(t, float64(expectedAppID), iss) // JWT numeric claims are returned as float64
 
 				// Check issued at time (should be ~1 minute ago)
 				iat, ok := claims["iat"]
@@ -203,6 +206,25 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 	}
 }
 
+func TestGitHubAppClient_CreateAppAuthenticationJWT_NonNumericAppID(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "non-numeric-app-id",
+		EnableJWTTokenCache:         false,
+	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	token, err := client.CreateAppAuthenticationJWT()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid app ID format, must be numeric")
+	assert.Empty(t, token)
+}
+
 func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
@@ -215,7 +237,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T
 
 	config := GitHubAppClientConfig{
 		AppAuthenticationPrivateKey: validKey,
-		AppID:                       "test-app",
+		AppID:                       "123", // Use numeric app ID
 		EnableJWTTokenCache:         false, // Disable caching to test core functionality
 	}
 
@@ -246,7 +268,9 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T
 	assert.True(t, ok)
 	iss, ok := claims["iss"]
 	assert.True(t, ok)
-	assert.Equal(t, "test-app", iss)
+	// "test-app" is not numeric, so this would fail conversion
+	// Let's use a numeric app ID for this test
+	assert.Equal(t, float64(123), iss) // JWT numeric claims are returned as float64
 }
 
 func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingEnabled(t *testing.T) {
@@ -254,7 +278,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingEnabled(t *testing.T)
 
 	config := GitHubAppClientConfig{
 		AppAuthenticationPrivateKey: validKey,
-		AppID:                       "test-app",
+		AppID:                       "123",
 		EnableJWTTokenCache:         true,
 	}
 
@@ -284,7 +308,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingDisabled(t *testing.T
 
 	config := GitHubAppClientConfig{
 		AppAuthenticationPrivateKey: validKey,
-		AppID:                       "test-app",
+		AppID:                       "123",
 		EnableJWTTokenCache:         false,
 	}
 
@@ -312,7 +336,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CacheExpiration(t *testing.T
 
 	config := GitHubAppClientConfig{
 		AppAuthenticationPrivateKey: validKey,
-		AppID:                       "test-app",
+		AppID:                       "123",
 		EnableJWTTokenCache:         true,
 	}
 
@@ -350,7 +374,7 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_ConcurrentAccess(t *testing.
 
 	config := GitHubAppClientConfig{
 		AppAuthenticationPrivateKey: validKey,
-		AppID:                       "test-app",
+		AppID:                       "123",
 		EnableJWTTokenCache:         true,
 	}
 

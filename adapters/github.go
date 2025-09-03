@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"os"
@@ -113,9 +114,10 @@ type GithubClient struct {
 type GitHubAppClient struct {
 	Config GitHubAppClientConfig
 
-	m              sync.Mutex
-	cachedToken    string
-	cachedTokenExp time.Time
+	m                sync.Mutex
+	parsedPrivateKey *rsa.PrivateKey
+	cachedToken      string
+	cachedTokenExp   time.Time
 }
 
 type basicAuthTransportWrapper struct {
@@ -184,22 +186,30 @@ func NewGithubClient(config GitHubClientConfig) (*GithubClient, error) {
 
 // NewGitHubAppClient creates a new GitHub App client with JWT-based authentication
 func NewGitHubAppClient(config GitHubAppClientConfig) (*GitHubAppClient, error) {
+	if len(config.AppAuthenticationPrivateKey) == 0 {
+		return nil, fmt.Errorf("app authentication private key is not configured")
+	}
+
+	if config.AppID == "" {
+		return nil, fmt.Errorf("app ID is not configured")
+	}
+
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(config.AppAuthenticationPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse app authentication private key: %v", err)
+	}
+
 	return &GitHubAppClient{
-		Config: config,
+		Config:           config,
+		m:                sync.Mutex{},
+		parsedPrivateKey: key,
+		cachedToken:      "",
 	}, nil
 }
 
 // CreateAppAuthenticationJWT creates a JWT for GitHub App authentication
 // following instructions from: https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app
 func (g *GitHubAppClient) CreateAppAuthenticationJWT() (string, error) {
-	if len(g.Config.AppAuthenticationPrivateKey) == 0 {
-		return "", fmt.Errorf("app authentication private key is not configured")
-	}
-
-	if g.Config.AppID == "" {
-		return "", fmt.Errorf("app ID is not configured")
-	}
-
 	if g.Config.EnableJWTTokenCache {
 		g.m.Lock()
 		defer g.m.Unlock()
@@ -211,10 +221,6 @@ func (g *GitHubAppClient) CreateAppAuthenticationJWT() (string, error) {
 	}
 
 	// Parse the RSA private key from PEM
-	key, err := jwt.ParseRSAPrivateKeyFromPEM(g.Config.AppAuthenticationPrivateKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse app authentication private key: %v", err)
-	}
 
 	// Create the JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
@@ -224,7 +230,7 @@ func (g *GitHubAppClient) CreateAppAuthenticationJWT() (string, error) {
 	})
 
 	// Sign the token with the private key
-	signedToken, err := token.SignedString(key)
+	signedToken, err := token.SignedString(g.parsedPrivateKey)
 	if err != nil {
 		return "", err
 	}

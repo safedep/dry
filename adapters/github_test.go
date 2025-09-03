@@ -30,7 +30,7 @@ func generateTestRSAKey(t *testing.T) []byte {
 	return privateKeyPEM
 }
 
-func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
+func TestNewGitHubAppClient(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 	invalidPEM := []byte("invalid pem data")
 
@@ -39,13 +39,11 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 		privateKey    []byte
 		appID         string
 		expectedError string
-		validateToken bool
 	}{
 		{
-			name:          "valid key and app ID",
-			privateKey:    validKey,
-			appID:         "12345",
-			validateToken: true,
+			name:       "valid key and app ID",
+			privateKey: validKey,
+			appID:      "12345",
 		},
 		{
 			name:          "empty private key",
@@ -72,6 +70,58 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 			expectedError: "app ID is not configured",
 		},
 		{
+			name:       "numeric app ID",
+			privateKey: validKey,
+			appID:      "67890",
+		},
+		{
+			name:       "app ID with special characters",
+			privateKey: validKey,
+			appID:      "app-123_test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := GitHubAppClientConfig{
+				AppAuthenticationPrivateKey: tt.privateKey,
+				AppID:                       tt.appID,
+				EnableJWTTokenCache:         false,
+			}
+
+			client, err := NewGitHubAppClient(config)
+
+			if tt.expectedError != "" {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+				assert.Nil(t, client)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.NotNil(t, client)
+			assert.NotNil(t, client.parsedPrivateKey)
+			assert.Equal(t, tt.appID, client.Config.AppID)
+		})
+	}
+}
+
+func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
+	validKey := generateTestRSAKey(t)
+
+	tests := []struct {
+		name          string
+		privateKey    []byte
+		appID         string
+		validateToken bool
+	}{
+		{
+			name:          "valid key and app ID",
+			privateKey:    validKey,
+			appID:         "12345",
+			validateToken: true,
+		},
+		{
 			name:          "numeric app ID",
 			privateKey:    validKey,
 			appID:         "67890",
@@ -87,24 +137,17 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := &GitHubAppClient{
-				Config: GitHubAppClientConfig{
-					AppAuthenticationPrivateKey: tt.privateKey,
-					AppID:                       tt.appID,
-					EnableJWTTokenCache:         false, // Disable caching for table-driven tests to ensure consistent behavior
-				},
+			config := GitHubAppClientConfig{
+				AppAuthenticationPrivateKey: tt.privateKey,
+				AppID:                       tt.appID,
+				EnableJWTTokenCache:         false, // Disable caching for table-driven tests to ensure consistent behavior
 			}
+
+			client, err := NewGitHubAppClient(config)
+			require.NoError(t, err)
+			require.NotNil(t, client)
 
 			token, err := client.CreateAppAuthenticationJWT()
-
-			if tt.expectedError != "" {
-				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedError)
-				assert.Empty(t, token)
-
-				return
-			}
-
 			assert.NoError(t, err)
 			assert.NotEmpty(t, token)
 
@@ -170,13 +213,15 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T
 	t.Setenv("GITHUB_TOKEN", "token-from-env")
 	t.Setenv("GITHUB_CLIENT_ID", "client-id-from-env")
 
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			AppID:                       "test-app",
-			EnableJWTTokenCache:         false, // Disable caching to test core functionality
-		},
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "test-app",
+		EnableJWTTokenCache:         false, // Disable caching to test core functionality
 	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
 	token, err := client.CreateAppAuthenticationJWT()
 	assert.NoError(t, err)
@@ -204,33 +249,18 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_WithEnvironment(t *testing.T
 	assert.Equal(t, "test-app", iss)
 }
 
-func TestGitHubAppClient_CreateAppAuthenticationJWT_MissingAppID(t *testing.T) {
-	validKey := generateTestRSAKey(t)
-
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			EnableJWTTokenCache:         false,
-			// AppID is intentionally not set
-		},
-	}
-
-	token, err := client.CreateAppAuthenticationJWT()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "app ID is not configured")
-	assert.Empty(t, token)
-}
-
 func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingEnabled(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			AppID:                       "test-app",
-			EnableJWTTokenCache:         true,
-		},
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "test-app",
+		EnableJWTTokenCache:         true,
 	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
 	// First call should generate a new token
 	token1, err := client.CreateAppAuthenticationJWT()
@@ -252,13 +282,15 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingEnabled(t *testing.T)
 func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingDisabled(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			AppID:                       "test-app",
-			EnableJWTTokenCache:         false,
-		},
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "test-app",
+		EnableJWTTokenCache:         false,
 	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
 	// First call should generate a token
 	token1, err := client.CreateAppAuthenticationJWT()
@@ -278,13 +310,15 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CachingDisabled(t *testing.T
 func TestGitHubAppClient_CreateAppAuthenticationJWT_CacheExpiration(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			AppID:                       "test-app",
-			EnableJWTTokenCache:         true,
-		},
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "test-app",
+		EnableJWTTokenCache:         true,
 	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
 	// Generate first token
 	token1, err := client.CreateAppAuthenticationJWT()
@@ -314,13 +348,15 @@ func TestGitHubAppClient_CreateAppAuthenticationJWT_CacheExpiration(t *testing.T
 func TestGitHubAppClient_CreateAppAuthenticationJWT_ConcurrentAccess(t *testing.T) {
 	validKey := generateTestRSAKey(t)
 
-	client := &GitHubAppClient{
-		Config: GitHubAppClientConfig{
-			AppAuthenticationPrivateKey: validKey,
-			AppID:                       "test-app",
-			EnableJWTTokenCache:         true,
-		},
+	config := GitHubAppClientConfig{
+		AppAuthenticationPrivateKey: validKey,
+		AppID:                       "test-app",
+		EnableJWTTokenCache:         true,
 	}
+
+	client, err := NewGitHubAppClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
 
 	const numGoroutines = 10
 	tokens := make([]string, numGoroutines)

@@ -146,11 +146,8 @@ func (j *jwtAuthTransportWrapper) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func NewGithubClient(config GitHubClientConfig) (*GithubClient, error) {
-	if config.HTTPClient == nil {
-		config.HTTPClient = nil
-	}
-
 	// We need to modify the transport for authentication if credentials are provided
+	// If the config.HTTPClient is nil, we pass it as it is
 	httpClient := config.HTTPClient
 
 	// Default client without credentials

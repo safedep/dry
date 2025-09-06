@@ -15,7 +15,7 @@ const (
 // Model is an interface that all AI models must implement.
 type Model interface {
 	// GetProvider returns the provider of the model.
-	GetProvider() ModelProviderIdentifier
+	GetProviderID() ModelProviderIdentifier
 
 	// GetId returns the unique identifier of the model.
 	// This ID is provider-specific.
@@ -77,6 +77,9 @@ type LLM interface {
 // LLMProvider is an interface that all llm providers must implement.
 // This is our opinionated abstraction over different AI llm interface providers.
 type LLMProvider interface {
+	// GetID returns the unique identifier of the provider.
+	GetID() ModelProviderIdentifier
+
 	// GetFastModel returns a Model that is optimized for speed.
 	GetFastModel() (LLM, error)
 

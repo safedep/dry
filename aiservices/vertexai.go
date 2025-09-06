@@ -84,7 +84,7 @@ func newVertexAIChatModel(modelId string, config VertexAIModelConfig) (LLM, erro
 	}, nil
 }
 
-func (g googleVertexAIModel) GetProvider() ModelProviderIdentifier {
+func (g googleVertexAIModel) GetProviderID() ModelProviderIdentifier {
 	return GoogleVertex
 }
 

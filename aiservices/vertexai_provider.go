@@ -14,6 +14,10 @@ func NewGoogleVertexAIModelProvider(config VertexAIModelConfig) (LLMProvider, er
 	return &googleVertexAIModelProvider{config: config}, nil
 }
 
+func (g googleVertexAIModelProvider) GetID() ModelProviderIdentifier {
+	return GoogleVertex
+}
+
 func (g googleVertexAIModelProvider) GetFastModel() (LLM, error) {
 	fastModel, err := newVertexAIChatModel(vertexAIFastModelId, g.config)
 	if err != nil {

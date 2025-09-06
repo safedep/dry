@@ -48,7 +48,7 @@ func TestNewVertexAIModel(t *testing.T) {
 			assert.NotNil(t, model)
 			assert.IsType(t, &googleVertexAIModel{}, model)
 			assert.Equal(t, tc.expected, model.GetId())
-			assert.Equal(t, GoogleVertex, model.GetProvider())
+			assert.Equal(t, GoogleVertex, model.GetProviderID())
 		})
 	}
 }

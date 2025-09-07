@@ -53,7 +53,8 @@ func createVertexAIProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvide
 	location := os.Getenv("AISERVICES_GOOGLE_VERTEX_AI_LOCATION")
 
 	if project == "" || location == "" {
-		return nil, fmt.Errorf("GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set for Vertex AI provider")
+		return nil, fmt.Errorf("missing required environment variables for Google Vertex AI: " +
+			"AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 	}
 
 	// This can be empty. Google SDK automatically picks up the default credentials.

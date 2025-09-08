@@ -90,6 +90,10 @@ func (p *prometheusMetricsProvider) NewCounterVec(name, desc string, labels []st
 		Subsystem: p.subsystem,
 		Name:      name,
 		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
 	}, labels)
 
 	prometheus.MustRegister(c)

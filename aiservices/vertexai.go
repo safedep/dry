@@ -95,6 +95,11 @@ func (g googleVertexAIModel) GetId() string {
 func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, opts ...inferenceOptionFn) (string, error) {
 	generateOptions := modelInferenceOptionsToEinoModelOptions(opts)
 
+	metricAiServicesLlmGenerationTotal.WithLabels(map[string]string{
+		"provider": string(GoogleVertex),
+		"model":    g.GetId(),
+	}).Inc()
+
 	response, err := g.baseModel.Generate(ctx, []*schema.Message{
 		{
 			Role:    schema.User,
@@ -103,6 +108,11 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, o
 	}, generateOptions...)
 
 	if err != nil {
+		metricAiServicesLlmGenerationErrors.WithLabels(map[string]string{
+			"provider": string(GoogleVertex),
+			"model":    g.GetId(),
+		}).Inc()
+
 		err := errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
 		return "", NewModelUnavailableError(GoogleVertex, g.GetId(), err.Error())
 	}

@@ -12,6 +12,6 @@ var (
 	metricAiServicesLlmGenerationErrors = obs.NewCounterVec(
 		"aisvc_llm_generation_errors_total",
 		"Total number of LLM generation errors",
-		[]string{"provider", "model", "error_type"},
+		[]string{"provider", "model"},
 	)
 )

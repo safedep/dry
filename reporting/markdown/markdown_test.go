@@ -50,6 +50,15 @@ func TestMarkdownBuilder(t *testing.T) {
 			},
 			"<details>\n<summary>Title</summary>\n\nAAAABBBB\n\n</details>",
 		},
+		{
+			"Has horizontal rule",
+			func(builder *MarkdownBuilder) {
+				builder.AddParagraph("Above the line")
+				builder.AddHorizontalRule()
+				builder.AddParagraph("Below the line")
+			},
+			"Above the line\n\n\n---\nBelow the line\n\n",
+		},
 	}
 
 	for _, test := range cases {

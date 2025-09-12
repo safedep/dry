@@ -90,7 +90,7 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 			opts:        nil,
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set")
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 		{
@@ -102,7 +102,7 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 			opts:        nil,
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set")
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 		{
@@ -195,7 +195,7 @@ func TestCreateVertexAIProvider(t *testing.T) {
 			opts:        nil,
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set")
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 		{
@@ -205,7 +205,7 @@ func TestCreateVertexAIProvider(t *testing.T) {
 			opts:        nil,
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set")
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 		{
@@ -215,7 +215,7 @@ func TestCreateVertexAIProvider(t *testing.T) {
 			opts:        nil,
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "GOOGLE_VERTEX_AI_PROJECT and GOOGLE_VERTEX_AI_LOCATION must be set")
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 	}

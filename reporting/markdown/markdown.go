@@ -62,6 +62,10 @@ func (mb *MarkdownBuilder) AddQuote(text string) {
 	mb.content.WriteString("> " + text + "\n")
 }
 
+func (mb *MarkdownBuilder) AddHorizontalRule() {
+	mb.content.WriteString("\n---\n")
+}
+
 // StartCollapsibleSection starts a collapsible section in the markdown document.
 func (mb *MarkdownBuilder) StartCollapsibleSection(title string) *MarkdownCollapsibleSection {
 	return &MarkdownCollapsibleSection{

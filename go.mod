@@ -5,12 +5,14 @@ go 1.24.3
 require (
 	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.6-20250705071048-7ad8e6be7c05.1
 	cloud.google.com/go/auth v0.16.1
+	cloud.google.com/go/profiler v0.4.3
 	cloud.google.com/go/storage v1.55.0
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/antihax/optional v1.0.0
 	github.com/cloudwego/eino v0.4.7
 	github.com/cloudwego/eino-ext/components/model/gemini v0.1.5
 	github.com/envoyproxy/go-control-plane/envoy v1.32.4
+	github.com/getkin/kin-openapi v0.118.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/goark/go-cvss v1.6.7
 	github.com/golang-jwt/jwt/v5 v5.3.0
@@ -87,7 +89,6 @@ require (
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
-	github.com/getkin/kin-openapi v0.118.0 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
@@ -99,6 +100,7 @@ require (
 	github.com/goark/errs v1.3.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
+	github.com/google/pprof v0.0.0-20250602020802-c6617b811d0e // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.6 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.2 // indirect

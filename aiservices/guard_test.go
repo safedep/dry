@@ -23,4 +23,12 @@ func TestGuardedPrompt(t *testing.T) {
 	t.Run("user prompt should be unchanged", func(t *testing.T) {
 		assert.Equal(t, req.UserPrompt, r.userPrompt)
 	})
+
+	t.Run("insecure skip should not harden", func(t *testing.T) {
+		req.InsecureSkipPromptGuard = true
+		r, err := guardedPrompt(req)
+		assert.NoError(t, err)
+		assert.Equal(t, req.SystemPrompt, r.systemPrompt)
+		assert.Equal(t, req.UserPrompt, r.userPrompt)
+	})
 }

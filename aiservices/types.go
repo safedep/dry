@@ -70,6 +70,9 @@ func WithStopWords(stopWords []string) inferenceOptionFn {
 type LLMGenerationRequest struct {
 	SystemPrompt string
 	UserPrompt   string
+
+	// Optional configuration for handling the inference request.
+	InsecureSkipPromptGuard bool
 }
 
 // LLM is an interface that all Large Language Models must implement.

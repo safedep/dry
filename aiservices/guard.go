@@ -14,6 +14,13 @@ type guardedPromptRequest struct {
 // appropriate authorization so that even if the model is compromised, it cannot be used to
 // exfiltrate data or perform unauthorized actions.
 func guardedPrompt(req LLMGenerationRequest) (*guardedPromptRequest, error) {
+	if req.InsecureSkipPromptGuard {
+		return &guardedPromptRequest{
+			systemPrompt: req.SystemPrompt,
+			userPrompt:   req.UserPrompt,
+		}, nil
+	}
+
 	modifiedSystemPrompt := req.SystemPrompt + "\n\n" +
 		`
 SECURITY RULES:

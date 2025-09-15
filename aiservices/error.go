@@ -103,6 +103,17 @@ func NewInvalidConfigError(provider ModelProviderIdentifier, message string) *Mo
 	}
 }
 
+// NewInvalidRequestError creates an invalid request error.
+func NewInvalidRequestError(provider ModelProviderIdentifier, modelID, message string) *ModelError {
+	return &ModelError{
+		Type:      ErrorTypeInvalidRequest,
+		Provider:  provider,
+		ModelID:   modelID,
+		Message:   message,
+		Retryable: false,
+	}
+}
+
 // NewAuthenticationError creates an authentication error.
 func NewAuthenticationError(provider ModelProviderIdentifier, message string) *ModelError {
 	return &ModelError{

@@ -100,6 +100,14 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerati
 		"model":    g.GetId(),
 	}).Inc()
 
+	if req.SystemPrompt == "" {
+		return "", NewInvalidConfigError(GoogleVertex, "system prompt is required for Vertex AI model")
+	}
+
+	if req.UserPrompt == "" {
+		return "", NewInvalidRequestError(GoogleVertex, g.GetId(), "user prompt is required for Vertex AI model")
+	}
+
 	response, err := g.baseModel.Generate(ctx, []*schema.Message{
 		{
 			Role:    schema.System,

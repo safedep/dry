@@ -92,7 +92,7 @@ func (g googleVertexAIModel) GetId() string {
 	return g.modelId
 }
 
-func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, opts ...inferenceOptionFn) (string, error) {
+func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerationRequest, opts ...inferenceOptionFn) (string, error) {
 	generateOptions := modelInferenceOptionsToEinoModelOptions(opts)
 
 	metricAiServicesLlmGenerationTotal.WithLabels(map[string]string{
@@ -102,8 +102,12 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, o
 
 	response, err := g.baseModel.Generate(ctx, []*schema.Message{
 		{
+			Role:    schema.System,
+			Content: req.SystemPrompt,
+		},
+		{
 			Role:    schema.User,
-			Content: input,
+			Content: req.UserPrompt,
 		},
 	}, generateOptions...)
 

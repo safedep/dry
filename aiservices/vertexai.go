@@ -108,14 +108,19 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerati
 		return "", NewInvalidRequestError(GoogleVertex, g.GetId(), "user prompt is required for Vertex AI model")
 	}
 
+	hardendedPrompt, err := guardedPrompt(req)
+	if err != nil {
+		return "", NewInvalidRequestError(GoogleVertex, g.GetId(), "failed to harden prompt: "+err.Error())
+	}
+
 	response, err := g.baseModel.Generate(ctx, []*schema.Message{
 		{
 			Role:    schema.System,
-			Content: req.SystemPrompt,
+			Content: hardendedPrompt.systemPrompt,
 		},
 		{
 			Role:    schema.User,
-			Content: req.UserPrompt,
+			Content: hardendedPrompt.userPrompt,
 		},
 	}, generateOptions...)
 

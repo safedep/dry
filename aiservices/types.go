@@ -64,6 +64,17 @@ func WithStopWords(stopWords []string) inferenceOptionFn {
 	}
 }
 
+// LLMGenerationRequest represents a request to generate text from a Large Language Model.
+// It explicitly separates system and user prompts forcing the caller to think about
+// the context they want to provide to the model and avoid prompt injection attacks.
+type LLMGenerationRequest struct {
+	SystemPrompt string
+	UserPrompt   string
+
+	// Optional configuration for handling the inference request.
+	InsecureSkipPromptGuard bool
+}
+
 // LLM is an interface that all Large Language Models must implement.
 type LLM interface {
 	Model
@@ -71,7 +82,7 @@ type LLM interface {
 	// GenerateSingle generates a single response from the model given a prompt.
 	// The configurationFns are optional functions that can be used to customize
 	// the model configuration for this specific request.
-	GenerateSingle(context.Context, string, ...inferenceOptionFn) (string, error)
+	GenerateSingle(context.Context, LLMGenerationRequest, ...inferenceOptionFn) (string, error)
 }
 
 // LLMProvider is an interface that all llm providers must implement.

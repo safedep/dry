@@ -92,7 +92,7 @@ func (g googleVertexAIModel) GetId() string {
 	return g.modelId
 }
 
-func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, opts ...inferenceOptionFn) (string, error) {
+func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerationRequest, opts ...inferenceOptionFn) (string, error) {
 	generateOptions := modelInferenceOptionsToEinoModelOptions(opts)
 
 	metricAiServicesLlmGenerationTotal.WithLabels(map[string]string{
@@ -100,10 +100,27 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, input string, o
 		"model":    g.GetId(),
 	}).Inc()
 
+	if req.SystemPrompt == "" {
+		return "", NewInvalidConfigError(GoogleVertex, "system prompt is required for Vertex AI model")
+	}
+
+	if req.UserPrompt == "" {
+		return "", NewInvalidRequestError(GoogleVertex, g.GetId(), "user prompt is required for Vertex AI model")
+	}
+
+	modifiedReq, err := guardedPrompt(req)
+	if err != nil {
+		return "", NewInvalidRequestError(GoogleVertex, g.GetId(), "failed to harden prompt: "+err.Error())
+	}
+
 	response, err := g.baseModel.Generate(ctx, []*schema.Message{
 		{
+			Role:    schema.System,
+			Content: modifiedReq.systemPrompt,
+		},
+		{
 			Role:    schema.User,
-			Content: input,
+			Content: modifiedReq.userPrompt,
 		},
 	}, generateOptions...)
 

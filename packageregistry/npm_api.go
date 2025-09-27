@@ -79,7 +79,7 @@ func (t *npmPackageTime) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	t.Versions = make(map[string]time.Time, len(raw))
+	t.Versions = make(map[string]time.Time)
 	// Accept both RFC3339 and RFC3339Nano gracefully
 	parse := func(s string) (time.Time, error) {
 		if ts, err := time.Parse(time.RFC3339Nano, s); err == nil {

@@ -199,7 +199,8 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
 		pkgVerions = append(pkgVerions, PackageVersionInfo{
-			Version: version.Version,
+			Version:     version.Version,
+			PublishedAt: npmpkg.Time.Versions[version.Version],
 		})
 	}
 

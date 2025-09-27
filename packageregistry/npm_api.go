@@ -2,6 +2,7 @@ package packageregistry
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -67,8 +68,41 @@ type npmPackageRepository struct {
 }
 
 type npmPackageTime struct {
-	Created  time.Time `json:"created"`
-	Modified time.Time `json:"modified"`
+	Created  time.Time
+	Modified time.Time
+	Versions map[string]time.Time // version => publish time
+}
+
+func (t *npmPackageTime) UnmarshalJSON(data []byte) error {
+	var raw map[string]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	t.Versions = make(map[string]time.Time, len(raw))
+	// Accept both RFC3339 and RFC3339Nano gracefully
+	parse := func(s string) (time.Time, error) {
+		if ts, err := time.Parse(time.RFC3339Nano, s); err == nil {
+			return ts, nil
+		}
+		return time.Parse(time.RFC3339, s)
+	}
+
+	for k, v := range raw {
+		ts, err := parse(v)
+		if err != nil {
+			return fmt.Errorf("failed to parse time for key %s: %w", k, err)
+		}
+		switch k {
+		case "created":
+			t.Created = ts
+		case "modified":
+			t.Modified = ts
+		default:
+			t.Versions[k] = ts
+		}
+	}
+	return nil
 }
 
 type npmPackageVersionInfo struct {

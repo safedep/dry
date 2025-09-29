@@ -199,10 +199,10 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
-		var publishedAt time.Time
+		var publishedAt *time.Time
 
 		if val, ok := npmpkg.Time.Versions[version.Version]; ok {
-			publishedAt = val
+			publishedAt = &val
 		}
 
 		pkgVerions = append(pkgVerions, PackageVersionInfo{

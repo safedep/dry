@@ -68,8 +68,8 @@ type npmPackageRepository struct {
 }
 
 type npmPackageTime struct {
-	Created  time.Time
-	Modified time.Time
+	Created  time.Time `json:"created"`
+	Modified time.Time `json:"modified"`
 	Versions map[string]time.Time // version => publish time
 }
 

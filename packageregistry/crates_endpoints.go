@@ -8,11 +8,11 @@ import "fmt"
 var cratesBaseURL = "https://crates.io/api/v1"
 
 func cratesAPIEndpointPackageURL(packageName string) string {
-	return fmt.Sprintf("https://crates.io/api/v1/crates/%s", packageName)
+	return fmt.Sprintf("%s/crates/%s", cratesBaseURL, packageName)
 }
 
 func cratesAPIEndpointPackageWithVersionURL(packageName, version string) string {
-	return fmt.Sprintf("https://crates.io/api/v1/crates/%s/%s", packageName, version)
+	return fmt.Sprintf("%s/crates/%s/%s", cratesBaseURL, packageName, version)
 }
 
 func cratesAPIEndpointPackageDependencies(packageName, version string) string {

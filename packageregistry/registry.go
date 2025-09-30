@@ -24,6 +24,9 @@ type Publisher struct {
 	// Verification may or may not be supported by all
 	// package registries. Hence its optional
 	VerificationStatus *PublisherVerificationStatus `json:"verification_status"`
+
+	// ID of the publisher in the package registry. Some package registries may not support this.
+	ID int `json:"id"`
 }
 
 type PackageDependencyInfo struct {

@@ -76,12 +76,15 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 		return nil, ErrAuthorNotFound
 	}
 
-	query := fmt.Sprintf("?user_id=%d&page=1&per_page=100", publisher.ID)
+	const MAX_PAGES = 5
+	const MAX_PACKAGES_PER_PAGE = 100
 
-	maxPages := 0
+	query := fmt.Sprintf("?user_id=%d&page=1&per_page=%d", publisher.ID, MAX_PACKAGES_PER_PAGE)
+
+	page := 0
 	var allSearchResults []cratesPackageInfo
 
-	for query != "" && maxPages < 5 {
+	for query != "" && page < MAX_PAGES {
 		// The crates API provides the query separator "?". DO NOT include the query separator in the URL.
 		url := fmt.Sprintf("%s/crates%s", cratesBaseURL, query)
 		res, err := httpClient().Get(url)
@@ -104,8 +107,12 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 		if searchResults.Meta.NextPage == "" {
 			break
 		}
-		maxPages++
+		page++
 		query = searchResults.Meta.NextPage
+	}
+
+	if len(allSearchResults) == 0 {
+		return nil, ErrPackageNotFound
 	}
 
 	packages := make([]*Package, len(allSearchResults))

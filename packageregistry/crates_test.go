@@ -108,7 +108,7 @@ func TestCratesGetPackagesByPublisher(t *testing.T) {
 		expectedPkgName     string
 	}{
 		{
-			testName:            "Get packages by dtolnay",
+			testName:            "Get packages by 361 ID",
 			publisherID:         361,
 			expectedError:       nil,
 			expectedMinPackages: 1,
@@ -306,7 +306,7 @@ func TestCratesGetPackageLatestVersion(t *testing.T) {
 				assert.ErrorIs(t, err, test.expectedError)
 			} else {
 				assert.NoError(t, err)
-				assert.True(t, semver.IsAheadOrEqual(pkg.LatestVersion, test.expectedMinVersion),
+				assert.True(t, semver.IsAheadOrEqual(test.expectedMinVersion, pkg.LatestVersion),
 					"Expected %s to be at least version %s, got %s", test.pkgName, test.expectedMinVersion, pkg.LatestVersion)
 			}
 		})
@@ -347,7 +347,6 @@ func TestCratesGetPackageDependencies(t *testing.T) {
 				assert.NoError(t, err)
 				assert.NotNil(t, dependencies)
 
-				// Check for specific dependencies we expect in tokio
 				assert.Contains(t, dependencies.Dependencies, PackageDependencyInfo{
 					Name:        "backtrace",
 					VersionSpec: "^0.3.58",

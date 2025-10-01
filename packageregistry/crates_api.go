@@ -29,7 +29,7 @@ type cratesPackageInfo struct {
 
 // cratesVersion contains information about a specific version of a crate
 type cratesVersion struct {
-	ID        string    `json:"id"`
+	ID        int       `json:"id"`
 	Version   string    `json:"num"`
 	Downloads int       `json:"downloads"`
 	CreatedAt time.Time `json:"created_at"`

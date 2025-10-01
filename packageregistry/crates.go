@@ -76,7 +76,10 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 		return nil, ErrAuthorNotFound
 	}
 
+	// Will traverse maximum of 5 pages from the publisher packages
 	const MAX_PAGES = 5
+
+	// Max limit by crates.io API is 100 for a single page
 	const MAX_PACKAGES_PER_PAGE = 100
 
 	query := fmt.Sprintf("?user_id=%d&page=1&per_page=%d", publisher.ID, MAX_PACKAGES_PER_PAGE)

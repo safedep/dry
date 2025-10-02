@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
@@ -198,8 +199,15 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
+		var publishedAt *time.Time
+
+		if val, ok := npmpkg.Time.Versions[version.Version]; ok {
+			publishedAt = &val
+		}
+
 		pkgVerions = append(pkgVerions, PackageVersionInfo{
-			Version: version.Version,
+			Version:     version.Version,
+			PublishedAt: publishedAt,
 		})
 	}
 

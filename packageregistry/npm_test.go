@@ -3,11 +3,13 @@ package packageregistry
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/safedep/dry/semver"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNpmGetPublisher(t *testing.T) {
@@ -200,10 +202,12 @@ func TestNpmGetPackage(t *testing.T) {
 	cases := []struct {
 		pkgName string
 
-		expectedError        error
-		expectedMinDownloads uint64
-		expectedRepoURL      string
-		expectedPublishers   Publisher
+		expectedError                 error
+		expectedMinDownloads          uint64
+		expectedRepoURL               string
+		expectedPublishers            Publisher
+		expectedVersionForPublishTime string
+		expectedPublishTime           string
 	}{
 		{
 			pkgName:              "express",
@@ -214,6 +218,8 @@ func TestNpmGetPackage(t *testing.T) {
 				Name:  "TJ Holowaychuk",
 				Email: "tj@vision-media.ca",
 			},
+			expectedVersionForPublishTime: "5.1.0",
+			expectedPublishTime:           "2025-03-31T14:01:22.509Z",
 		},
 		{
 			pkgName:              "@kunalsin9h/load-gql",
@@ -224,6 +230,8 @@ func TestNpmGetPackage(t *testing.T) {
 				Name:  "Kunal Singh",
 				Email: "kunal@kunalsin9h.com",
 			},
+			expectedVersionForPublishTime: "1.0.2",
+			expectedPublishTime:           "2023-10-10T17:26:43.220Z",
 		},
 
 		{
@@ -263,6 +271,21 @@ func TestNpmGetPackage(t *testing.T) {
 				// Publisher data
 				assert.Equal(t, test.expectedPublishers.Name, pkg.Author.Name)
 				assert.Equal(t, test.expectedPublishers.Email, pkg.Author.Email)
+
+				// Publish Time
+				var version PackageVersionInfo
+				for _, v := range pkg.Versions {
+					if v.Version == test.expectedVersionForPublishTime {
+						version = v
+						break
+					}
+				}
+
+				assert.NotEmpty(t, version)
+				expected, err := time.Parse(time.RFC3339Nano, test.expectedPublishTime)
+				require.NoError(t, err)
+
+				assert.True(t, version.PublishedAt.Equal(expected), "expected %s, got %s", expected, version.PublishedAt)
 			}
 		})
 	}

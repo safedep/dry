@@ -94,7 +94,6 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 		if err != nil {
 			return nil, ErrFailedToFetchPackage
 		}
-		defer res.Body.Close()
 
 		if res.StatusCode != http.StatusOK {
 			return nil, ErrFailedToFetchPackage
@@ -102,6 +101,10 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 
 		var searchResults cratesSearchResults
 		err = json.NewDecoder(res.Body).Decode(&searchResults)
+
+		// Close response body explicitly after reading
+		res.Body.Close()
+
 		if err != nil {
 			return nil, ErrFailedToParsePackage
 		}

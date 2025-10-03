@@ -24,6 +24,9 @@ type Publisher struct {
 	// Verification may or may not be supported by all
 	// package registries. Hence its optional
 	VerificationStatus *PublisherVerificationStatus `json:"verification_status"`
+
+	// ID of the publisher in the package registry. Some package registries may not support this.
+	ID int `json:"id"`
 }
 
 type PackageDependencyInfo struct {
@@ -175,6 +178,8 @@ func NewRegistryAdapter(ecosystem packagev1.Ecosystem, config *RegistryAdapterCo
 		return NewGoAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
 		return NewMavenAdapter()
+	case packagev1.Ecosystem_ECOSYSTEM_CARGO:
+		return NewCratesAdapter()
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		if config == nil || config.GitHubClient == nil {
 			return nil, fmt.Errorf("github client is required for github ecosystems")

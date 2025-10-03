@@ -116,7 +116,7 @@ func TestCratesGetPackagesByPublisher(t *testing.T) {
 		},
 		{
 			testName:      "Non-existent publisher",
-			publisherID:   000000000,
+			publisherID:   0,
 			expectedError: ErrAuthorNotFound,
 		},
 	}

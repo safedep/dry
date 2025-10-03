@@ -52,6 +52,10 @@ type PackagePublisherInfo struct {
 type PackageVersionInfo struct {
 	// The version of the project.
 	Version string `json:"version"`
+
+	// PublishedAt is the timestamp when this specific version was published
+	// (if available from the underlying registry).
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type DownloadStats struct {

@@ -22,3 +22,8 @@ func cratesAPIEndpointPackageDependencies(packageName, version string) string {
 func cratesAPIEndpointPackageSearchWithOwners(packageName string) string {
 	return fmt.Sprintf("%s/owners", cratesAPIEndpointPackageURL(packageName))
 }
+
+// The `query` parameter should include the query separator `?`
+func cratesAPIEndpointPackageWithQuery(query string) string {
+	return fmt.Sprintf("%s/crates%s", cratesBaseURL, query)
+}

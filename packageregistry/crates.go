@@ -88,8 +88,8 @@ func (cp *cratesPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([
 	var allSearchResults []cratesPackageInfo
 
 	for query != "" && page < MAX_PAGES {
-		// The crates API provides the query separator "?". DO NOT include the query separator in the URL.
-		url := fmt.Sprintf("%s/crates%s", cratesBaseURL, query)
+		// The crates API provides the query separator "?" in the `next_page` field
+		url := cratesAPIEndpointPackageWithQuery(query)
 		res, err := httpClient().Get(url)
 		if err != nil {
 			return nil, ErrFailedToFetchPackage

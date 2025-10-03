@@ -182,7 +182,8 @@ func TestCratesPackageDiscoveryDownloadStats(t *testing.T) {
 	}
 
 	adapter, _ := NewCratesAdapter()
-	packageDiscovery, _ := adapter.PackageDiscovery()
+	packageDiscovery, err := adapter.PackageDiscovery()
+	assert.NoError(t, err)
 
 	for _, test := range cases {
 		t.Run(test.pkgName, func(t *testing.T) {

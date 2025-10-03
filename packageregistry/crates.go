@@ -233,7 +233,8 @@ func cratesGetPackageDetails(packageName string) (*Package, error) {
 	for _, version := range crateResp.Versions {
 		if !version.Yanked {
 			pkgVersions = append(pkgVersions, PackageVersionInfo{
-				Version: version.Version,
+				Version:     version.Version,
+				PublishedAt: &version.CreatedAt,
 			})
 		}
 	}

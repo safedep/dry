@@ -30,8 +30,10 @@ type adapterConfig struct {
 	retryDelay    time.Duration
 
 	// Storage settings
-	storagePrefix string
-	tempDir       string
+	storagePrefix      string
+	tempDir            string
+	artifactIDStrategy ArtifactIDStrategy
+	includeContentHash bool
 }
 
 // WithStorage configures a custom storage backend
@@ -147,15 +149,37 @@ func WithTempDir(dir string) Option {
 	}
 }
 
+// WithArtifactIDStrategy sets the artifact ID generation strategy
+func WithArtifactIDStrategy(strategy ArtifactIDStrategy) Option {
+	return func(c *adapterConfig) error {
+		if strategy < ArtifactIDStrategyConvention || strategy > ArtifactIDStrategyHybrid {
+			return fmt.Errorf("invalid artifact ID strategy: %d", strategy)
+		}
+		c.artifactIDStrategy = strategy
+		return nil
+	}
+}
+
+// WithContentHashInID enables content hash inclusion in artifact ID
+// This is useful for verifying artifact integrity even with Convention strategy
+func WithContentHashInID(enabled bool) Option {
+	return func(c *adapterConfig) error {
+		c.includeContentHash = enabled
+		return nil
+	}
+}
+
 // defaultConfig returns the default configuration
 func defaultConfig() *adapterConfig {
 	return &adapterConfig{
-		cacheEnabled:     true,
-		persistArtifacts: true,
-		metadataEnabled:  true,
-		fetchTimeout:     5 * time.Minute,
-		retryAttempts:    3,
-		retryDelay:       time.Second,
+		cacheEnabled:       true,
+		persistArtifacts:   true,
+		metadataEnabled:    true,
+		fetchTimeout:       5 * time.Minute,
+		retryAttempts:      3,
+		retryDelay:         time.Second,
+		artifactIDStrategy: ArtifactIDStrategyConvention, // Default to convention-based IDs
+		includeContentHash: false,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
@@ -200,10 +224,12 @@ func (c *adapterConfig) ensureDefaults() error {
 			c.storage,
 			c.metadataStore,
 			StorageConfig{
-				PersistArtifacts: c.persistArtifacts,
-				CacheEnabled:     c.cacheEnabled,
-				MetadataEnabled:  c.metadataEnabled,
-				KeyPrefix:        c.storagePrefix,
+				PersistArtifacts:   c.persistArtifacts,
+				CacheEnabled:       c.cacheEnabled,
+				MetadataEnabled:    c.metadataEnabled,
+				KeyPrefix:          c.storagePrefix,
+				ArtifactIDStrategy: c.artifactIDStrategy,
+				IncludeContentHash: c.includeContentHash,
 			},
 		)
 	}

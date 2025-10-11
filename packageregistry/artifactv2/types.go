@@ -188,6 +188,26 @@ type StorageManager interface {
 	GetStorageKey(artifactID string) string
 }
 
+// ArtifactIDStrategy determines how artifact IDs are generated
+type ArtifactIDStrategy int
+
+const (
+	// ArtifactIDStrategyConvention uses ecosystem:name:version (default)
+	// This is the most efficient as it doesn't require reading content
+	// Example: npm:express:4.17.1
+	ArtifactIDStrategyConvention ArtifactIDStrategy = iota
+
+	// ArtifactIDStrategyContentHash uses ecosystem:content_hash
+	// This provides content-addressable storage but requires reading the artifact
+	// Example: npm:a1b2c3d4e5f6g7h8
+	ArtifactIDStrategyContentHash
+
+	// ArtifactIDStrategyHybrid uses ecosystem:name:version:content_hash
+	// This combines both approaches for registries that may have version mutations
+	// Example: npm:express:4.17.1:a1b2c3d4
+	ArtifactIDStrategyHybrid
+)
+
 // StorageConfig configures the storage manager
 type StorageConfig struct {
 	// PersistArtifacts controls whether artifacts are kept after use
@@ -201,6 +221,12 @@ type StorageConfig struct {
 
 	// KeyPrefix is prepended to all storage keys
 	KeyPrefix string
+
+	// ArtifactIDStrategy determines how artifact IDs are computed
+	ArtifactIDStrategy ArtifactIDStrategy
+
+	// IncludeContentHash adds content hash verification even with Convention strategy
+	IncludeContentHash bool
 }
 
 // MetadataStore handles artifact metadata persistence

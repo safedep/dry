@@ -221,3 +221,38 @@ func TestOptionErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestWithArtifactIDStrategy(t *testing.T) {
+	config, err := applyOptions(WithArtifactIDStrategy(ArtifactIDStrategyConvention))
+	require.NoError(t, err)
+	assert.Equal(t, ArtifactIDStrategyConvention, config.artifactIDStrategy)
+
+	config, err = applyOptions(WithArtifactIDStrategy(ArtifactIDStrategyContentHash))
+	require.NoError(t, err)
+	assert.Equal(t, ArtifactIDStrategyContentHash, config.artifactIDStrategy)
+
+	config, err = applyOptions(WithArtifactIDStrategy(ArtifactIDStrategyHybrid))
+	require.NoError(t, err)
+	assert.Equal(t, ArtifactIDStrategyHybrid, config.artifactIDStrategy)
+
+	// Invalid strategy
+	_, err = applyOptions(WithArtifactIDStrategy(ArtifactIDStrategy(999)))
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid artifact ID strategy")
+}
+
+func TestWithContentHashInID(t *testing.T) {
+	config, err := applyOptions(WithContentHashInID(true))
+	require.NoError(t, err)
+	assert.True(t, config.includeContentHash)
+
+	config, err = applyOptions(WithContentHashInID(false))
+	require.NoError(t, err)
+	assert.False(t, config.includeContentHash)
+}
+
+func TestDefaultArtifactIDStrategy(t *testing.T) {
+	config := defaultConfig()
+	assert.Equal(t, ArtifactIDStrategyConvention, config.artifactIDStrategy)
+	assert.False(t, config.includeContentHash)
+}

@@ -29,24 +29,75 @@ func NewStorageManager(storage storage.Storage, metadata MetadataStore, config S
 	}
 }
 
+// encodeName safely encodes package names for use in artifact IDs and paths
+// Handles names with slashes and special characters
+// Examples:
+//   - express -> express
+//   - @angular/core -> angular-core
+//   - @babel/preset-env -> babel-preset-env
+//   - github.com/gin-gonic/gin -> github.com-gin-gonic-gin
+//   - github.com/user/repo/v2 -> github.com-user-repo-v2
+func encodeName(name string) string {
+	// Replace slashes with hyphens
+	encoded := strings.ReplaceAll(name, "/", "-")
+	// Remove @ prefix (common in npm scoped packages)
+	encoded = strings.TrimPrefix(encoded, "@")
+	return encoded
+}
+
 // Store saves an artifact to storage and returns its ID
 func (sm *storageManager) Store(ctx context.Context, info ArtifactInfo, reader io.Reader) (string, error) {
-	// Step 1: Read content and compute hash
-	hash := sha256.New()
+	var artifactID string
 	var buf bytes.Buffer
-	tee := io.TeeReader(reader, &buf)
+	var contentHash string
 
-	if _, err := io.Copy(hash, tee); err != nil {
-		return "", fmt.Errorf("failed to compute hash: %w", err)
+	// Determine if we need to read content based on strategy
+	needsContentHash := sm.config.ArtifactIDStrategy == ArtifactIDStrategyContentHash ||
+		sm.config.ArtifactIDStrategy == ArtifactIDStrategyHybrid ||
+		sm.config.IncludeContentHash
+
+	if needsContentHash {
+		// Read content and compute hash
+		hash := sha256.New()
+		tee := io.TeeReader(reader, &buf)
+
+		if _, err := io.Copy(hash, tee); err != nil {
+			return "", fmt.Errorf("failed to compute hash: %w", err)
+		}
+
+		hashBytes := hash.Sum(nil)
+		contentHash = hex.EncodeToString(hashBytes[:8]) // First 8 bytes (16 hex chars)
+	} else {
+		// Just buffer the content without hashing
+		if _, err := io.Copy(&buf, reader); err != nil {
+			return "", fmt.Errorf("failed to read content: %w", err)
+		}
 	}
 
-	// Step 2: Generate artifact ID from ecosystem and hash
-	hashBytes := hash.Sum(nil)
-	artifactID := fmt.Sprintf("%s:%s",
-		strings.ToLower(info.Ecosystem.String()),
-		hex.EncodeToString(hashBytes[:8])) // Use first 8 bytes (16 hex chars)
+	// Generate artifact ID based on strategy
+	ecosystem := strings.ToLower(info.Ecosystem.String())
+	encodedName := encodeName(info.Name)
 
-	// Step 3: Check if already exists (deduplication)
+	switch sm.config.ArtifactIDStrategy {
+	case ArtifactIDStrategyConvention:
+		// Format: ecosystem:name:version
+		artifactID = fmt.Sprintf("%s:%s:%s", ecosystem, encodedName, info.Version)
+
+	case ArtifactIDStrategyContentHash:
+		// Format: ecosystem:hash
+		artifactID = fmt.Sprintf("%s:%s", ecosystem, contentHash)
+
+	case ArtifactIDStrategyHybrid:
+		// Format: ecosystem:name:version:hash
+		// Use shorter hash (4 bytes = 8 hex chars) for hybrid
+		artifactID = fmt.Sprintf("%s:%s:%s:%s",
+			ecosystem, encodedName, info.Version, contentHash[:8])
+
+	default:
+		return "", fmt.Errorf("unknown artifact ID strategy: %d", sm.config.ArtifactIDStrategy)
+	}
+
+	// Check if already exists (deduplication)
 	if sm.config.CacheEnabled {
 		exists, err := sm.Exists(ctx, artifactID)
 		if err == nil && exists {
@@ -55,7 +106,7 @@ func (sm *storageManager) Store(ctx context.Context, info ArtifactInfo, reader i
 		}
 	}
 
-	// Step 4: Store to backend
+	// Store to backend
 	key := sm.GetStorageKey(artifactID)
 	if err := sm.storage.Put(key, &buf); err != nil {
 		return "", fmt.Errorf("failed to store artifact: %w", err)
@@ -129,18 +180,42 @@ func (sm *storageManager) Delete(ctx context.Context, artifactID string) error {
 }
 
 // GetStorageKey returns the storage key for an artifact ID
+// Handles different ID formats based on strategy:
+// - Convention (3 parts): ecosystem:name:version -> artifacts/{ecosystem}/{name}/{version}/artifact
+// - ContentHash (2 parts): ecosystem:hash -> artifacts/{ecosystem}/{hash}/artifact
+// - Hybrid (4 parts): ecosystem:name:version:hash -> artifacts/{ecosystem}/{name}/{version}-{hash}/artifact
 func (sm *storageManager) GetStorageKey(artifactID string) string {
 	parts := strings.Split(artifactID, ":")
-	if len(parts) != 2 {
-		// Invalid artifact ID format, return as-is
+
+	var key string
+	switch len(parts) {
+	case 2:
+		// ContentHash format: ecosystem:hash
+		ecosystem := parts[0]
+		hash := parts[1]
+		key = filepath.Join("artifacts", ecosystem, hash, "artifact")
+
+	case 3:
+		// Convention format: ecosystem:name:version
+		ecosystem := parts[0]
+		name := parts[1]
+		version := parts[2]
+		key = filepath.Join("artifacts", ecosystem, name, version, "artifact")
+
+	case 4:
+		// Hybrid format: ecosystem:name:version:hash
+		ecosystem := parts[0]
+		name := parts[1]
+		version := parts[2]
+		hash := parts[3]
+		// Combine version and hash with hyphen for single directory level
+		versionHash := fmt.Sprintf("%s-%s", version, hash)
+		key = filepath.Join("artifacts", ecosystem, name, versionHash, "artifact")
+
+	default:
+		// Invalid format, return as-is
 		return artifactID
 	}
-
-	ecosystem := parts[0]
-	hash := parts[1]
-
-	// Build hierarchical key: artifacts/{ecosystem}/{hash}/artifact
-	key := filepath.Join("artifacts", ecosystem, hash, "artifact")
 
 	// Add prefix if configured
 	if sm.config.KeyPrefix != "" {

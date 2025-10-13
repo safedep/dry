@@ -146,7 +146,9 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 		Env:          environmentVariables,
 		Cmd:          s.config.InitCommand,
 		Labels:       s.setup.Labels,
-	}, nil, nil, nil, "")
+	}, &container.HostConfig{
+		Runtime: s.config.Runtime,
+	}, nil, nil, "")
 	if err != nil {
 		return fmt.Errorf("failed to create container: %w", err)
 	}

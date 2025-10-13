@@ -19,6 +19,8 @@ func TestDockerSandboxExecute(t *testing.T) {
 		command               string
 		args                  []string
 		skipWaitForCompletion bool
+
+		withCustomRuntime string // host runtime (default is runc)
 		// Any of these exit codes are acceptable
 		expectedExitCodes []int
 		err               error
@@ -33,6 +35,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			name:              "run command with multiple args",
 			command:           "ps",
 			args:              []string{"-e", "-f"},
+			withCustomRuntime: "sysbox-runc",
 			expectedExitCodes: []int{0},
 		},
 		{
@@ -45,6 +48,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			name:              "non-existent command",
 			command:           "non-existent",
 			args:              []string{},
+			withCustomRuntime: "sysbox-runc",
 			expectedExitCodes: []int{127, 126},
 		},
 		{
@@ -64,6 +68,10 @@ func TestDockerSandboxExecute(t *testing.T) {
 			config := DefaultDockerSandboxConfig(testDockerExecutorImage)
 			config.Socket = getDockerSocketPath(t)
 			config.PullImageIfMissing = true
+
+			if c.withCustomRuntime != "" {
+				config.Runtime = c.withCustomRuntime
+			}
 
 			sandbox, err := NewDockerSandbox(config)
 			assert.NoError(t, err)

@@ -16,6 +16,8 @@ import (
 	"github.com/safedep/dry/log"
 )
 
+const defaultDockerOperationWaitTime = time.Millisecond * 500
+
 type DockerSandboxConfig struct {
 	// Docker host runtime (default is runc)
 	Runtime string
@@ -174,7 +176,7 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 	timeoutContext, timeoutCancel := context.WithTimeout(ctx, s.config.CreateWaitTimeout)
 	defer timeoutCancel()
 
-	waitTicker := time.NewTicker(500 * time.Millisecond)
+	waitTicker := time.NewTicker(defaultDockerOperationWaitTime)
 	defer waitTicker.Stop()
 
 	for {
@@ -270,7 +272,7 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 		select {
 		case <-execWaitContext.Done():
 			return nil, fmt.Errorf("exec timed out")
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(defaultDockerOperationWaitTime):
 			// Continue waiting
 		}
 	}
@@ -350,7 +352,7 @@ func (s *dockerSandbox) ReadFile(ctx context.Context, path string) (io.ReadClose
 		}
 	}
 
-	return nil, fmt.Errorf("Could not find the file %s in container %s", path, s.containerID)
+	return nil, fmt.Errorf("could not find the file %s in container %s", path, s.containerID)
 }
 
 func (s *dockerSandbox) Close() error {

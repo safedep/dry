@@ -30,7 +30,7 @@ jobs:
       run: go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.10.1
 
     - name: Install sysbox-run docker host runtime
-      run:
+      run: |
         # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
         cd /tmp
         wget https://downloads.nestybox.com/sysbox/releases/v0.6.7/sysbox-ce_0.6.7-0.linux_amd64.deb

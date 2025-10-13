@@ -59,7 +59,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 		},
 	}
 
-	if !isExecutorEndToEndTestEnabled() {
+	if !isSandboxEndToEndTestEnabled() {
 		t.Skip("Executor end-to-end tests are not enabled")
 	}
 
@@ -97,7 +97,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 }
 
 func TestDockerSandboxSetup(t *testing.T) {
-	if !isExecutorEndToEndTestEnabled() {
+	if !isSandboxEndToEndTestEnabled() {
 		t.Skip("Executor end-to-end tests are not enabled")
 	}
 
@@ -163,7 +163,7 @@ func TestDockerSandboxSetup(t *testing.T) {
 }
 
 func TestDockerSandboxWithEnvironmentVariables(t *testing.T) {
-	if !isExecutorEndToEndTestEnabled() {
+	if !isSandboxEndToEndTestEnabled() {
 		t.Skip("Executor end-to-end tests are not enabled")
 	}
 
@@ -205,7 +205,7 @@ func TestDockerSandboxWithEnvironmentVariables(t *testing.T) {
 }
 
 func TestDockerSandboxReadWriteFile(t *testing.T) {
-	if !isExecutorEndToEndTestEnabled() {
+	if !isSandboxEndToEndTestEnabled() {
 		t.Skip("Executor end-to-end tests are not enabled")
 	}
 

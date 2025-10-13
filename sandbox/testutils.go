@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func isExecutorEndToEndTestEnabled() bool {
-	value := os.Getenv("EXECUTOR_END_TO_END_TESTS")
+func isSandboxEndToEndTestEnabled() bool {
+	value := os.Getenv("SANDBOX_ENABLE_E2E_TEST")
 	b, err := strconv.ParseBool(value)
 	if err != nil {
 		return false
@@ -17,9 +17,9 @@ func isExecutorEndToEndTestEnabled() bool {
 }
 
 func getDockerSocketPath(t *testing.T) string {
-	path := os.Getenv("TEST_DOCKER_EXECUTOR_SOCKET_PATH")
+	path := os.Getenv("TEST_DOCKER_SANDBOX_SOCKET_PATH")
 	if path == "" {
-		t.Fatalf("TEST_DOCKER_EXECUTOR_SOCKET_PATH is not set")
+		t.Fatalf("TEST_DOCKER_SANDBOX_SOCKET_PATH is not set")
 	}
 
 	return path

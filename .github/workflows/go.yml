@@ -29,12 +29,16 @@ jobs:
     - name: Install OpenAPI Tools
       run: go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.10.1
 
+    # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
     - name: Install sysbox-run docker host runtime
       run: |
-        # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
         cd /tmp
         wget https://downloads.nestybox.com/sysbox/releases/v0.6.7/sysbox-ce_0.6.7-0.linux_amd64.deb
         sudo apt-get install ./sysbox-ce_0.6.7-0.linux_amd64.deb -y
+
+    # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
+    - name: Check sysbox status
+      run: sudo systemctl status sysbox -n20
 
     - name: Download Mods
       run: go mod tidy
@@ -48,6 +52,6 @@ jobs:
     - name: Test Code
       run: go test -v ./...
       env:
-        EXECUTOR_END_TO_END_TESTS: true
-        TEST_DOCKER_EXECUTOR_SOCKET_PATH: /var/run/docker.sock
+        SANDBOX_ENABLE_E2E_TEST: true
+        TEST_DOCKER_SANDBOX_SOCKET_PATH: /var/run/docker.sock
 

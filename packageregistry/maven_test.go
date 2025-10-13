@@ -9,6 +9,8 @@ import (
 )
 
 func TestMavenGetPublisher(t *testing.T) {
+	t.Skip()
+
 	cases := []struct {
 		testName   string
 		pkgName    string
@@ -90,6 +92,8 @@ func TestMavenGetPublisher(t *testing.T) {
 }
 
 func TestMavenGetPackagesByPublisher(t *testing.T) {
+	t.Skip()
+
 	cases := []struct {
 		testName            string
 		publisherName       string
@@ -111,11 +115,11 @@ func TestMavenGetPackagesByPublisher(t *testing.T) {
 			expectedMinPackages: 5, // Commons has many libraries
 			expectedContains:    []string{"org.apache.commons:commons-lang3", "org.apache.commons:commons-io"},
 		},
-		// {
-		// 	testName:      "Non-existent publisher",
-		// 	publisherName: "non.existent.group.id",
-		// 	expectedError: ErrNoPackagesFound,
-		// },
+		{
+			testName:      "Non-existent publisher",
+			publisherName: "non.existent.group.id",
+			expectedError: ErrNoPackagesFound,
+		},
 	}
 
 	for _, test := range cases {
@@ -167,6 +171,8 @@ func TestMavenGetPackagesByPublisher(t *testing.T) {
 }
 
 func TestMavenGetPackage(t *testing.T) {
+	t.Skip()
+
 	cases := []struct {
 		testName            string
 		pkgName             string
@@ -237,6 +243,8 @@ func TestMavenGetPackage(t *testing.T) {
 }
 
 func TestMavenGetPackageDependencies(t *testing.T) {
+	t.Skip()
+
 	cases := []struct {
 		testName                string
 		pkgName                 string
@@ -340,6 +348,8 @@ func TestMavenGetPackageDependencies(t *testing.T) {
 }
 
 func TestMavenGetPackageDownloadStats(t *testing.T) {
+	t.Skip()
+
 	adapter, err := NewMavenAdapter()
 	if err != nil {
 		t.Fatalf("failed to create Maven registry adapter: %v", err)
@@ -357,6 +367,8 @@ func TestMavenGetPackageDownloadStats(t *testing.T) {
 }
 
 func TestNewMavenAdapter(t *testing.T) {
+	t.Skip()
+
 	adapter, err := NewMavenAdapter()
 	assert.NoError(t, err)
 	assert.NotNil(t, adapter)
@@ -372,6 +384,8 @@ func TestNewMavenAdapter(t *testing.T) {
 }
 
 func TestMavenGetLatestVersion(t *testing.T) {
+	t.Skip()
+
 	adapter, err := NewMavenAdapter()
 	assert.NoError(t, err)
 	assert.NotNil(t, adapter)

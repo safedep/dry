@@ -337,6 +337,9 @@ func (s *dockerSandbox) ReadFile(ctx context.Context, path string) (io.ReadClose
 	tarReader := tar.NewReader(reader)
 	for {
 		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read tar archive: %w", err)
 		}
@@ -346,6 +349,8 @@ func (s *dockerSandbox) ReadFile(ctx context.Context, path string) (io.ReadClose
 			return io.NopCloser(tarReader), nil
 		}
 	}
+
+	return nil, fmt.Errorf("file not found in tar archive")
 }
 
 func (s *dockerSandbox) Close() error {

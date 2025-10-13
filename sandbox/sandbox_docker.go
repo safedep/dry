@@ -350,7 +350,7 @@ func (s *dockerSandbox) ReadFile(ctx context.Context, path string) (io.ReadClose
 		}
 	}
 
-	return nil, fmt.Errorf("file not found in tar archive")
+	return nil, fmt.Errorf("Could not find the file %s in container %s", path, s.containerID)
 }
 
 func (s *dockerSandbox) Close() error {

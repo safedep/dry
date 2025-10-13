@@ -172,30 +172,16 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 	timeoutContext, timeoutCancel := context.WithTimeout(ctx, s.config.CreateWaitTimeout)
 	defer timeoutCancel()
 
-	waitTicker := time.NewTicker(500 * time.Millisecond)
-	defer waitTicker.Stop()
-
-	for {
-		select {
-		case <-timeoutContext.Done():
-			return fmt.Errorf("container failed to start within %s", s.config.CreateWaitTimeout)
-		case <-waitTicker.C:
-			log.Debugf("Checking if container is running")
-
-			container, err := s.client.ContainerInspect(timeoutContext, s.containerID)
-			if err != nil {
-				return fmt.Errorf("failed to inspect container: %w", err)
-			}
-
-			if container.State.Dead {
-				return fmt.Errorf("container failed to start")
-			}
-
-			if container.State.Running {
-				return nil
-			}
+	statusCh, errCh := s.client.ContainerWait(timeoutContext, s.containerID, container.WaitConditionNotRunning)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("failed to wait for container: %w", err)
 		}
+	case <-statusCh:
 	}
+
+	return nil
 }
 
 func (s *dockerSandbox) Execute(ctx context.Context, command string, args []string, opts SandboxExecOpts) (*SandboxExecResponse, error) {
@@ -253,26 +239,23 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 	execWaitContext, execWaitCancel := context.WithTimeout(ctx, timeout)
 	defer execWaitCancel()
 
-	checkTicker := time.NewTicker(500 * time.Millisecond)
-	defer checkTicker.Stop()
-
 	for {
+		execInfo, err := s.client.ContainerExecInspect(execWaitContext, execSession.ID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to inspect exec: %w", err)
+		}
+
+		if !execInfo.Running {
+			return &SandboxExecResponse{
+				ExitCode: execInfo.ExitCode,
+			}, nil
+		}
+
 		select {
 		case <-execWaitContext.Done():
 			return nil, fmt.Errorf("exec timed out")
-		case <-checkTicker.C:
-			log.Debugf("Checking if exec has finished")
-
-			execInfo, err := s.client.ContainerExecInspect(execWaitContext, execSession.ID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to inspect exec: %w", err)
-			}
-
-			if !execInfo.Running {
-				return &SandboxExecResponse{
-					ExitCode: execInfo.ExitCode,
-				}, nil
-			}
+		case <-time.After(500 * time.Millisecond):
+			// Continue waiting
 		}
 	}
 }

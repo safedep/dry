@@ -17,7 +17,7 @@ import (
 )
 
 type DockerSandboxConfig struct {
-	// Underline runtime (default is runc)
+	// Docker host runtime (default is runc)
 	Runtime string
 
 	// The image to use to create the container.
@@ -174,16 +174,30 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 	timeoutContext, timeoutCancel := context.WithTimeout(ctx, s.config.CreateWaitTimeout)
 	defer timeoutCancel()
 
-	statusCh, errCh := s.client.ContainerWait(timeoutContext, s.containerID, container.WaitConditionNotRunning)
-	select {
-	case err := <-errCh:
-		if err != nil {
-			return fmt.Errorf("failed to wait for container: %w", err)
-		}
-	case <-statusCh:
-	}
+	waitTicker := time.NewTicker(500 * time.Millisecond)
+	defer waitTicker.Stop()
 
-	return nil
+	for {
+		select {
+		case <-timeoutContext.Done():
+			return fmt.Errorf("container failed to start within %s", s.config.CreateWaitTimeout)
+		case <-waitTicker.C:
+			log.Debugf("Checking if container is running")
+
+			container, err := s.client.ContainerInspect(timeoutContext, s.containerID)
+			if err != nil {
+				return fmt.Errorf("failed to inspect container: %w", err)
+			}
+
+			if container.State.Dead {
+				return fmt.Errorf("container failed to start")
+			}
+
+			if container.State.Running {
+				return nil
+			}
+		}
+	}
 }
 
 func (s *dockerSandbox) Execute(ctx context.Context, command string, args []string, opts SandboxExecOpts) (*SandboxExecResponse, error) {
@@ -359,8 +373,8 @@ func (s *dockerSandbox) Close() error {
 		return fmt.Errorf("failed to remove container: %w", err)
 	}
 
-	s.containerID = ""
 	log.Debugf("Stopped and removed container: %s", s.containerID)
+	s.containerID = ""
 
 	return nil
 }

@@ -78,12 +78,12 @@ func TestInMemoryMetadataStore_GetNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
-func TestInMemoryMetadataStore_GetByPackage(t *testing.T) {
+func TestInMemoryMetadataStore_GetByArtifact(t *testing.T) {
 	store := NewInMemoryMetadataStore()
 	ctx := context.Background()
 
 	metadata := ArtifactMetadata{
-		ID:        "npm:abc123def456",
+		ID:        "npm:express:4.17.1",
 		Name:      "express",
 		Version:   "4.17.1",
 		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
@@ -92,21 +92,57 @@ func TestInMemoryMetadataStore_GetByPackage(t *testing.T) {
 	err := store.Put(ctx, metadata)
 	require.NoError(t, err)
 
-	// Get by package name and version
-	retrieved, err := store.GetByPackage(ctx, packagev1.Ecosystem_ECOSYSTEM_NPM, "express", "4.17.1")
+	// Get by ArtifactInfo
+	info := ArtifactInfo{
+		Name:      "express",
+		Version:   "4.17.1",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+	}
+	retrieved, err := store.GetByArtifact(ctx, info)
 	require.NoError(t, err)
 	assert.Equal(t, metadata.ID, retrieved.ID)
 	assert.Equal(t, metadata.Name, retrieved.Name)
 	assert.Equal(t, metadata.Version, retrieved.Version)
 }
 
-func TestInMemoryMetadataStore_GetByPackageNotFound(t *testing.T) {
+func TestInMemoryMetadataStore_GetByArtifactNotFound(t *testing.T) {
 	store := NewInMemoryMetadataStore()
 	ctx := context.Background()
 
-	_, err := store.GetByPackage(ctx, packagev1.Ecosystem_ECOSYSTEM_NPM, "nonexistent", "1.0.0")
+	info := ArtifactInfo{
+		Name:      "nonexistent",
+		Version:   "1.0.0",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+	}
+	_, err := store.GetByArtifact(ctx, info)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestInMemoryMetadataStore_GetByArtifactScopedPackage(t *testing.T) {
+	store := NewInMemoryMetadataStore()
+	ctx := context.Background()
+
+	metadata := ArtifactMetadata{
+		ID:        "npm:angular-core:12.0.0",
+		Name:      "@angular/core",
+		Version:   "12.0.0",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+	}
+
+	err := store.Put(ctx, metadata)
+	require.NoError(t, err)
+
+	// Get by ArtifactInfo with scoped package name
+	info := ArtifactInfo{
+		Name:      "@angular/core",
+		Version:   "12.0.0",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+	}
+	retrieved, err := store.GetByArtifact(ctx, info)
+	require.NoError(t, err)
+	assert.Equal(t, metadata.ID, retrieved.ID)
+	assert.Equal(t, "@angular/core", retrieved.Name)
 }
 
 func TestInMemoryMetadataStore_Delete(t *testing.T) {
@@ -131,8 +167,13 @@ func TestInMemoryMetadataStore_Delete(t *testing.T) {
 	_, err = store.Get(ctx, metadata.ID)
 	assert.Error(t, err)
 
-	// Should not be found by package either
-	_, err = store.GetByPackage(ctx, packagev1.Ecosystem_ECOSYSTEM_NPM, "express", "4.17.1")
+	// Should not be found by artifact info either
+	info := ArtifactInfo{
+		Name:      "express",
+		Version:   "4.17.1",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+	}
+	_, err = store.GetByArtifact(ctx, info)
 	assert.Error(t, err)
 }
 

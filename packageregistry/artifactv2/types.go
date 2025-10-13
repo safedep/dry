@@ -21,8 +21,11 @@ type ArtifactAdapterV2 interface {
 	Load(ctx context.Context, artifactID string) (ArtifactReaderV2, error)
 
 	// LoadFromSource loads an artifact from a provided source
-	// (for backward compatibility and local files)
-	LoadFromSource(ctx context.Context, source ArtifactSource) (ArtifactReaderV2, error)
+	// The info parameter provides metadata about the artifact being loaded
+	// The source parameter provides the actual content (local file, reader, etc.)
+	// This is useful for loading artifacts from non-registry sources while
+	// preserving proper metadata (name, version, ecosystem)
+	LoadFromSource(ctx context.Context, info ArtifactInfo, source ArtifactSource) (ArtifactReaderV2, error)
 
 	// GetMetadata retrieves metadata for an artifact without loading it
 	GetMetadata(ctx context.Context, artifactID string) (*ArtifactMetadata, error)
@@ -237,8 +240,10 @@ type MetadataStore interface {
 	// Get retrieves metadata by artifact ID
 	Get(ctx context.Context, artifactID string) (*ArtifactMetadata, error)
 
-	// GetByPackage retrieves metadata by package name and version
-	GetByPackage(ctx context.Context, ecosystem packagev1.Ecosystem, name, version string) (*ArtifactMetadata, error)
+	// GetByArtifact retrieves metadata using ArtifactInfo
+	// This ensures consistent artifact ID generation when looking up metadata
+	// The storage manager's artifact ID strategy will be used to compute the ID
+	GetByArtifact(ctx context.Context, info ArtifactInfo) (*ArtifactMetadata, error)
 
 	// Delete removes metadata
 	Delete(ctx context.Context, artifactID string) error

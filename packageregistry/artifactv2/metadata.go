@@ -58,15 +58,16 @@ func (m *inMemoryMetadataStore) Get(ctx context.Context, artifactID string) (*Ar
 	return &metadata, nil
 }
 
-// GetByPackage retrieves metadata by package name and version
-func (m *inMemoryMetadataStore) GetByPackage(ctx context.Context, ecosystem packagev1.Ecosystem, name, version string) (*ArtifactMetadata, error) {
+// GetByArtifact retrieves metadata using ArtifactInfo
+// This method uses the package lookup index to find metadata
+func (m *inMemoryMetadataStore) GetByArtifact(ctx context.Context, info ArtifactInfo) (*ArtifactMetadata, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	key := makePackageKey(ecosystem, name, version)
+	key := makePackageKey(info.Ecosystem, info.Name, info.Version)
 	artifactID, ok := m.byPackage[key]
 	if !ok {
-		return nil, fmt.Errorf("package not found: %s", key)
+		return nil, fmt.Errorf("artifact not found: %s", key)
 	}
 
 	metadata, ok := m.byID[artifactID]

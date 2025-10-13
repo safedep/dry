@@ -31,11 +31,10 @@ jobs:
 
     - name: Install sysbox-run docker host runtime
       run:
-        # Docs: https://kasmweb.com/docs/latest/install/single_server_install.html#installation-guide
+        # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
         cd /tmp
-        curl -O https://kasm-static-content.s3.amazonaws.com/kasm_release_1.17.0.7f020d.tar.gz
-        tar -xf kasm_release_1.17.0.7f020d.tar.gz
-        sudo bash kasm_release/install.sh
+        wget https://downloads.nestybox.com/sysbox/releases/v0.6.7/sysbox-ce_0.6.7-0.linux_amd64.deb
+        sudo apt-get install ./sysbox-ce_0.6.7-0.linux_amd64.deb -y
 
     - name: Download Mods
       run: go mod tidy

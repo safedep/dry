@@ -35,7 +35,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			name:              "run command with multiple args",
 			command:           "ps",
 			args:              []string{"-e", "-f"},
-			withCustomRuntime: "sysbox-runc",
+			withCustomRuntime: "sysbox-ce",
 			expectedExitCodes: []int{0},
 		},
 		{
@@ -48,7 +48,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			name:              "non-existent command",
 			command:           "non-existent",
 			args:              []string{},
-			withCustomRuntime: "sysbox-runc",
+			withCustomRuntime: "sysbox-ce",
 			expectedExitCodes: []int{127, 126},
 		},
 		{

@@ -11,6 +11,11 @@ import (
 	"github.com/safedep/dry/log"
 )
 
+const (
+	// npmRegistryURL is the base URL for the NPM registry
+	npmRegistryURL = "https://registry.npmjs.org"
+)
+
 // npmAdapterV2 implements ArtifactAdapterV2 for NPM packages
 type npmAdapterV2 struct {
 	config  *adapterConfig
@@ -152,11 +157,10 @@ func (a *npmAdapterV2) GetMetadata(ctx context.Context, artifactID string) (*Art
 func (a *npmAdapterV2) Exists(ctx context.Context, info ArtifactInfo) (bool, string, error) {
 	// Try to find by metadata first (more efficient)
 	if a.config.metadataEnabled && a.config.storageManager != nil {
-		// For Convention strategy, we can predict the artifact ID
+		// For Convention strategy, we can predict the artifact ID using common function
 		if a.config.artifactIDStrategy == ArtifactIDStrategyConvention {
-			ecosystem := strings.ToLower(info.Ecosystem.String())
-			encodedName := encodeName(info.Name)
-			predictedID := fmt.Sprintf("%s:%s:%s", ecosystem, encodedName, info.Version)
+			// Use common ID generation function (single source of truth)
+			predictedID := generateArtifactID(info, ArtifactIDStrategyConvention, "")
 
 			exists, err := a.storage.Exists(ctx, predictedID)
 			if err == nil && exists {
@@ -166,7 +170,7 @@ func (a *npmAdapterV2) Exists(ctx context.Context, info ArtifactInfo) (bool, str
 
 		// For other strategies, we need to query metadata
 		// This is not implemented in the current MetadataStore interface
-		// but could be added via GetByPackage
+		// but could be added via GetByPackage/GetByArtifact
 	}
 
 	return false, "", nil
@@ -186,8 +190,8 @@ func (a *npmAdapterV2) buildNpmUrl(name, version string) string {
 		}
 	}
 
-	return fmt.Sprintf("https://registry.npmjs.org/%s/-/%s-%s.tgz",
-		base, packageName, version)
+	return fmt.Sprintf("%s/%s/-/%s-%s.tgz",
+		npmRegistryURL, base, packageName, version)
 }
 
 // npmReaderV2 implements ArtifactReaderV2 for NPM packages

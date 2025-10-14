@@ -186,9 +186,6 @@ type StorageManager interface {
 
 	// Delete removes an artifact and its metadata
 	Delete(ctx context.Context, artifactID string) error
-
-	// GetStorageKey returns the storage key for an artifact ID
-	GetStorageKey(artifactID string) string
 }
 
 // ArtifactIDStrategy determines how artifact IDs are generated

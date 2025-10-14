@@ -145,7 +145,7 @@ func TestNpmAdapterV2_FetchWithChecksum(t *testing.T) {
 	packageContent := createTestNpmPackage(t, testFiles)
 
 	// Compute actual checksum
-	actualChecksum, err := ComputeSHA256(bytes.NewReader(packageContent))
+	actualChecksum, err := computeSHA256(bytes.NewReader(packageContent))
 	require.NoError(t, err)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

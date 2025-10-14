@@ -103,7 +103,7 @@ func TestVerifyChecksum_Success(t *testing.T) {
 	content := []byte("test content for checksum")
 
 	// Compute actual checksum
-	hash, err := ComputeSHA256(bytes.NewReader(content))
+	hash, err := computeSHA256(bytes.NewReader(content))
 	require.NoError(t, err)
 
 	// Verify with correct checksum

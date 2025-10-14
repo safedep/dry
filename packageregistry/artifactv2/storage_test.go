@@ -49,9 +49,9 @@ func TestStorageManager_StoreConvention(t *testing.T) {
 	assert.Equal(t, "test-package", parts[1])
 	assert.Equal(t, "1.0.0", parts[2])
 
-	// Verify storage key
+	// Verify storage key using helper function
 	expectedKey := "artifacts/ecosystem_npm/test-package/1.0.0/artifact"
-	assert.Equal(t, expectedKey, sm.GetStorageKey(artifactID))
+	assert.Equal(t, expectedKey, computeStorageKeyFromID(artifactID, ""))
 }
 
 func TestStorageManager_StoreContentHash(t *testing.T) {
@@ -392,7 +392,7 @@ func TestComputeArtifactID(t *testing.T) {
 	content := []byte("test content for hashing")
 	reader := bytes.NewReader(content)
 
-	id, err := ComputeArtifactID("npm", reader)
+	id, err := computeArtifactID("npm", reader)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 
@@ -404,13 +404,13 @@ func TestComputeArtifactID(t *testing.T) {
 
 	// Same content should produce same ID
 	reader2 := bytes.NewReader(content)
-	id2, err := ComputeArtifactID("npm", reader2)
+	id2, err := computeArtifactID("npm", reader2)
 	require.NoError(t, err)
 	assert.Equal(t, id, id2)
 
 	// Different content should produce different ID
 	reader3 := bytes.NewReader([]byte("different content"))
-	id3, err := ComputeArtifactID("npm", reader3)
+	id3, err := computeArtifactID("npm", reader3)
 	require.NoError(t, err)
 	assert.NotEqual(t, id, id3)
 }
@@ -419,14 +419,14 @@ func TestComputeSHA256(t *testing.T) {
 	content := []byte("test content")
 	reader := bytes.NewReader(content)
 
-	checksum, err := ComputeSHA256(reader)
+	checksum, err := computeSHA256(reader)
 	require.NoError(t, err)
 	assert.NotEmpty(t, checksum)
 	assert.Len(t, checksum, 64) // SHA256 = 32 bytes = 64 hex chars
 
 	// Same content should produce same checksum
 	reader2 := bytes.NewReader(content)
-	checksum2, err := ComputeSHA256(reader2)
+	checksum2, err := computeSHA256(reader2)
 	require.NoError(t, err)
 	assert.Equal(t, checksum, checksum2)
 }
@@ -518,16 +518,12 @@ func TestStorageManager_StoreScopedPackages(t *testing.T) {
 			artifactID, err := sm.Store(ctx, info, reader)
 			require.NoError(t, err)
 			assert.Equal(t, tt.expectedID, artifactID)
-			assert.Equal(t, tt.expectedKey, sm.GetStorageKey(artifactID))
+			assert.Equal(t, tt.expectedKey, computeStorageKeyFromID(artifactID, ""))
 		})
 	}
 }
 
 func TestGetStorageKeyFormats(t *testing.T) {
-	sm := &storageManager{
-		config: StorageConfig{},
-	}
-
 	tests := []struct {
 		name        string
 		artifactID  string
@@ -557,7 +553,8 @@ func TestGetStorageKeyFormats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			key := sm.GetStorageKey(tt.artifactID)
+			// Use package-local helper function directly
+			key := computeStorageKeyFromID(tt.artifactID, "")
 			assert.Equal(t, tt.expectedKey, key)
 		})
 	}

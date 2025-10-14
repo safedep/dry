@@ -20,22 +20,68 @@ type fetchConfig struct {
 	Timeout time.Duration
 
 	// RetryAttempts is the number of retry attempts (0 = no retries, just 1 attempt)
+	// Default: 3
 	RetryAttempts int
 
 	// RetryDelay is the base delay between retries (multiplied by attempt number)
+	// Default: 1 second
 	RetryDelay time.Duration
+
+	// MaxRetryDelay is the maximum delay between retries (prevents unbounded exponential backoff)
+	// Default: 15 seconds
+	MaxRetryDelay time.Duration
+
+	// UserAgent to use for HTTP requests
+	// Default: "safedep-dry/1.0"
+	UserAgent string
+}
+
+// Default values for fetchConfig
+const (
+	defaultRetryAttempts = 3
+	defaultRetryDelay    = 1 * time.Second
+	defaultMaxRetryDelay = 15 * time.Second
+	defaultUserAgent     = "safedep-dry/1.0"
+)
+
+// applyFetchConfigDefaults applies safe defaults to fetch config
+func applyFetchConfigDefaults(config *fetchConfig) {
+	if config.RetryAttempts == 0 {
+		config.RetryAttempts = defaultRetryAttempts
+	}
+	if config.RetryDelay == 0 {
+		config.RetryDelay = defaultRetryDelay
+	}
+	if config.MaxRetryDelay == 0 {
+		config.MaxRetryDelay = defaultMaxRetryDelay
+	}
+	if config.UserAgent == "" {
+		config.UserAgent = defaultUserAgent
+	}
+	if config.HTTPClient == nil {
+		config.HTTPClient = http.DefaultClient
+	}
+	if config.Timeout == 0 {
+		config.Timeout = 30 * time.Second
+	}
 }
 
 // fetchHTTPWithRetry performs an HTTP GET request with retry logic
 // Returns the response body content on success
 func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]byte, error) {
+	// Apply safe defaults
+	applyFetchConfigDefaults(&config)
+
 	var content []byte
 	var fetchErr error
 
 	for attempt := 0; attempt <= config.RetryAttempts; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: multiply delay by attempt number
+			// Exponential backoff: multiply delay by attempt number, capped at MaxRetryDelay
 			delay := config.RetryDelay * time.Duration(attempt)
+			if delay > config.MaxRetryDelay {
+				delay = config.MaxRetryDelay
+			}
 			log.Debugf("Retry attempt %d/%d for %s (waiting %v)",
 				attempt, config.RetryAttempts, url, delay)
 			time.Sleep(delay)
@@ -51,7 +97,10 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 			continue
 		}
 
-		// Perform request
+		// Set User-Agent header
+		req.Header.Set("User-Agent", config.UserAgent)
+
+		// Perform request (HTTPClient will follow redirects by default)
 		resp, err := config.HTTPClient.Do(req)
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to fetch: %w", err)
@@ -93,7 +142,7 @@ func verifyChecksum(content []byte, expectedChecksum string) error {
 		return nil
 	}
 
-	actualHash, err := ComputeSHA256(bytes.NewReader(content))
+	actualHash, err := computeSHA256(bytes.NewReader(content))
 	if err != nil {
 		return fmt.Errorf("failed to compute checksum: %w", err)
 	}
@@ -135,7 +184,7 @@ func storeArtifactWithMetadata(
 	}
 
 	// Compute full SHA256 for metadata
-	sha256Hash, err := ComputeSHA256(bytes.NewReader(content))
+	sha256Hash, err := computeSHA256(bytes.NewReader(content))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute SHA256: %w", err)
 	}
@@ -150,7 +199,7 @@ func storeArtifactWithMetadata(
 		SHA256:      sha256Hash,
 		Size:        int64(len(content)),
 		FetchedAt:   time.Now(),
-		StorageKey:  storage.GetStorageKey(artifactID),
+		StorageKey:  computeStorageKeyFromID(artifactID, ""), // Use package-local helper
 		ContentType: contentType,
 	}
 

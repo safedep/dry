@@ -1,8 +1,6 @@
 package artifactv2
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -113,10 +111,11 @@ func (a *npmAdapterV2) Load(ctx context.Context, artifactID string) (ArtifactRea
 	)
 
 	return &npmReaderV2{
-		artifactID: artifactID,
-		storage:    a.storage,
-		metadata:   metadata,
-		config:     a.config,
+		artifactID:    artifactID,
+		storage:       a.storage,
+		metadata:      metadata,
+		config:        a.config,
+		archiveReader: newArchiveReader(artifactID, a.storage, archiveTypeTarGz),
 	}, nil
 }
 
@@ -196,10 +195,11 @@ func (a *npmAdapterV2) buildNpmUrl(name, version string) string {
 
 // npmReaderV2 implements ArtifactReaderV2 for NPM packages
 type npmReaderV2 struct {
-	artifactID string
-	storage    StorageManager
-	metadata   *ArtifactMetadata
-	config     *adapterConfig
+	artifactID    string
+	storage       StorageManager
+	metadata      *ArtifactMetadata
+	config        *adapterConfig
+	archiveReader *archiveReader // Unified archive reader with caching
 }
 
 // ID returns the artifact ID
@@ -224,171 +224,39 @@ func (r *npmReaderV2) Reader(ctx context.Context) (io.ReadCloser, error) {
 
 // EnumFiles enumerates files within the NPM package (tar.gz)
 func (r *npmReaderV2) EnumFiles(ctx context.Context, fn func(FileInfo) error) error {
-	reader, err := r.Reader(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get artifact reader: %w", err)
-	}
-	defer reader.Close()
-
-	gzipReader, err := gzip.NewReader(reader)
-	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
-		}
-
-		// Skip directories
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		fileInfo := FileInfo{
-			Path:    header.Name,
-			Size:    header.Size,
-			ModTime: header.ModTime,
-			IsDir:   false,
-			Reader:  tarReader,
-		}
-
-		if err := fn(fileInfo); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return r.archiveReader.enumFiles(ctx, fn)
 }
 
 // ReadFile reads a specific file from the NPM package
+// This method uses the index cache for O(1) lookup validation
 func (r *npmReaderV2) ReadFile(ctx context.Context, path string) (io.ReadCloser, error) {
-	reader, err := r.Reader(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get artifact reader: %w", err)
-	}
-
-	gzipReader, err := gzip.NewReader(reader)
-	if err != nil {
-		reader.Close()
-		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-
-	tarReader := tar.NewReader(gzipReader)
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			gzipReader.Close()
-			reader.Close()
-			return nil, fmt.Errorf("file not found: %s", path)
-		}
-		if err != nil {
-			gzipReader.Close()
-			reader.Close()
-			return nil, fmt.Errorf("failed to read tar header: %w", err)
-		}
-
-		if header.Name == path {
-			// Return a composite reader that closes all layers
-			return &tarFileReader{
-				tarReader:  tarReader,
-				gzipReader: gzipReader,
-				fileReader: reader,
-			}, nil
-		}
-	}
+	return r.archiveReader.readFile(ctx, path)
 }
 
 // GetFileMetadata returns metadata for a specific file
+// This method uses the index cache for O(1) lookup without scanning the tar
 func (r *npmReaderV2) GetFileMetadata(ctx context.Context, path string) (*FileMetadata, error) {
-	reader, err := r.Reader(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get artifact reader: %w", err)
-	}
-	defer reader.Close()
-
-	gzipReader, err := gzip.NewReader(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gzip reader: %w", err)
-	}
-	defer gzipReader.Close()
-
-	tarReader := tar.NewReader(gzipReader)
-
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			return nil, fmt.Errorf("file not found: %s", path)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read tar header: %w", err)
-		}
-
-		if header.Name == path {
-			return &FileMetadata{
-				Path:    header.Name,
-				Size:    header.Size,
-				ModTime: header.ModTime,
-			}, nil
-		}
-	}
-}
-
-// ListFiles returns a list of all file paths in the artifact
-func (r *npmReaderV2) ListFiles(ctx context.Context) ([]string, error) {
-	var files []string
-
-	err := r.EnumFiles(ctx, func(info FileInfo) error {
-		files = append(files, info.Path)
-		return nil
-	})
+	entry, err := r.archiveReader.getEntry(ctx, path)
 	if err != nil {
 		return nil, err
 	}
 
-	return files, nil
+	return &FileMetadata{
+		Path:    entry.path,
+		Size:    entry.size,
+		ModTime: entry.modTime,
+	}, nil
+}
+
+// ListFiles returns a list of all file paths in the artifact
+// This method uses the index cache for O(1) retrieval without scanning the tar
+func (r *npmReaderV2) ListFiles(ctx context.Context) ([]string, error) {
+	return r.archiveReader.listEntries(ctx, true)
 }
 
 // Close releases resources
 func (r *npmReaderV2) Close() error {
 	// In v2, we don't delete artifacts on close if persistence is enabled
 	// This is controlled by the StorageManager configuration
-	return nil
-}
-
-// tarFileReader wraps tar reading with proper cleanup
-type tarFileReader struct {
-	tarReader  *tar.Reader
-	gzipReader *gzip.Reader
-	fileReader io.ReadCloser
-}
-
-func (r *tarFileReader) Read(p []byte) (n int, err error) {
-	return r.tarReader.Read(p)
-}
-
-func (r *tarFileReader) Close() error {
-	var errs []error
-
-	if err := r.gzipReader.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("gzip close: %w", err))
-	}
-
-	if err := r.fileReader.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("file close: %w", err))
-	}
-
-	if len(errs) > 0 {
-		return fmt.Errorf("close errors: %v", errs)
-	}
-
 	return nil
 }

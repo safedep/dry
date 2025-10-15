@@ -72,7 +72,7 @@ var _ Sandbox = &dockerSandbox{}
 
 // NewDockerSandbox creates a new docker sandbox.
 // This sandbox is NOT re-usable.
-// The `Entrypoint` for the provided base image is always overrided to nil to reduce ambiguity.
+// The `Entrypoint` for the provided base image is always overridden to nil to reduce ambiguity.
 func NewDockerSandbox(config DockerSandboxConfig) (*dockerSandbox, error) {
 	client, err := client.NewClientWithOpts(
 		client.WithAPIVersionNegotiation(),

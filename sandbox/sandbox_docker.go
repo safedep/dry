@@ -72,6 +72,7 @@ var _ Sandbox = &dockerSandbox{}
 
 // NewDockerSandbox creates a new docker sandbox.
 // This sandbox is NOT re-usable.
+// The `Entrypoint` for the provided base image is always overrided to nil to reduce ambiguity.
 func NewDockerSandbox(config DockerSandboxConfig) (*dockerSandbox, error) {
 	client, err := client.NewClientWithOpts(
 		client.WithAPIVersionNegotiation(),
@@ -148,6 +149,11 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 		Env:          environmentVariables,
 		Cmd:          s.config.InitCommand,
 		Labels:       s.setup.Labels,
+		// We explicitly set `Entrypoint` to nil to prevent any binary command execution from the base image because we
+		// want to use the base image as a shell environment
+		// When both `Entrypoint` and `Cmd` are provided, the container uses `<Entrypoint> <Cmd>` sequence i.e. `Cmd` is used as args for `Entrypoint`
+		// Eg. https://gitlab.com/safedep/ci-components/vet/-/blob/main/templates/scan.yml?ref_type=heads#L223
+		Entrypoint: nil,
 	}, &container.HostConfig{
 		Runtime: s.config.Runtime,
 	}, nil, nil, "")

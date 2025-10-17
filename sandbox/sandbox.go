@@ -17,6 +17,11 @@ type SandboxSetupConfig struct {
 	EnvironmentVariables map[string]string
 	// Labels is the labels to set for the sandbox
 	Labels map[string]string
+	// Entrypoint is the entrypoint to use for the sandbox
+	// Behavior: When nil, the entrypoint of the base image will be used.
+	// Behavior: When empty, the entrypoint of the base image will be cleared.
+	// Behavior: When non-empty, the entrypoint of the base image will be overridden.
+	Entrypoint *[]string
 }
 
 // SandboxExecOpts config per execution request to be overridden from the global config

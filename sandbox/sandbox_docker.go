@@ -139,7 +139,7 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 		environmentVariables = append(environmentVariables, fmt.Sprintf("%s=%s", key, value))
 	}
 
-	resp, err := s.client.ContainerCreate(ctx, &container.Config{
+	containerConfig := &container.Config{
 		Image:        s.config.Image,
 		AttachStdin:  true,
 		AttachStdout: true,
@@ -148,7 +148,13 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 		Env:          environmentVariables,
 		Cmd:          s.config.InitCommand,
 		Labels:       s.setup.Labels,
-	}, &container.HostConfig{
+	}
+
+	if s.setup.Entrypoint != nil {
+		containerConfig.Entrypoint = *s.setup.Entrypoint
+	}
+
+	resp, err := s.client.ContainerCreate(ctx, containerConfig, &container.HostConfig{
 		Runtime: s.config.Runtime,
 	}, nil, nil, "")
 	if err != nil {

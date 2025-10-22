@@ -3,9 +3,14 @@ package artifactv2
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/safedep/dry/log"
@@ -20,20 +25,19 @@ type fetchConfig struct {
 	Timeout time.Duration
 
 	// RetryAttempts is the number of retry attempts (0 = no retries, just 1 attempt)
-	// Default: 3
 	RetryAttempts int
 
 	// RetryDelay is the base delay between retries (multiplied by attempt number)
-	// Default: 1 second
 	RetryDelay time.Duration
 
 	// MaxRetryDelay is the maximum delay between retries (prevents unbounded exponential backoff)
-	// Default: 15 seconds
 	MaxRetryDelay time.Duration
 
 	// UserAgent to use for HTTP requests
-	// Default: "safedep-dry/1.0"
 	UserAgent string
+
+	// MaxRedirects is the maximum number of redirects to follow
+	MaxRedirects int
 }
 
 // Default values for fetchConfig
@@ -42,6 +46,7 @@ const (
 	defaultRetryDelay    = 1 * time.Second
 	defaultMaxRetryDelay = 15 * time.Second
 	defaultUserAgent     = "safedep-dry/1.0"
+	defaultMaxRedirects  = 10
 )
 
 // applyFetchConfigDefaults applies safe defaults to fetch config
@@ -58,18 +63,125 @@ func applyFetchConfigDefaults(config *fetchConfig) {
 	if config.UserAgent == "" {
 		config.UserAgent = defaultUserAgent
 	}
+	if config.MaxRedirects == 0 {
+		config.MaxRedirects = defaultMaxRedirects
+	}
 	if config.HTTPClient == nil {
-		config.HTTPClient = http.DefaultClient
+		config.HTTPClient = &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) >= config.MaxRedirects {
+					return fmt.Errorf("stopped after %d redirects", config.MaxRedirects)
+				}
+				return nil
+			},
+		}
 	}
 	if config.Timeout == 0 {
 		config.Timeout = 30 * time.Second
 	}
 }
 
-// fetchHTTPWithRetry performs an HTTP GET request with retry logic
-// Returns the response body content on success
+// isRetryableStatusCode determines if an HTTP status code warrants a retry
+func isRetryableStatusCode(statusCode int) bool {
+	switch {
+	case statusCode == http.StatusTooManyRequests:
+		return true
+	case statusCode >= 500 && statusCode < 600:
+		return true
+	case statusCode >= 400 && statusCode < 500:
+		return false
+	case statusCode >= 300 && statusCode < 400:
+		return false
+	default:
+		return false
+	}
+}
+
+// isRetryableError determines if an error is worth retrying based on its type
+func isRetryableError(err error, statusCode int) bool {
+	if err == nil {
+		return false
+	}
+
+	if statusCode > 0 {
+		return isRetryableStatusCode(statusCode)
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if urlErr.Temporary() {
+			return true
+		}
+		if urlErr.Timeout() {
+			return true
+		}
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		if netErr.Temporary() {
+			return true
+		}
+		if netErr.Timeout() {
+			return true
+		}
+		return false
+	}
+
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return dnsErr.Temporary()
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Temporary() {
+			return true
+		}
+		if opErr.Timeout() {
+			return true
+		}
+		return false
+	}
+
+	return false
+}
+
+// parseRetryAfter extracts retry delay from Retry-After header.
+// Returns 0 if header is missing or invalid.
+func parseRetryAfter(header string) time.Duration {
+	if header == "" {
+		return 0
+	}
+
+	if seconds, err := strconv.Atoi(strings.TrimSpace(header)); err == nil {
+		if seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+
+	if t, err := http.ParseTime(header); err == nil {
+		delay := time.Until(t)
+		if delay > 0 {
+			return delay
+		}
+	}
+
+	return 0
+}
+
+// fetchHTTPWithRetry performs an HTTP GET request with retry logic.
+// Returns the response body content on success.
 func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]byte, error) {
-	// Apply safe defaults
 	applyFetchConfigDefaults(&config)
 
 	var content []byte
@@ -77,7 +189,6 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 
 	for attempt := 0; attempt <= config.RetryAttempts; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: multiply delay by attempt number, capped at MaxRetryDelay
 			delay := config.RetryDelay * time.Duration(attempt)
 			if delay > config.MaxRetryDelay {
 				delay = config.MaxRetryDelay
@@ -87,42 +198,66 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 			time.Sleep(delay)
 		}
 
-		// Create request with timeout
 		reqCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to create request: %w", err)
+			if !isRetryableError(err, 0) {
+				log.Debugf("Non-retryable request creation error: %v", err)
+				break
+			}
 			continue
 		}
 
-		// Set User-Agent header
 		req.Header.Set("User-Agent", config.UserAgent)
 
-		// Perform request (HTTPClient will follow redirects by default)
 		resp, err := config.HTTPClient.Do(req)
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to fetch: %w", err)
+			if !isRetryableError(err, 0) {
+				log.Debugf("Non-retryable network error for %s: %v", url, err)
+				break
+			}
 			continue
 		}
 
-		// Check status code
 		if resp.StatusCode != http.StatusOK {
+			retryAfter := resp.Header.Get("Retry-After")
 			resp.Body.Close()
+
 			fetchErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+
+			if !isRetryableStatusCode(resp.StatusCode) {
+				log.Debugf("Non-retryable HTTP status %d for %s", resp.StatusCode, url)
+				break
+			}
+
+			if resp.StatusCode == http.StatusTooManyRequests && retryAfter != "" {
+				if retryDelay := parseRetryAfter(retryAfter); retryDelay > 0 {
+					if retryDelay > config.MaxRetryDelay {
+						retryDelay = config.MaxRetryDelay
+					}
+					log.Debugf("Rate limited, respecting Retry-After: %v", retryDelay)
+					time.Sleep(retryDelay)
+				}
+			}
+
 			continue
 		}
 
-		// Read response body
 		content, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to read response: %w", err)
+			if !isRetryableError(err, 0) {
+				log.Debugf("Non-retryable body read error for %s: %v", url, err)
+				break
+			}
 			continue
 		}
 
-		// Success
 		fetchErr = nil
 		break
 	}
@@ -135,8 +270,8 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 	return content, nil
 }
 
-// verifyChecksum verifies that content matches the expected checksum
-// Returns nil if checksum matches or if expectedChecksum is empty
+// verifyChecksum verifies that content matches the expected checksum.
+// Returns nil if checksum matches or if expectedChecksum is empty.
 func verifyChecksum(content []byte, expectedChecksum string) error {
 	if expectedChecksum == "" {
 		return nil
@@ -157,18 +292,13 @@ func verifyChecksum(content []byte, expectedChecksum string) error {
 
 // storeArtifactResult contains the results of storing an artifact
 type storeArtifactResult struct {
-	// ArtifactID is the unique identifier for the stored artifact
 	ArtifactID string
-
-	// SHA256 is the computed checksum of the artifact
-	SHA256 string
-
-	// Size is the size of the artifact in bytes
-	Size int64
+	SHA256     string
+	Size       int64
 }
 
-// storeArtifactWithMetadata stores an artifact and its metadata
-// This is a common pattern used by most adapters
+// storeArtifactWithMetadata stores an artifact and its metadata.
+// This is a common pattern used by most adapters.
 func storeArtifactWithMetadata(
 	ctx context.Context,
 	storage StorageManager,
@@ -177,19 +307,16 @@ func storeArtifactWithMetadata(
 	contentType string,
 	originURL string,
 ) (*storeArtifactResult, error) {
-	// Store the artifact
 	artifactID, err := storage.Store(ctx, info, bytes.NewReader(content))
 	if err != nil {
 		return nil, fmt.Errorf("failed to store artifact: %w", err)
 	}
 
-	// Compute full SHA256 for metadata
 	sha256Hash, err := computeSHA256(bytes.NewReader(content))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute SHA256: %w", err)
 	}
 
-	// Create and store metadata
 	metadata := ArtifactMetadata{
 		ID:          artifactID,
 		Name:        info.Name,
@@ -199,7 +326,7 @@ func storeArtifactWithMetadata(
 		SHA256:      sha256Hash,
 		Size:        int64(len(content)),
 		FetchedAt:   time.Now(),
-		StorageKey:  computeStorageKeyFromID(artifactID, ""), // Use package-local helper
+		StorageKey:  computeStorageKeyFromID(artifactID, ""),
 		ContentType: contentType,
 	}
 
@@ -214,9 +341,8 @@ func storeArtifactWithMetadata(
 	}, nil
 }
 
-// checkCacheAndFetch checks if an artifact exists in cache before fetching
-// Returns (exists, artifactID, error)
-// If exists is true, artifactID will contain the cached artifact ID
+// checkCacheAndFetch checks if an artifact exists in cache before fetching.
+// Returns (exists, artifactID, error). If exists is true, artifactID will contain the cached artifact ID.
 func checkCacheAndFetch(
 	ctx context.Context,
 	adapter ArtifactAdapterV2,
@@ -229,7 +355,6 @@ func checkCacheAndFetch(
 
 	exists, artifactID, err = adapter.Exists(ctx, info)
 	if err != nil {
-		// Error checking cache, but we can continue with fetch
 		log.Debugf("Cache check failed for %s@%s: %v", info.Name, info.Version, err)
 		return false, "", nil
 	}
@@ -241,8 +366,8 @@ func checkCacheAndFetch(
 	return exists, artifactID, nil
 }
 
-// loadMetadataOrDefault loads metadata from storage or returns a minimal default
-// This is used when loading artifacts to ensure we always have some metadata
+// loadMetadataOrDefault loads metadata from storage or returns a minimal default.
+// This is used when loading artifacts to ensure we always have some metadata.
 func loadMetadataOrDefault(
 	ctx context.Context,
 	storage StorageManager,
@@ -277,26 +402,20 @@ type fetchOptions struct {
 	ContentType string
 }
 
-// standardFetchFlow implements the standard artifact fetch workflow:
+// standardFetchFlow implements the standard artifact fetch workflow.
+// This encapsulates the common pattern used by most adapters:
 // 1. Check cache (if enabled)
 // 2. Fetch from URL with retry
 // 3. Verify checksum (if provided)
 // 4. Store artifact and metadata
 // 5. Return artifact ID
-//
-// This encapsulates the common pattern used by most adapters
 func standardFetchFlow(
 	ctx context.Context,
 	storage StorageManager,
 	opts fetchOptions,
 ) (artifactID string, err error) {
-	// Check if already cached
-	// Note: Cache checking should typically be done by the adapter before calling
-	// this function, as it requires adapter-specific logic to determine the artifact ID
-
 	log.Debugf("Fetching artifact from: %s", opts.URL)
 
-	// Fetch with retries
 	content, err := fetchHTTPWithRetry(ctx, opts.URL, fetchConfig{
 		HTTPClient:    opts.Config.httpClient,
 		Timeout:       opts.Config.fetchTimeout,
@@ -307,12 +426,10 @@ func standardFetchFlow(
 		return "", fmt.Errorf("failed to fetch artifact: %w", err)
 	}
 
-	// Verify checksum if provided
 	if err := verifyChecksum(content, opts.Info.Checksum); err != nil {
 		return "", err
 	}
 
-	// Store artifact and metadata
 	result, err := storeArtifactWithMetadata(
 		ctx,
 		storage,

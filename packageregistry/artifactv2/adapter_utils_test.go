@@ -251,3 +251,192 @@ func TestLoadMetadataOrDefault_MetadataDisabled(t *testing.T) {
 	assert.Equal(t, "npm:test:1.0.0", loaded.ID)
 	assert.Empty(t, loaded.Name)
 }
+
+// Tests for intelligent retry logic
+
+func TestIsRetryableStatusCode(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		retryable  bool
+	}{
+		{"200 OK", http.StatusOK, false},
+		{"201 Created", http.StatusCreated, false},
+		{"400 Bad Request", http.StatusBadRequest, false},
+		{"401 Unauthorized", http.StatusUnauthorized, false},
+		{"403 Forbidden", http.StatusForbidden, false},
+		{"404 Not Found", http.StatusNotFound, false},
+		{"429 Rate Limit", http.StatusTooManyRequests, true},
+		{"500 Internal Server Error", http.StatusInternalServerError, true},
+		{"502 Bad Gateway", http.StatusBadGateway, true},
+		{"503 Service Unavailable", http.StatusServiceUnavailable, true},
+		{"504 Gateway Timeout", http.StatusGatewayTimeout, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isRetryableStatusCode(tt.statusCode)
+			assert.Equal(t, tt.retryable, result,
+				"Status %d should be retryable=%v", tt.statusCode, tt.retryable)
+		})
+	}
+}
+
+func TestFetchHTTPWithRetry_NoRetryOn404(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5, // Set high retry count
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+	assert.Equal(t, 1, attempts, "Should not retry on 404")
+}
+
+func TestFetchHTTPWithRetry_NoRetryOn403(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Equal(t, 1, attempts, "Should not retry on 403")
+}
+
+func TestFetchHTTPWithRetry_RetryOn503(t *testing.T) {
+	content := []byte("success after retries")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, content, result)
+	assert.Equal(t, 3, attempts, "Should retry on 503")
+}
+
+func TestFetchHTTPWithRetry_RateLimitWithRetryAfter(t *testing.T) {
+	content := []byte("success after rate limit")
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 2 {
+			w.Header().Set("Retry-After", "1") // 1 second
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	start := time.Now()
+	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+		MaxRetryDelay: 5 * time.Second,
+	})
+
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Equal(t, content, result)
+	assert.Equal(t, 2, attempts, "Should retry on 429")
+	// Should have waited at least 1 second for Retry-After
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(1000))
+}
+
+func TestFetchHTTPWithRetry_ContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(2 * time.Second)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "context canceled")
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	tests := []struct {
+		name     string
+		header   string
+		expected time.Duration
+	}{
+		{"empty", "", 0},
+		{"seconds", "5", 5 * time.Second},
+		{"large seconds", "120", 120 * time.Second},
+		{"invalid", "invalid", 0},
+		{"negative", "-5", 0},
+		{"zero", "0", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseRetryAfter(tt.header)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFetchHTTPWithRetry_NoRetryOnInvalidURL(t *testing.T) {
+	ctx := context.Background()
+	_, err := fetchHTTPWithRetry(ctx, "://invalid-url", fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	// Should fail immediately without retries
+	assert.Contains(t, err.Error(), "failed to create request")
+}

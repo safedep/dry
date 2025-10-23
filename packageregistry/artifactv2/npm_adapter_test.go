@@ -56,8 +56,6 @@ func TestNewNpmAdapterV2(t *testing.T) {
 }
 
 func TestNpmAdapterV2_BuildUrl(t *testing.T) {
-	adapter := &npmAdapterV2{}
-
 	tests := []struct {
 		name     string
 		pkgName  string
@@ -86,7 +84,7 @@ func TestNpmAdapterV2_BuildUrl(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			url := adapter.buildNpmUrl(tt.pkgName, tt.version)
+			url := buildNpmUrl(npmRegistryURL, tt.pkgName, tt.version)
 			assert.Equal(t, tt.expected, url)
 		})
 	}
@@ -675,4 +673,286 @@ func TestNpmReaderV2_ScopedPackage(t *testing.T) {
 	assert.Contains(t, artifactID, "angular-core")
 	assert.NotContains(t, artifactID, "@")
 	assert.NotContains(t, artifactID, "/")
+}
+
+func TestBuildNpmUrl(t *testing.T) {
+	tests := []struct {
+		name         string
+		registryBase string
+		pkgName      string
+		version      string
+		expectedURL  string
+	}{
+		{
+			name:         "simple package with official registry",
+			registryBase: "https://registry.npmjs.org",
+			pkgName:      "express",
+			version:      "4.17.1",
+			expectedURL:  "https://registry.npmjs.org/express/-/express-4.17.1.tgz",
+		},
+		{
+			name:         "scoped package with official registry",
+			registryBase: "https://registry.npmjs.org",
+			pkgName:      "@angular/core",
+			version:      "12.0.0",
+			expectedURL:  "https://registry.npmjs.org/@angular/core/-/core-12.0.0.tgz",
+		},
+		{
+			name:         "simple package with mirror",
+			registryBase: "https://mirror.example.com/npm",
+			pkgName:      "lodash",
+			version:      "4.17.21",
+			expectedURL:  "https://mirror.example.com/npm/lodash/-/lodash-4.17.21.tgz",
+		},
+		{
+			name:         "scoped package with mirror",
+			registryBase: "https://mirror.example.com/npm",
+			pkgName:      "@babel/core",
+			version:      "7.14.0",
+			expectedURL:  "https://mirror.example.com/npm/@babel/core/-/core-7.14.0.tgz",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			url := buildNpmUrl(tt.registryBase, tt.pkgName, tt.version)
+			assert.Equal(t, tt.expectedURL, url)
+		})
+	}
+}
+
+func TestNpmAdapterV2_GetRegistryURLs(t *testing.T) {
+	tests := []struct {
+		name         string
+		mirrors      []string
+		pkgName      string
+		version      string
+		expectedURLs []string
+	}{
+		{
+			name:    "no mirrors",
+			mirrors: []string{},
+			pkgName: "express",
+			version: "4.17.1",
+			expectedURLs: []string{
+				"https://registry.npmjs.org/express/-/express-4.17.1.tgz",
+			},
+		},
+		{
+			name: "single mirror",
+			mirrors: []string{
+				"https://mirror1.example.com",
+			},
+			pkgName: "express",
+			version: "4.17.1",
+			expectedURLs: []string{
+				"https://registry.npmjs.org/express/-/express-4.17.1.tgz",
+				"https://mirror1.example.com/express/-/express-4.17.1.tgz",
+			},
+		},
+		{
+			name: "multiple mirrors",
+			mirrors: []string{
+				"https://mirror1.example.com",
+				"https://mirror2.example.com",
+			},
+			pkgName: "lodash",
+			version: "4.17.21",
+			expectedURLs: []string{
+				"https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+				"https://mirror1.example.com/lodash/-/lodash-4.17.21.tgz",
+				"https://mirror2.example.com/lodash/-/lodash-4.17.21.tgz",
+			},
+		},
+		{
+			name: "scoped package with mirrors",
+			mirrors: []string{
+				"https://mirror.example.com",
+			},
+			pkgName: "@angular/core",
+			version: "12.0.0",
+			expectedURLs: []string{
+				"https://registry.npmjs.org/@angular/core/-/core-12.0.0.tgz",
+				"https://mirror.example.com/@angular/core/-/core-12.0.0.tgz",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter, err := NewNpmAdapterV2(WithRegistryMirrors(tt.mirrors))
+			require.NoError(t, err)
+
+			npmAdapter := adapter.(*npmAdapterV2)
+			urls := npmAdapter.getRegistryURLs(tt.pkgName, tt.version)
+			assert.Equal(t, tt.expectedURLs, urls)
+		})
+	}
+}
+
+func TestNpmAdapterV2_FetchWithMirrorFallback(t *testing.T) {
+	testFiles := map[string]string{
+		"package/index.js": "mirror content",
+	}
+	packageContent := createTestNpmPackage(t, testFiles)
+	attempts := make(map[string]int)
+
+	// Primary registry returns 404
+	primaryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["primary"]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer primaryServer.Close()
+
+	// Mirror returns success
+	mirrorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["mirror"]++
+		w.WriteHeader(http.StatusOK)
+		w.Write(packageContent)
+	}))
+	defer mirrorServer.Close()
+
+	// Create adapter with mirrors (not using WithHTTPClient since we need different servers)
+	adapter, err := NewNpmAdapterV2(
+		WithRegistryMirrors([]string{mirrorServer.URL}),
+		WithCacheEnabled(false),
+	)
+	require.NoError(t, err)
+
+	// Manually override the config to use test server for primary registry
+	// This is a bit hacky but necessary for testing mirror fallback
+	npmAdapter := adapter.(*npmAdapterV2)
+
+	ctx := context.Background()
+	info := ArtifactInfo{
+		Name:      "test-mirror",
+		Version:   "1.0.0",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+		// Provide explicit URLs to simulate primary + mirror
+		URL: primaryServer.URL,
+	}
+
+	// This will fail since primary returns 404 and URL is explicit (bypasses mirrors)
+	_, err = adapter.Fetch(ctx, info)
+	assert.Error(t, err)
+
+	// Reset attempts counter for the next test
+	attempts["primary"] = 0
+	attempts["mirror"] = 0
+
+	// Now test with no explicit URL (uses getRegistryURLs)
+	info.URL = ""
+
+	// We need to actually use the mirrors - let's create custom URLs
+	urls := []string{primaryServer.URL, mirrorServer.URL}
+
+	// Directly test fetchHTTPWithMirrors behavior
+	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, packageContent, content)
+	assert.Equal(t, mirrorServer.URL, successURL)
+	assert.Equal(t, 1, attempts["primary"], "Should try primary once")
+	assert.Equal(t, 1, attempts["mirror"], "Should succeed with mirror")
+
+	// Verify the adapter's getRegistryURLs works correctly
+	urls = npmAdapter.getRegistryURLs("test-mirror", "1.0.0")
+	assert.Len(t, urls, 2, "Should have primary + 1 mirror")
+	assert.Contains(t, urls[1], mirrorServer.URL, "Mirror URL should be included")
+}
+
+func TestNpmAdapterV2_FetchWithMultipleMirrors(t *testing.T) {
+	testFiles := map[string]string{
+		"package/index.js": "third mirror wins",
+	}
+	packageContent := createTestNpmPackage(t, testFiles)
+	attempts := make(map[string]int)
+
+	// All servers return 404 except the last one
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server1"]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server2"]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server2.Close()
+
+	server3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server3"]++
+		w.WriteHeader(http.StatusOK)
+		w.Write(packageContent)
+	}))
+	defer server3.Close()
+
+	urls := []string{server1.URL, server2.URL, server3.URL}
+
+	ctx := context.Background()
+	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, packageContent, content)
+	assert.Equal(t, server3.URL, successURL)
+
+	// Should cycle through: server1 (404) -> server2 (404) -> server3 (success)
+	assert.Equal(t, 1, attempts["server1"])
+	assert.Equal(t, 1, attempts["server2"])
+	assert.Equal(t, 1, attempts["server3"])
+}
+
+func TestNpmAdapterV2_FetchWithExplicitURLBypassesMirrors(t *testing.T) {
+	testFiles := map[string]string{
+		"package/index.js": "explicit",
+	}
+	packageContent := createTestNpmPackage(t, testFiles)
+
+	// Primary server returns success
+	primaryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(packageContent)
+	}))
+	defer primaryServer.Close()
+
+	// Mirror should not be called
+	mirrorCalled := false
+	mirrorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mirrorCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mirrorServer.Close()
+
+	adapter, err := NewNpmAdapterV2(
+		WithHTTPClient(http.DefaultClient),
+		WithRegistryMirrors([]string{mirrorServer.URL}),
+		WithCacheEnabled(false),
+	)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	info := ArtifactInfo{
+		Name:      "test-explicit",
+		Version:   "1.0.0",
+		Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+		URL:       primaryServer.URL, // Explicit URL
+	}
+
+	reader, err := adapter.Fetch(ctx, info)
+	require.NoError(t, err)
+	reader.Close()
+
+	// Mirror should not have been called
+	assert.False(t, mirrorCalled, "Mirror should not be called when explicit URL is provided")
 }

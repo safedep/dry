@@ -256,3 +256,46 @@ func TestDefaultArtifactIDStrategy(t *testing.T) {
 	assert.Equal(t, ArtifactIDStrategyConvention, config.artifactIDStrategy)
 	assert.False(t, config.includeContentHash)
 }
+
+func TestWithRegistryMirrors(t *testing.T) {
+	tests := []struct {
+		name            string
+		mirrors         []string
+		expectedMirrors []string
+	}{
+		{
+			name:            "single mirror",
+			mirrors:         []string{"https://mirror1.example.com"},
+			expectedMirrors: []string{"https://mirror1.example.com"},
+		},
+		{
+			name:            "multiple mirrors",
+			mirrors:         []string{"https://mirror1.example.com", "https://mirror2.example.com"},
+			expectedMirrors: []string{"https://mirror1.example.com", "https://mirror2.example.com"},
+		},
+		{
+			name:            "empty mirrors",
+			mirrors:         []string{},
+			expectedMirrors: []string{},
+		},
+		{
+			name:            "nil mirrors",
+			mirrors:         nil,
+			expectedMirrors: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config, err := applyOptions(WithRegistryMirrors(tt.mirrors))
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedMirrors, config.registryMirrors)
+		})
+	}
+}
+
+func TestDefaultConfigRegistryMirrors(t *testing.T) {
+	config := defaultConfig()
+	assert.NotNil(t, config.registryMirrors)
+	assert.Empty(t, config.registryMirrors)
+}

@@ -34,6 +34,9 @@ type adapterConfig struct {
 	tempDir            string
 	artifactIDStrategy ArtifactIDStrategy
 	includeContentHash bool
+
+	// Registry mirror settings
+	registryMirrors []string
 }
 
 // WithStorage configures a custom storage backend
@@ -169,6 +172,16 @@ func WithContentHashInID(enabled bool) Option {
 	}
 }
 
+// WithRegistryMirrors configures alternative registry URLs (mirrors).
+// These will be tried in round-robin fashion on each retry when 404 is encountered.
+// The primary registry is always tried first, followed by mirrors in the provided order.
+func WithRegistryMirrors(mirrors []string) Option {
+	return func(c *adapterConfig) error {
+		c.registryMirrors = mirrors
+		return nil
+	}
+}
+
 // defaultConfig returns the default configuration
 func defaultConfig() *adapterConfig {
 	return &adapterConfig{
@@ -178,12 +191,13 @@ func defaultConfig() *adapterConfig {
 		fetchTimeout:       5 * time.Minute,
 		retryAttempts:      3,
 		retryDelay:         time.Second,
-		artifactIDStrategy: ArtifactIDStrategyConvention, // Default to convention-based IDs
+		artifactIDStrategy: ArtifactIDStrategyConvention,
 		includeContentHash: false,
 		httpClient: &http.Client{
 			Timeout: 5 * time.Minute,
 		},
-		tempDir: os.TempDir(),
+		tempDir:         os.TempDir(),
+		registryMirrors: []string{},
 	}
 }
 

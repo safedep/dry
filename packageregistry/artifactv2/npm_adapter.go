@@ -48,16 +48,22 @@ func (a *npmAdapterV2) Fetch(ctx context.Context, info ArtifactInfo) (ArtifactRe
 		}
 	}
 
-	// Build NPM registry URL
-	url := info.URL
-	if url == "" {
-		url = a.buildNpmUrl(info.Name, info.Version)
+	// Determine URLs to try
+	var urls []string
+	var successURL string
+
+	if info.URL != "" {
+		// User provided explicit URL - bypass mirror logic
+		urls = []string{info.URL}
+	} else {
+		// Use primary registry + mirrors
+		urls = a.getRegistryURLs(info.Name, info.Version)
 	}
 
-	log.Debugf("Fetching NPM package from: %s", url)
+	log.Debugf("Fetching NPM package from: %s (with %d total URLs)", urls[0], len(urls))
 
-	// Fetch with retries using common utility
-	content, err := fetchHTTPWithRetry(ctx, url, fetchConfig{
+	// Fetch with retries and mirror support
+	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
 		HTTPClient:    a.config.httpClient,
 		Timeout:       a.config.fetchTimeout,
 		RetryAttempts: a.config.retryAttempts,
@@ -79,13 +85,13 @@ func (a *npmAdapterV2) Fetch(ctx context.Context, info ArtifactInfo) (ArtifactRe
 		info,
 		content,
 		"application/gzip",
-		url,
+		successURL,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	log.Debugf("Stored NPM package %s@%s as %s", info.Name, info.Version, result.ArtifactID)
+	log.Debugf("Stored NPM package %s@%s as %s (from %s)", info.Name, info.Version, result.ArtifactID, successURL)
 
 	// Return reader
 	return a.Load(ctx, result.ArtifactID)
@@ -175,8 +181,8 @@ func (a *npmAdapterV2) Exists(ctx context.Context, info ArtifactInfo) (bool, str
 	return false, "", nil
 }
 
-// buildNpmUrl constructs the NPM registry URL for a package
-func (a *npmAdapterV2) buildNpmUrl(name, version string) string {
+// buildNpmUrl constructs the NPM registry URL for a package from a given registry base URL
+func buildNpmUrl(registryBase, name, version string) string {
 	base := name
 	packageName := name
 
@@ -190,7 +196,18 @@ func (a *npmAdapterV2) buildNpmUrl(name, version string) string {
 	}
 
 	return fmt.Sprintf("%s/%s/-/%s-%s.tgz",
-		npmRegistryURL, base, packageName, version)
+		registryBase, base, packageName, version)
+}
+
+// getRegistryURLs returns the list of registry URLs to try (primary + mirrors)
+func (a *npmAdapterV2) getRegistryURLs(name, version string) []string {
+	urls := []string{buildNpmUrl(npmRegistryURL, name, version)}
+
+	for _, mirror := range a.config.registryMirrors {
+		urls = append(urls, buildNpmUrl(mirror, name, version))
+	}
+
+	return urls
 }
 
 // npmReaderV2 implements ArtifactReaderV2 for NPM packages

@@ -440,3 +440,209 @@ func TestFetchHTTPWithRetry_NoRetryOnInvalidURL(t *testing.T) {
 	// Should fail immediately without retries
 	assert.Contains(t, err.Error(), "failed to create request")
 }
+
+func TestFetchHTTPWithMirrors_SingleURL(t *testing.T) {
+	content := []byte("test content")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server.URL}, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, content, resultContent)
+	assert.Equal(t, server.URL, successURL)
+}
+
+func TestFetchHTTPWithMirrors_NoURLs(t *testing.T) {
+	ctx := context.Background()
+	_, _, err := fetchHTTPWithMirrors(ctx, []string{}, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no URLs provided")
+}
+
+func TestFetchHTTPWithMirrors_404Fallback(t *testing.T) {
+	content := []byte("mirror content")
+	attempts := make(map[string]int)
+
+	// First server always returns 404
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server1"]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server1.Close()
+
+	// Second server returns success
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server2"]++
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer server2.Close()
+
+	ctx := context.Background()
+	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, content, resultContent)
+	assert.Equal(t, server2.URL, successURL)
+	assert.Equal(t, 1, attempts["server1"], "Should try first server once before moving to mirror")
+	assert.Equal(t, 1, attempts["server2"], "Should succeed on first try with mirror")
+}
+
+func TestFetchHTTPWithMirrors_RoundRobin(t *testing.T) {
+	content := []byte("success content")
+	attempts := make(map[string]int)
+
+	// First server returns 404 twice, then success
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server1"]++
+		if attempts["server1"] < 3 {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write(content)
+	}))
+	defer server1.Close()
+
+	// Second server always returns 404
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts["server2"]++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server2.Close()
+
+	ctx := context.Background()
+	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 5,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, content, resultContent)
+	assert.Equal(t, server1.URL, successURL)
+	// Should cycle: server1 (404) -> server2 (404) -> server1 (404) -> server2 (404) -> server1 (success)
+	assert.GreaterOrEqual(t, attempts["server1"], 3, "Should cycle back to server1")
+	assert.GreaterOrEqual(t, attempts["server2"], 1, "Should try server2 at least once")
+}
+
+func TestFetchHTTPWithMirrors_AllFail(t *testing.T) {
+	// All servers return 404
+	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server1.Close()
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server2.Close()
+
+	ctx := context.Background()
+	_, _, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
+		HTTPClient:    http.DefaultClient,
+		Timeout:       5 * time.Second,
+		RetryAttempts: 3,
+		RetryDelay:    10 * time.Millisecond,
+	})
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed after")
+}
+
+func TestFetchHTTPWithMirrors_RetryableErrorsWithMirrors(t *testing.T) {
+	tests := []struct {
+		name               string
+		server1StatusCode  int
+		server2StatusCode  int
+		expectSuccess      bool
+		expectedServerUsed string
+	}{
+		{
+			name:               "500 on server1, success on server2",
+			server1StatusCode:  http.StatusInternalServerError,
+			server2StatusCode:  http.StatusOK,
+			expectSuccess:      false, // 500 is retryable but exhausts retries on server1
+			expectedServerUsed: "server1",
+		},
+		{
+			name:               "404 on server1, success on server2",
+			server1StatusCode:  http.StatusNotFound,
+			server2StatusCode:  http.StatusOK,
+			expectSuccess:      true,
+			expectedServerUsed: "server2", // 404 triggers immediate mirror fallback
+		},
+		{
+			name:               "403 on server1, success on server2",
+			server1StatusCode:  http.StatusForbidden,
+			server2StatusCode:  http.StatusOK,
+			expectSuccess:      false,
+			expectedServerUsed: "server1", // 403 is non-retryable, fails immediately
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := []byte("success content")
+			attempts := make(map[string]int)
+
+			// First server returns configured status code
+			server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts["server1"]++
+				w.WriteHeader(tt.server1StatusCode)
+			}))
+			defer server1.Close()
+
+			// Second server returns configured status code or success
+			server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts["server2"]++
+				w.WriteHeader(tt.server2StatusCode)
+				if tt.server2StatusCode == http.StatusOK {
+					w.Write(content)
+				}
+			}))
+			defer server2.Close()
+
+			ctx := context.Background()
+			resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
+				HTTPClient:    http.DefaultClient,
+				Timeout:       5 * time.Second,
+				RetryAttempts: 3,
+				RetryDelay:    10 * time.Millisecond,
+			})
+
+			if tt.expectSuccess {
+				require.NoError(t, err)
+				assert.Equal(t, content, resultContent)
+				if tt.expectedServerUsed == "server2" {
+					assert.Equal(t, server2.URL, successURL)
+				}
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
+}

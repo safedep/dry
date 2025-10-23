@@ -120,21 +120,17 @@ func isRetryableError(err error, statusCode int) bool {
 		if urlErr.Temporary() {
 			return true
 		}
+
 		if urlErr.Timeout() {
 			return true
 		}
+
 		return false
 	}
 
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		if netErr.Temporary() {
-			return true
-		}
-		if netErr.Timeout() {
-			return true
-		}
-		return false
+		return netErr.Timeout()
 	}
 
 	var dnsErr *net.DNSError
@@ -147,9 +143,11 @@ func isRetryableError(err error, statusCode int) bool {
 		if opErr.Temporary() {
 			return true
 		}
+
 		if opErr.Timeout() {
 			return true
 		}
+
 		return false
 	}
 
@@ -182,26 +180,42 @@ func parseRetryAfter(header string) time.Duration {
 // fetchHTTPWithRetry performs an HTTP GET request with retry logic.
 // Returns the response body content on success.
 func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]byte, error) {
+	content, _, err := fetchHTTPWithMirrors(ctx, []string{url}, config)
+	return content, err
+}
+
+// fetchHTTPWithMirrors performs an HTTP GET request with retry logic and mirror support.
+// It cycles through the provided URLs in round-robin fashion during retries.
+// On 404 errors, it immediately tries the next URL in the rotation.
+// Returns the response body content, the successful URL, and any error.
+func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig) ([]byte, string, error) {
+	if len(urls) == 0 {
+		return nil, "", fmt.Errorf("no URLs provided")
+	}
+
 	applyFetchConfigDefaults(&config)
 
 	var content []byte
 	var fetchErr error
+	urlIndex := 0
 
 	for attempt := 0; attempt <= config.RetryAttempts; attempt++ {
+		currentURL := urls[urlIndex]
+
 		if attempt > 0 {
 			delay := config.RetryDelay * time.Duration(attempt)
 			if delay > config.MaxRetryDelay {
 				delay = config.MaxRetryDelay
 			}
 			log.Debugf("Retry attempt %d/%d for %s (waiting %v)",
-				attempt, config.RetryAttempts, url, delay)
+				attempt, config.RetryAttempts, currentURL, delay)
 			time.Sleep(delay)
 		}
 
 		reqCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 		defer cancel()
 
-		req, err := http.NewRequestWithContext(reqCtx, "GET", url, nil)
+		req, err := http.NewRequestWithContext(reqCtx, "GET", currentURL, nil)
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to create request: %w", err)
 			if !isRetryableError(err, 0) {
@@ -217,7 +231,7 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to fetch: %w", err)
 			if !isRetryableError(err, 0) {
-				log.Debugf("Non-retryable network error for %s: %v", url, err)
+				log.Debugf("Non-retryable network error for %s: %v", currentURL, err)
 				break
 			}
 			continue
@@ -229,8 +243,15 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 
 			fetchErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 
+			// On 404, cycle to next URL in round-robin fashion
+			if resp.StatusCode == http.StatusNotFound && len(urls) > 1 {
+				log.Debugf("Got 404 from %s, trying next mirror", currentURL)
+				urlIndex = (urlIndex + 1) % len(urls)
+				continue
+			}
+
 			if !isRetryableStatusCode(resp.StatusCode) {
-				log.Debugf("Non-retryable HTTP status %d for %s", resp.StatusCode, url)
+				log.Debugf("Non-retryable HTTP status %d for %s", resp.StatusCode, currentURL)
 				break
 			}
 
@@ -252,22 +273,22 @@ func fetchHTTPWithRetry(ctx context.Context, url string, config fetchConfig) ([]
 		if err != nil {
 			fetchErr = fmt.Errorf("failed to read response: %w", err)
 			if !isRetryableError(err, 0) {
-				log.Debugf("Non-retryable body read error for %s: %v", url, err)
+				log.Debugf("Non-retryable body read error for %s: %v", currentURL, err)
 				break
 			}
 			continue
 		}
 
-		fetchErr = nil
-		break
+		// Success!
+		return content, currentURL, nil
 	}
 
 	if fetchErr != nil {
-		return nil, fmt.Errorf("failed after %d attempts: %w",
+		return nil, "", fmt.Errorf("failed after %d attempts: %w",
 			config.RetryAttempts+1, fetchErr)
 	}
 
-	return content, nil
+	return content, urls[urlIndex], nil
 }
 
 // verifyChecksum verifies that content matches the expected checksum.
@@ -341,31 +362,6 @@ func storeArtifactWithMetadata(
 	}, nil
 }
 
-// checkCacheAndFetch checks if an artifact exists in cache before fetching.
-// Returns (exists, artifactID, error). If exists is true, artifactID will contain the cached artifact ID.
-func checkCacheAndFetch(
-	ctx context.Context,
-	adapter ArtifactAdapterV2,
-	info ArtifactInfo,
-	cacheEnabled bool,
-) (exists bool, artifactID string, err error) {
-	if !cacheEnabled {
-		return false, "", nil
-	}
-
-	exists, artifactID, err = adapter.Exists(ctx, info)
-	if err != nil {
-		log.Debugf("Cache check failed for %s@%s: %v", info.Name, info.Version, err)
-		return false, "", nil
-	}
-
-	if exists {
-		log.Debugf("Found %s@%s in cache: %s", info.Name, info.Version, artifactID)
-	}
-
-	return exists, artifactID, nil
-}
-
 // loadMetadataOrDefault loads metadata from storage or returns a minimal default.
 // This is used when loading artifacts to ensure we always have some metadata.
 func loadMetadataOrDefault(
@@ -400,50 +396,4 @@ type fetchOptions struct {
 
 	// ContentType is the MIME type of the artifact (e.g., "application/gzip")
 	ContentType string
-}
-
-// standardFetchFlow implements the standard artifact fetch workflow.
-// This encapsulates the common pattern used by most adapters:
-// 1. Check cache (if enabled)
-// 2. Fetch from URL with retry
-// 3. Verify checksum (if provided)
-// 4. Store artifact and metadata
-// 5. Return artifact ID
-func standardFetchFlow(
-	ctx context.Context,
-	storage StorageManager,
-	opts fetchOptions,
-) (artifactID string, err error) {
-	log.Debugf("Fetching artifact from: %s", opts.URL)
-
-	content, err := fetchHTTPWithRetry(ctx, opts.URL, fetchConfig{
-		HTTPClient:    opts.Config.httpClient,
-		Timeout:       opts.Config.fetchTimeout,
-		RetryAttempts: opts.Config.retryAttempts,
-		RetryDelay:    opts.Config.retryDelay,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch artifact: %w", err)
-	}
-
-	if err := verifyChecksum(content, opts.Info.Checksum); err != nil {
-		return "", err
-	}
-
-	result, err := storeArtifactWithMetadata(
-		ctx,
-		storage,
-		opts.Info,
-		content,
-		opts.ContentType,
-		opts.URL,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	log.Debugf("Stored artifact %s@%s as %s",
-		opts.Info.Name, opts.Info.Version, result.ArtifactID)
-
-	return result.ArtifactID, nil
 }

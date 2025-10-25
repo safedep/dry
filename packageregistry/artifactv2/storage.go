@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/safedep/dry/storage"
@@ -77,6 +77,7 @@ func generateArtifactID(info ArtifactInfo, strategy ArtifactIDStrategy, contentH
 
 // computeStorageKeyFromID computes storage key from artifact ID (package-local helper)
 // This is used internally when we need to compute the key without a storageManager instance
+// Uses path.Join() for cross-platform compatibility (always uses / separator)
 func computeStorageKeyFromID(artifactID string, keyPrefix string) string {
 	parts := strings.Split(artifactID, ":")
 
@@ -86,14 +87,14 @@ func computeStorageKeyFromID(artifactID string, keyPrefix string) string {
 		// ContentHash format: ecosystem:hash
 		ecosystem := parts[0]
 		hash := parts[1]
-		key = filepath.Join("artifacts", ecosystem, hash, "artifact")
+		key = path.Join("artifacts", ecosystem, hash, "artifact")
 
 	case 3:
 		// Convention format: ecosystem:name:version
 		ecosystem := parts[0]
 		name := parts[1]
 		version := parts[2]
-		key = filepath.Join("artifacts", ecosystem, name, version, "artifact")
+		key = path.Join("artifacts", ecosystem, name, version, "artifact")
 
 	case 4:
 		// Hybrid format: ecosystem:name:version:hash
@@ -103,7 +104,7 @@ func computeStorageKeyFromID(artifactID string, keyPrefix string) string {
 		hash := parts[3]
 		// Combine version and hash with hyphen for single directory level
 		versionHash := fmt.Sprintf("%s-%s", version, hash)
-		key = filepath.Join("artifacts", ecosystem, name, versionHash, "artifact")
+		key = path.Join("artifacts", ecosystem, name, versionHash, "artifact")
 
 	default:
 		// Invalid format, return as-is
@@ -112,7 +113,7 @@ func computeStorageKeyFromID(artifactID string, keyPrefix string) string {
 
 	// Add prefix if configured
 	if keyPrefix != "" {
-		key = filepath.Join(keyPrefix, key)
+		key = path.Join(keyPrefix, key)
 	}
 
 	return key
@@ -232,11 +233,34 @@ func (sm *storageManager) Delete(ctx context.Context, artifactID string) error {
 	return nil
 }
 
+// GetStorage returns the underlying storage backend
+func (sm *storageManager) GetStorage() storage.Storage {
+	return sm.storage
+}
+
+// computeExtractionKey computes the base storage key for extracted archive contents
+// For an artifact at artifacts/npm/express/4.17.1/artifact
+// Returns: artifacts/npm/express/4.17.1/extracted/
+// Uses path.Join() for cross-platform compatibility (always uses / separator)
+func computeExtractionKey(artifactID string, keyPrefix string) string {
+	// Get the artifact storage key
+	artifactKey := computeStorageKeyFromID(artifactID, keyPrefix)
+
+	// Replace /artifact suffix with /extracted/
+	if strings.HasSuffix(artifactKey, "/artifact") {
+		return strings.TrimSuffix(artifactKey, "artifact") + "extracted/"
+	}
+
+	// Fallback: append extracted/ to the key
+	return path.Join(artifactKey, "extracted") + "/"
+}
+
 // getStorageKey returns the storage key for an artifact ID (package-local)
 // Handles different ID formats based on strategy:
 // - Convention (3 parts): ecosystem:name:version -> artifacts/{ecosystem}/{name}/{version}/artifact
 // - ContentHash (2 parts): ecosystem:hash -> artifacts/{ecosystem}/{hash}/artifact
 // - Hybrid (4 parts): ecosystem:name:version:hash -> artifacts/{ecosystem}/{name}/{version}-{hash}/artifact
+// Uses path.Join() for cross-platform compatibility (always uses / separator)
 func (sm *storageManager) getStorageKey(artifactID string) string {
 	parts := strings.Split(artifactID, ":")
 
@@ -246,14 +270,14 @@ func (sm *storageManager) getStorageKey(artifactID string) string {
 		// ContentHash format: ecosystem:hash
 		ecosystem := parts[0]
 		hash := parts[1]
-		key = filepath.Join("artifacts", ecosystem, hash, "artifact")
+		key = path.Join("artifacts", ecosystem, hash, "artifact")
 
 	case 3:
 		// Convention format: ecosystem:name:version
 		ecosystem := parts[0]
 		name := parts[1]
 		version := parts[2]
-		key = filepath.Join("artifacts", ecosystem, name, version, "artifact")
+		key = path.Join("artifacts", ecosystem, name, version, "artifact")
 
 	case 4:
 		// Hybrid format: ecosystem:name:version:hash
@@ -263,7 +287,7 @@ func (sm *storageManager) getStorageKey(artifactID string) string {
 		hash := parts[3]
 		// Combine version and hash with hyphen for single directory level
 		versionHash := fmt.Sprintf("%s-%s", version, hash)
-		key = filepath.Join("artifacts", ecosystem, name, versionHash, "artifact")
+		key = path.Join("artifacts", ecosystem, name, versionHash, "artifact")
 
 	default:
 		// Invalid format, return as-is
@@ -272,7 +296,7 @@ func (sm *storageManager) getStorageKey(artifactID string) string {
 
 	// Add prefix if configured
 	if sm.config.KeyPrefix != "" {
-		key = filepath.Join(sm.config.KeyPrefix, key)
+		key = path.Join(sm.config.KeyPrefix, key)
 	}
 
 	return key

@@ -956,3 +956,132 @@ func TestNpmAdapterV2_FetchWithExplicitURLBypassesMirrors(t *testing.T) {
 	// Mirror should not have been called
 	assert.False(t, mirrorCalled, "Mirror should not be called when explicit URL is provided")
 }
+
+func TestNpmReaderV2_Extract(t *testing.T) {
+	tests := []struct {
+		name          string
+		packageFiles  map[string]string
+		expectedFiles int
+	}{
+		{
+			name: "simple package extraction",
+			packageFiles: map[string]string{
+				"package/index.js":     "console.log('test')",
+				"package/package.json": `{"name": "test", "version": "1.0.0"}`,
+			},
+			expectedFiles: 2,
+		},
+		{
+			name: "package with nested files",
+			packageFiles: map[string]string{
+				"package/index.js":        "main",
+				"package/lib/util.js":     "util",
+				"package/lib/helper.js":   "helper",
+				"package/test/test.js":    "test",
+				"package/package.json":    "{}",
+			},
+			expectedFiles: 5,
+		},
+		{
+			name: "single file package",
+			packageFiles: map[string]string{
+				"package/index.js": "single",
+			},
+			expectedFiles: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test package
+			packageContent := createTestNpmPackage(t, tt.packageFiles)
+
+			// Create test server
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write(packageContent)
+			}))
+			defer server.Close()
+
+			// Create adapter with unique temp dir for this test
+			tempDir := t.TempDir()
+			adapter, err := NewNpmAdapterV2(
+				WithHTTPClient(server.Client()),
+				WithTempDir(tempDir),
+			)
+			require.NoError(t, err)
+
+			ctx := context.Background()
+			info := ArtifactInfo{
+				Name:      "test-extract",
+				Version:   "1.0.0",
+				Ecosystem: packagev1.Ecosystem_ECOSYSTEM_NPM,
+				URL:       server.URL,
+			}
+
+			// Fetch package
+			reader, err := adapter.Fetch(ctx, info)
+			require.NoError(t, err)
+			defer reader.Close()
+
+			// Extract files
+			result, err := reader.Extract(ctx)
+			require.NoError(t, err)
+			assert.NotNil(t, result)
+
+			// Verify extraction result
+			assert.NotEmpty(t, result.ExtractionKey, "Extraction key should not be empty")
+			assert.Equal(t, tt.expectedFiles, result.FileCount, "File count mismatch")
+			assert.Greater(t, result.TotalSize, int64(0), "Total size should be greater than 0")
+			assert.False(t, result.AlreadyExtracted, "Should not be already extracted on first call")
+
+			// Extract again to test idempotency
+			result2, err := reader.Extract(ctx)
+			require.NoError(t, err)
+			assert.NotNil(t, result2)
+			assert.Equal(t, result.ExtractionKey, result2.ExtractionKey, "Extraction keys should match")
+			assert.True(t, result2.AlreadyExtracted, "Should be already extracted on second call")
+		})
+	}
+}
+
+func TestComputeExtractionKey(t *testing.T) {
+	tests := []struct {
+		name         string
+		artifactID   string
+		keyPrefix    string
+		expectedKey  string
+	}{
+		{
+			name:         "convention format without prefix",
+			artifactID:   "ecosystem_npm:express:4.17.1",
+			keyPrefix:    "",
+			expectedKey:  "artifacts/ecosystem_npm/express/4.17.1/extracted/",
+		},
+		{
+			name:         "convention format with prefix",
+			artifactID:   "ecosystem_npm:express:4.17.1",
+			keyPrefix:    "prod/",
+			expectedKey:  "prod/artifacts/ecosystem_npm/express/4.17.1/extracted/",
+		},
+		{
+			name:         "content hash format",
+			artifactID:   "ecosystem_npm:a1b2c3d4",
+			keyPrefix:    "",
+			expectedKey:  "artifacts/ecosystem_npm/a1b2c3d4/extracted/",
+		},
+		{
+			name:         "hybrid format",
+			artifactID:   "ecosystem_npm:lodash:4.17.21:abc123",
+			keyPrefix:    "",
+			expectedKey:  "artifacts/ecosystem_npm/lodash/4.17.21-abc123/extracted/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key := computeExtractionKey(tt.artifactID, tt.keyPrefix)
+			assert.Equal(t, tt.expectedKey, key)
+		})
+	}
+}

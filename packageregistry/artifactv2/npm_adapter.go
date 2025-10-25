@@ -271,6 +271,20 @@ func (r *npmReaderV2) ListFiles(ctx context.Context) ([]string, error) {
 	return r.archiveReader.listEntries(ctx, true)
 }
 
+// Extract extracts the archive contents to storage
+// Files are extracted to a sibling directory alongside the archive
+// Returns information about the extraction including the base storage key
+func (r *npmReaderV2) Extract(ctx context.Context) (*ExtractResult, error) {
+	// Compute extraction key based on artifact ID
+	baseKey := computeExtractionKey(r.artifactID, r.config.storagePrefix)
+
+	// Get underlying storage from storage manager
+	storage := r.storage.GetStorage()
+
+	// Perform extraction
+	return extractToStorage(ctx, storage, r.archiveReader, baseKey)
+}
+
 // Close releases resources
 func (r *npmReaderV2) Close() error {
 	// In v2, we don't delete artifacts on close if persistence is enabled

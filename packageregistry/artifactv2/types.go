@@ -8,6 +8,7 @@ import (
 	"time"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
+	"github.com/safedep/dry/storage"
 )
 
 // ArtifactAdapterV2 is the main interface for artifact operations
@@ -89,6 +90,12 @@ type ArtifactReaderV2 interface {
 	// ListFiles returns a list of all file paths in the artifact
 	ListFiles(ctx context.Context) ([]string, error)
 
+	// Extract extracts the archive contents to storage
+	// Files are extracted to a conventional location alongside the archive
+	// Returns information about the extraction including the base storage key
+	// This operation is idempotent - calling it multiple times is safe
+	Extract(ctx context.Context) (*ExtractResult, error)
+
 	// Close releases resources (does NOT delete from storage)
 	Close() error
 }
@@ -166,6 +173,24 @@ type FileMetadata struct {
 	ContentID string
 }
 
+// ExtractResult contains information about an archive extraction operation
+type ExtractResult struct {
+	// ExtractionKey is the base storage key where files were extracted
+	// For filesystem storage, this is a path; for cloud storage, it's an object prefix
+	// Example: "artifacts/npm/express/4.17.1/extracted/"
+	ExtractionKey string
+
+	// FileCount is the number of files extracted from the archive
+	FileCount int
+
+	// TotalSize is the total size of all extracted files in bytes
+	TotalSize int64
+
+	// AlreadyExtracted indicates if the files were already extracted
+	// (extraction was skipped because it already exists)
+	AlreadyExtracted bool
+}
+
 // StorageManager manages artifact storage and caching
 type StorageManager interface {
 	// Store saves an artifact to storage and returns its ID
@@ -186,6 +211,10 @@ type StorageManager interface {
 
 	// Delete removes an artifact and its metadata
 	Delete(ctx context.Context, artifactID string) error
+
+	// GetStorage returns the underlying storage backend
+	// This allows direct access to storage for operations like extraction
+	GetStorage() storage.Storage
 }
 
 // ArtifactIDStrategy determines how artifact IDs are generated

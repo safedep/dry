@@ -2,14 +2,17 @@ package artifactv2
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"sync"
 	"time"
 
 	"github.com/safedep/dry/log"
+	"github.com/safedep/dry/storage"
 )
 
 // archiveType represents the type of archive format
@@ -304,4 +307,90 @@ func (r *tarFileReader) Close() error {
 	}
 
 	return nil
+}
+
+// extractToStorage extracts archive contents to storage
+// Returns information about the extraction including file count and total size
+func extractToStorage(
+	ctx context.Context,
+	stor storage.Storage,
+	archiveReader *archiveReader,
+	baseKey string,
+) (*ExtractResult, error) {
+	// Check if already extracted by looking for files in the extraction directory
+	existingFiles, err := stor.List(ctx, baseKey)
+	if err == nil && len(existingFiles) > 0 {
+		// Already extracted, compute metrics from existing files
+		log.Debugf("Archive already extracted to %s (%d files)", baseKey, len(existingFiles))
+
+		// Build result from existing extraction
+		totalSize := int64(0)
+		fileCount := len(existingFiles)
+
+		return &ExtractResult{
+			ExtractionKey:    baseKey,
+			FileCount:        fileCount,
+			TotalSize:        totalSize,
+			AlreadyExtracted: true,
+		}, nil
+	}
+
+	// Proceed with extraction
+	log.Debugf("Extracting archive to %s", baseKey)
+
+	fileCount := 0
+	totalSize := int64(0)
+	var extractionErrors []error
+
+	// Enumerate files and extract each one
+	err = archiveReader.enumFiles(ctx, func(fileInfo FileInfo) error {
+		// Skip directories
+		if fileInfo.IsDir {
+			return nil
+		}
+
+		// Construct storage key for this file using path.Join for cross-platform compatibility
+		fileKey := path.Join(baseKey, fileInfo.Path)
+
+		// Read file content
+		content := make([]byte, fileInfo.Size)
+		n, err := io.ReadFull(fileInfo.Reader, content)
+		if err != nil && err != io.EOF {
+			extractionErrors = append(extractionErrors,
+				fmt.Errorf("failed to read %s: %w", fileInfo.Path, err))
+			return nil // Continue with next file
+		}
+
+		// Write to storage
+		if err := stor.Put(fileKey, io.NopCloser(bytes.NewReader(content[:n]))); err != nil {
+			extractionErrors = append(extractionErrors,
+				fmt.Errorf("failed to write %s: %w", fileInfo.Path, err))
+			return nil // Continue with next file
+		}
+
+		fileCount++
+		totalSize += int64(n)
+
+		log.Debugf("Extracted %s (%d bytes)", fileInfo.Path, n)
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to enumerate archive files: %w", err)
+	}
+
+	// Check if there were any extraction errors
+	if len(extractionErrors) > 0 {
+		log.Warnf("Extraction completed with %d errors", len(extractionErrors))
+		// Continue anyway, partial extraction is better than none
+	}
+
+	log.Debugf("Extraction complete: %d files, %d bytes", fileCount, totalSize)
+
+	return &ExtractResult{
+		ExtractionKey:    baseKey,
+		FileCount:        fileCount,
+		TotalSize:        totalSize,
+		AlreadyExtracted: false,
+	}, nil
 }

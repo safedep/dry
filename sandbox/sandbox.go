@@ -1,3 +1,4 @@
+// Package sandbox defines contract for implementing sandboxed command execution tools
 package sandbox
 
 import (

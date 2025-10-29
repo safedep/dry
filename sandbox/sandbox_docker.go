@@ -14,41 +14,43 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/safedep/dry/log"
+	"github.com/safedep/dry/utils"
 )
 
 const defaultDockerOperationWaitTime = time.Millisecond * 500
 
 type DockerSandboxConfig struct {
 	// Docker host runtime (default is runc)
-	Runtime string
+	Runtime string `env:"SANDBOX_DOCKER_RUNTIME" envDefault:"runc"`
 
 	// The image to use to create the container.
-	Image string
+	Image string `env:"SANDBOX_DOCKER_IMAGE,required"`
 
 	// Pull the image if it is not already present on the container daemon.
-	PullImageIfMissing bool
+	PullImageIfMissing bool `env:"SANDBOX_DOCKER_PULL_IF_MISSING" envDefault:"false"`
 
 	// The path to the docker socket.
 	// If not provided, the default unix socket will be used.
-	Socket string
+	Socket string `env:"SANDBOX_DOCKER_SOCKET" envDefault:"/var/run/docker.sock"`
 
 	// Timeout to wait for the container to be running
-	CreateWaitTimeout time.Duration
+	CreateWaitTimeout time.Duration `env:"SANDBOX_DOCKER_CREATE_TIMEOUT" envDefault:"10s"`
 
 	// Timeout to wait for the exec to finish
 	// This is the global timeout for all execs, can be overridden per execution
-	ExecWaitTimeout time.Duration
+	ExecWaitTimeout time.Duration `env:"SANDBOX_DOCKER_EXEC_TIMEOUT" envDefault:"60s"`
 
 	// Timeout to wait for the container to be destroyed
-	DestroyWaitTimeout time.Duration
+	DestroyWaitTimeout time.Duration `env:"SANDBOX_DOCKER_DESTROY_TIMEOUT" envDefault:"10s"`
 
 	// Process to create that will block when creating container
-	InitCommand []string
+	InitCommand []string `env:"SANDBOX_DOCKER_INIT_COMMAND" envSeparator:"," envDefault:"/bin/sh,-c,sleep 100d"`
 
 	// Skip waiting for container to be running
-	SkipWaitForRunningContainer bool
+	SkipWaitForRunningContainer bool `env:"SANDBOX_DOCKER_SKIP_WAIT" envDefault:"false"`
 }
 
+// DefaultDockerSandboxConfig creates default config for the docker sandbox
 func DefaultDockerSandboxConfig(image string) DockerSandboxConfig {
 	return DockerSandboxConfig{
 		Runtime:            "runc",
@@ -59,6 +61,13 @@ func DefaultDockerSandboxConfig(image string) DockerSandboxConfig {
 		DestroyWaitTimeout: 10 * time.Second,
 		InitCommand:        []string{"/bin/sh", "-c", "sleep 100d"},
 	}
+}
+
+// ParseDockerConfigFromEnv creates a DockerSandboxConfig from environment variables.
+// Environment variables are parsed using the caarlos0/env package.
+// See DockerSandboxConfig struct tags for the full list of supported environment variables.
+func ParseDockerConfigFromEnv() (DockerSandboxConfig, error) {
+	return utils.ParseEnvToStruct[DockerSandboxConfig]()
 }
 
 type dockerSandbox struct {

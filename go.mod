@@ -1,6 +1,6 @@
 module github.com/safedep/dry
 
-go 1.24.3
+go 1.25.1
 
 require (
 	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.6-20250705071048-7ad8e6be7c05.1
@@ -9,6 +9,7 @@ require (
 	cloud.google.com/go/storage v1.55.0
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/antihax/optional v1.0.0
+	github.com/caarlos0/env/v11 v11.3.1
 	github.com/cloudwego/eino v0.4.7
 	github.com/cloudwego/eino-ext/components/model/gemini v0.1.5
 	github.com/docker/docker v28.1.1+incompatible

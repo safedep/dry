@@ -23,6 +23,14 @@ type SandboxSetupConfig struct {
 	// Behavior: When empty, the entrypoint of the base image will be cleared.
 	// Behavior: When non-empty, the entrypoint of the base image will be overridden.
 	Entrypoint *[]string
+	// HealthCheckCommand is an optional health check command to execute after
+	// the sandbox container is running. If provided, the command will be executed
+	// repeatedly (polling every 500ms) until it succeeds (exit code 0) or the
+	// setup timeout is reached. The sandbox Setup() will only succeed if the
+	// health check command succeeds. Format: [command, arg1, arg2, ...]
+	// Example: []string{"wget", "-O-", "localhost:8080/health"}
+	// If empty or nil, no health check will be performed.
+	HealthCheckCommand []string
 }
 
 // SandboxExecOpts config per execution request to be overridden from the global config

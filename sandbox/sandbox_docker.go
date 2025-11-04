@@ -211,8 +211,67 @@ func (s *dockerSandbox) Setup(ctx context.Context, config SandboxSetupConfig) er
 			}
 
 			if container.State.Running {
+				if len(s.setup.HealthCheckCommand) > 0 {
+					log.Debugf("Container is running, executing health check command: %v", s.setup.HealthCheckCommand)
+
+					err := s.executeHealthCheck(timeoutContext)
+					if err != nil {
+						return fmt.Errorf("health check failed: %w", err)
+					}
+
+					log.Debugf("Health check succeeded")
+				}
+
 				return nil
 			}
+		}
+	}
+}
+
+// executeHealthCheck runs the health check command repeatedly until it succeeds or times out
+func (s *dockerSandbox) executeHealthCheck(ctx context.Context) error {
+	if len(s.setup.HealthCheckCommand) == 0 {
+		return nil
+	}
+
+	command := s.setup.HealthCheckCommand[0]
+	args := []string{}
+
+	if len(s.setup.HealthCheckCommand) > 1 {
+		args = s.setup.HealthCheckCommand[1:]
+	}
+
+	healthCheckTicker := time.NewTicker(defaultDockerOperationWaitTime)
+	defer healthCheckTicker.Stop()
+
+	var lastErr error
+	for {
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return fmt.Errorf("health check command %v timed out (last error: %w)", s.setup.HealthCheckCommand, lastErr)
+			}
+
+			return fmt.Errorf("health check command %v timed out", s.setup.HealthCheckCommand)
+		case <-healthCheckTicker.C:
+			log.Debugf("Executing health check: %s %v", command, args)
+
+			resp, err := s.Execute(ctx, command, args, SandboxExecOpts{
+				WaitTimeout: defaultDockerOperationWaitTime,
+			})
+			if err != nil {
+				log.Debugf("Health check execution error: %v", err)
+				lastErr = err
+				continue
+			}
+
+			if resp.ExitCode == 0 {
+				log.Debugf("Health check succeeded with exit code 0")
+				return nil
+			}
+
+			lastErr = fmt.Errorf("exit code %d", resp.ExitCode)
+			log.Debugf("Health check failed with exit code %d, retrying...", resp.ExitCode)
 		}
 	}
 }

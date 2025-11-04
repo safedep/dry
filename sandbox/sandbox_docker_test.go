@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -250,5 +251,153 @@ func TestDockerSandboxReadWriteFile(t *testing.T) {
 		content, err := io.ReadAll(output)
 		assert.NoError(t, err)
 		assert.Equal(t, "test", string(content))
+	})
+}
+
+func TestDockerSandboxHealthCheck(t *testing.T) {
+	if !isSandboxEndToEndTestEnabled() {
+		t.Skip("Executor end-to-end tests are not enabled")
+	}
+
+	t.Run("successful health check with simple command", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{"echo", "healthy"},
+		})
+		assert.NoError(t, err)
+
+		// Verify sandbox is ready to execute commands
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+	})
+
+	t.Run("health check timeout", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+		config.CreateWaitTimeout = 2 * time.Second
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		// This command will sleep longer than the timeout
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{"sh", "-c", "sleep 10 && exit 0"},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "health check")
+		assert.Contains(t, err.Error(), "timed out")
+	})
+
+	t.Run("health check failure with non-zero exit code", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+		config.CreateWaitTimeout = 2 * time.Second
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		// This command will always fail
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{"sh", "-c", "exit 1"},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "health check")
+	})
+
+	t.Run("health check with non-existent command", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+		config.CreateWaitTimeout = 2 * time.Second
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{"non-existent-command"},
+		})
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "health check")
+	})
+
+	t.Run("without health check command (existing behavior)", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		// Setup without health check - should work as before
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		// Verify sandbox works normally
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+	})
+
+	t.Run("empty health check command array (existing behavior)", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		// Setup with empty health check array - should work as before
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{},
+		})
+		assert.NoError(t, err)
+
+		// Verify sandbox works normally
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+	})
+
+	t.Run("health check with multiple arguments", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+
+		defer sandbox.Close()
+
+		// Test health check with command and multiple arguments
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
+			HealthCheckCommand: []string{"sh", "-c", "test -d /tmp && echo 'healthy'"},
+		})
+		assert.NoError(t, err)
+
+		// Verify sandbox is ready
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
 	})
 }

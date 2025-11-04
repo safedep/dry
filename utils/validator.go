@@ -27,7 +27,7 @@ func init() {
 // Example:
 //
 //	type SomeConfig {
-//			MyNotEmptyvalue string `validate:"required"`
+//			MyNotEmptyValue string `validate:"required"`
 //			MyEmail string `validate:"required,email"`
 //	}
 //

@@ -22,6 +22,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 		skipWaitForCompletion bool
 
 		withCustomRuntime string // host runtime (default is runc)
+
 		// Any of these exit codes are acceptable
 		expectedExitCodes []int
 		err               error
@@ -33,7 +34,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			expectedExitCodes: []int{0},
 		},
 		{
-			name:              "run command with multiple args",
+			name:              "run command with sysbox-runc",
 			command:           "ps",
 			args:              []string{"-e", "-f"},
 			withCustomRuntime: "sysbox-runc",
@@ -400,4 +401,174 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})
+}
+
+func TestDockerSandboxExecuteWithIO(t *testing.T) {
+	if !isSandboxEndToEndTestEnabled() {
+		t.Skip("Executor end-to-end tests are not enabled")
+	}
+
+	cases := []struct {
+		name                  string
+		command               string
+		args                  []string
+		stdinData             string
+		skipWaitForCompletion bool
+		attachStdout          bool // Force attach stdout even without expected output
+		attachStderr          bool // Force attach stderr even without expected output
+		expectError           bool
+		errorContains         string
+		expectedExitCode      int
+		expectedStdout        string
+		expectedStderr        string
+		stdoutContains        []string
+		stderrContains        []string
+		validateFn            func(t *testing.T, stdout, stderr string)
+	}{
+		{
+			name:                  "exec fails when IO is provided with skipWaitForCompletion",
+			command:               "echo",
+			args:                  []string{"hello world"},
+			attachStdout:          true,
+			skipWaitForCompletion: true,
+			expectError:           true,
+			errorContains:         "cannot skip completion",
+		},
+		{
+			name:             "capture stdout from echo command",
+			command:          "echo",
+			args:             []string{"hello world"},
+			expectedExitCode: 0,
+			expectedStdout:   "hello world\n",
+		},
+		{
+			name:             "provide stdin to cat command",
+			command:          "cat",
+			args:             []string{},
+			stdinData:        "test input data\nmultiline\n",
+			expectedExitCode: 0,
+			expectedStdout:   "test input data\nmultiline\n",
+		},
+		{
+			name:             "capture stderr from sh command",
+			command:          "sh",
+			args:             []string{"-c", "echo 'error message' >&2"},
+			expectedExitCode: 0,
+			expectedStderr:   "error message\n",
+		},
+		{
+			name:             "capture both stdout and stderr separately",
+			command:          "sh",
+			args:             []string{"-c", "echo 'to stdout' && echo 'to stderr' >&2"},
+			expectedExitCode: 0,
+			expectedStdout:   "to stdout\n",
+			expectedStderr:   "to stderr\n",
+		},
+		{
+			name:             "stdin, stdout, and stderr all together",
+			command:          "sh",
+			args:             []string{"-c", "cat && echo 'stdout message' && echo 'stderr message' >&2"},
+			stdinData:        "input data",
+			expectedExitCode: 0,
+			stdoutContains:   []string{"input data", "stdout message"},
+			expectedStderr:   "stderr message\n",
+		},
+		{
+			name:             "only stdout capture without stderr",
+			command:          "sh",
+			args:             []string{"-c", "echo 'to stdout' && echo 'to stderr' >&2"},
+			expectedExitCode: 0,
+			expectedStdout:   "to stdout\n",
+		},
+		{
+			name:             "large output capture",
+			command:          "sh",
+			args:             []string{"-c", "for i in $(seq 1 1000); do echo \"line $i\"; done"},
+			expectedExitCode: 0,
+			validateFn: func(t *testing.T, stdout, stderr string) {
+				assert.Contains(t, stdout, "line 1\n")
+				assert.Contains(t, stdout, "line 1000\n")
+				lines := bytes.Count([]byte(stdout), []byte("\n"))
+				assert.Equal(t, 1000, lines)
+			},
+		},
+		{
+			name:             "no IO streams provided - backward compatibility",
+			command:          "echo",
+			args:             []string{"hello"},
+			expectedExitCode: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+			config.Socket = getDockerSocketPath(t)
+			config.PullImageIfMissing = true
+
+			sandbox, err := NewDockerSandbox(config)
+			assert.NoError(t, err)
+			defer sandbox.Close()
+
+			err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+			assert.NoError(t, err)
+
+			var stdin io.Reader
+			if tc.stdinData != "" {
+				stdin = bytes.NewBufferString(tc.stdinData)
+			}
+
+			var stdout, stderr bytes.Buffer
+			opts := SandboxExecOpts{
+				SkipWaitForCompletion: tc.skipWaitForCompletion,
+			}
+
+			if tc.stdinData != "" {
+				opts.Stdin = stdin
+			}
+
+			if tc.attachStdout || tc.expectedStdout != "" || len(tc.stdoutContains) > 0 || tc.validateFn != nil {
+				opts.Stdout = &stdout
+			}
+
+			if tc.attachStderr || tc.expectedStderr != "" || len(tc.stderrContains) > 0 {
+				opts.Stderr = &stderr
+			}
+
+			r, err := sandbox.Execute(context.Background(), tc.command, tc.args, opts)
+
+			if tc.expectError {
+				assert.Error(t, err)
+
+				if tc.errorContains != "" {
+					assert.ErrorContains(t, err, tc.errorContains)
+				}
+
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expectedExitCode, r.ExitCode)
+
+			if tc.expectedStdout != "" {
+				assert.Equal(t, tc.expectedStdout, stdout.String())
+			}
+
+			for _, expectedContent := range tc.stdoutContains {
+				assert.Contains(t, stdout.String(), expectedContent)
+			}
+
+			if tc.expectedStderr != "" {
+				assert.Equal(t, tc.expectedStderr, stderr.String())
+			}
+
+			for _, expectedContent := range tc.stderrContains {
+				assert.Contains(t, stderr.String(), expectedContent)
+			}
+
+			if tc.validateFn != nil {
+				tc.validateFn(t, stdout.String(), stderr.String())
+			}
+		})
+	}
 }

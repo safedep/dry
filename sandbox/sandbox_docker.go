@@ -299,6 +299,7 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 	needsAttach := attachStdin || attachStdout || attachStderr
 
 	// Fail fast when both attachment and skip completion is requested
+	// We should not do this because attaching to IO requires resource management
 	if needsAttach && opts.SkipWaitForCompletion {
 		return nil, fmt.Errorf("cannot skip completion when input/output streams are provided")
 	}

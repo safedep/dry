@@ -48,6 +48,20 @@ type SandboxExecOpts struct {
 
 	// WaitTimeout is the timeout to wait for the exec to finish
 	WaitTimeout time.Duration
+
+	// Stdin is an optional reader for providing input to the command's stdin.
+	// If nil, no stdin will be attached to the command.
+	Stdin io.Reader
+
+	// Stdout is an optional writer for capturing the command's stdout.
+	// If nil, stdout will not be captured.
+	Stdout io.Writer
+
+	// Stderr is an optional writer for capturing the command's stderr.
+	// If nil, stderr will not be captured.
+	// Note: When Stderr is provided, TTY mode will be disabled to allow
+	// separate stdout and stderr streams.
+	Stderr io.Writer
 }
 
 // SandboxExecResponse is the response from the exec command

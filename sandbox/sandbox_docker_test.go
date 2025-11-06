@@ -22,6 +22,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 		skipWaitForCompletion bool
 
 		withCustomRuntime string // host runtime (default is runc)
+
 		// Any of these exit codes are acceptable
 		expectedExitCodes []int
 		err               error
@@ -33,7 +34,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 			expectedExitCodes: []int{0},
 		},
 		{
-			name:              "run command with multiple args",
+			name:              "run command with sysbox-runc",
 			command:           "ps",
 			args:              []string{"-e", "-f"},
 			withCustomRuntime: "sysbox-runc",
@@ -397,6 +398,232 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 
 		// Verify sandbox is ready
 		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+	})
+}
+
+func TestDockerSandboxExecuteWithIO(t *testing.T) {
+	if !isSandboxEndToEndTestEnabled() {
+		t.Skip("Executor end-to-end tests are not enabled")
+	}
+
+	t.Run("exec fails when IO is provided with skipWaitForCompletion", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stdout bytes.Buffer
+		_, err = sandbox.Execute(context.Background(), "echo", []string{"hello world"}, SandboxExecOpts{
+			Stdout:                &stdout,
+			SkipWaitForCompletion: true,
+		})
+
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "cannot skip completion")
+	})
+
+	t.Run("capture stdout from echo command", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stdout bytes.Buffer
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"hello world"}, SandboxExecOpts{
+			Stdout: &stdout,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Equal(t, "hello world\n", stdout.String())
+	})
+
+	t.Run("provide stdin to cat command", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		input := "test input data\nmultiline\n"
+		stdin := bytes.NewBufferString(input)
+		var stdout bytes.Buffer
+
+		r, err := sandbox.Execute(context.Background(), "cat", []string{}, SandboxExecOpts{
+			Stdin:  stdin,
+			Stdout: &stdout,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Equal(t, input, stdout.String())
+	})
+
+	t.Run("capture stderr from sh command", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stderr bytes.Buffer
+		// sh -c 'echo "error message" >&2' writes to stderr
+		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "echo 'error message' >&2"}, SandboxExecOpts{
+			Stderr: &stderr,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Equal(t, "error message\n", stderr.String())
+	})
+
+	t.Run("capture both stdout and stderr separately", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stdout, stderr bytes.Buffer
+		// Command writes to both stdout and stderr
+		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "echo 'to stdout' && echo 'to stderr' >&2"}, SandboxExecOpts{
+			Stdout: &stdout,
+			Stderr: &stderr,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Equal(t, "to stdout\n", stdout.String())
+		assert.Equal(t, "to stderr\n", stderr.String())
+	})
+
+	t.Run("stdin, stdout, and stderr all together", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		input := "input data"
+		stdin := bytes.NewBufferString(input)
+		var stdout, stderr bytes.Buffer
+
+		// Read from stdin, echo to stdout, write to stderr
+		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "cat && echo 'stdout message' && echo 'stderr message' >&2"}, SandboxExecOpts{
+			Stdin:  stdin,
+			Stdout: &stdout,
+			Stderr: &stderr,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Contains(t, stdout.String(), input)
+		assert.Contains(t, stdout.String(), "stdout message")
+		assert.Equal(t, "stderr message\n", stderr.String())
+	})
+
+	t.Run("only stdout capture without stderr", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stdout bytes.Buffer
+		// Command writes to both stdout and stderr but we only capture stdout
+		// In non-TTY mode (used when capturing output), stderr is separate and not captured
+		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "echo 'to stdout' && echo 'to stderr' >&2"}, SandboxExecOpts{
+			Stdout: &stdout,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		// In non-TTY mode, only stdout is captured, stderr goes elsewhere
+		output := stdout.String()
+		assert.Equal(t, "to stdout\n", output)
+	})
+
+	t.Run("large output capture", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		var stdout bytes.Buffer
+		// Generate a large output (1000 lines)
+		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "for i in $(seq 1 1000); do echo \"line $i\"; done"}, SandboxExecOpts{
+			Stdout: &stdout,
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, 0, r.ExitCode)
+		assert.Contains(t, stdout.String(), "line 1\n")
+		assert.Contains(t, stdout.String(), "line 1000\n")
+		// Verify we got approximately the right amount of data
+		lines := bytes.Count(stdout.Bytes(), []byte("\n"))
+		assert.Equal(t, 1000, lines)
+	})
+
+	t.Run("no IO streams provided - backward compatibility", func(t *testing.T) {
+		config := DefaultDockerSandboxConfig(testDockerExecutorImage)
+		config.Socket = getDockerSocketPath(t)
+		config.PullImageIfMissing = true
+
+		sandbox, err := NewDockerSandbox(config)
+		assert.NoError(t, err)
+		defer sandbox.Close()
+
+		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
+		assert.NoError(t, err)
+
+		// Execute without any IO streams - should work as before
+		r, err := sandbox.Execute(context.Background(), "echo", []string{"hello"}, SandboxExecOpts{})
+
 		assert.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})

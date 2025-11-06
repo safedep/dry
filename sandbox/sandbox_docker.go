@@ -8,11 +8,14 @@ import (
 	"io"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/utils"
 )
@@ -283,19 +286,36 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 
 	log.Debugf("Executing command: %s %v", command, args)
 
+	// Override working dir if set in exec opts
+	workingDir := s.setup.WorkingDirectory
+	if opts.WorkingDirectory != "" {
+		workingDir = opts.WorkingDirectory
+	}
+
+	// Determine if we need to attach IO streams
+	attachStdin := opts.Stdin != nil
+	attachStdout := opts.Stdout != nil
+	attachStderr := opts.Stderr != nil
+	needsAttach := attachStdin || attachStdout || attachStderr
+
+	// Fail fast when both attachment and skip completion is requested
+	if needsAttach && opts.SkipWaitForCompletion {
+		return nil, fmt.Errorf("cannot skip completion when input/output streams are provided")
+	}
+
+	// Disable TTY when capturing any output to avoid \r\n line endings
+	// and to properly separate stdout/stderr when both are captured
+	enableTty := !attachStdout && !attachStderr
+
 	commandWithArgs := append([]string{command}, args...)
 	execConfig := container.ExecOptions{
 		Cmd:          commandWithArgs,
-		AttachStdin:  true,
-		AttachStdout: true,
-		AttachStderr: true,
-		WorkingDir:   s.setup.WorkingDirectory,
-		Tty:          true,
+		AttachStdin:  attachStdin,
+		AttachStdout: attachStdout,
+		AttachStderr: attachStderr,
+		WorkingDir:   workingDir,
+		Tty:          enableTty,
 		Privileged:   false,
-	}
-
-	if opts.WorkingDirectory != "" {
-		execConfig.WorkingDir = opts.WorkingDirectory
 	}
 
 	if len(opts.AdditionalEnv) > 0 {
@@ -312,12 +332,44 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 		return nil, fmt.Errorf("failed to create exec: %w", err)
 	}
 
-	err = s.client.ContainerExecStart(ctx, execSession.ID, container.ExecStartOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to start exec: %w", err)
+	if needsAttach {
+		resp, err := s.client.ContainerExecAttach(ctx, execSession.ID, container.ExecStartOptions{
+			Tty: enableTty,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to attach to exec: %w", err)
+		}
+
+		defer resp.Close()
+
+		var ioErr error
+		ioDone := make(chan struct{})
+
+		go func() {
+			defer close(ioDone)
+			ioErr = s.handleExecIO(ctx, &resp, opts, enableTty)
+		}()
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("exec cancelled: %w", ctx.Err())
+		case <-ioDone:
+			if ioErr != nil {
+				log.Debugf("IO error during exec: %v", ioErr)
+			}
+		}
+	} else {
+		err = s.client.ContainerExecStart(ctx, execSession.ID, container.ExecStartOptions{
+			Tty: enableTty,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to start exec: %w", err)
+		}
 	}
 
-	if opts.SkipWaitForCompletion {
+	// We will never skip completion if any of the streams are being attached
+	// to avoid resource leak while dealing with stream data
+	if !needsAttach && opts.SkipWaitForCompletion {
 		return &SandboxExecResponse{}, nil
 	}
 
@@ -349,6 +401,83 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 		case <-time.After(defaultDockerOperationWaitTime):
 			// Continue waiting
 		}
+	}
+}
+
+// handleExecIO handles copying data between the exec streams and the provided readers/writers
+func (s *dockerSandbox) handleExecIO(ctx context.Context, resp *types.HijackedResponse, opts SandboxExecOpts, tty bool) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, 3)
+
+	// Handle stdin
+	if opts.Stdin != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := io.Copy(resp.Conn, opts.Stdin)
+			// Always close write side after copying, even if there was an error
+			resp.CloseWrite()
+			if err != nil && err != io.EOF {
+				errChan <- fmt.Errorf("stdin copy error: %w", err)
+			}
+		}()
+	} else {
+		// Close write side if no stdin
+		resp.CloseWrite()
+	}
+
+	// Handle stdout and stderr
+	if tty {
+		// In TTY mode, stdout and stderr are merged
+		if opts.Stdout != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, err := io.Copy(opts.Stdout, resp.Reader)
+				if err != nil && err != io.EOF {
+					errChan <- fmt.Errorf("stdout copy error: %w", err)
+				}
+			}()
+		}
+	} else {
+		// Non-TTY mode: separate stdout and stderr
+		if opts.Stdout != nil || opts.Stderr != nil {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// Use stdcopy to demultiplex Docker's stream format
+				// Pass nil for streams we don't want to capture
+				stdout := opts.Stdout
+				stderr := opts.Stderr
+				if stdout == nil {
+					stdout = io.Discard
+				}
+				if stderr == nil {
+					stderr = io.Discard
+				}
+				_, err := stdcopy.StdCopy(stdout, stderr, resp.Reader)
+				if err != nil && err != io.EOF {
+					errChan <- fmt.Errorf("stdout/stderr copy error: %w", err)
+				}
+			}()
+		}
+	}
+
+	// Wait for all IO operations to complete
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errChan:
+		// Return first error, but continue waiting for other goroutines
+		return err
+	case <-done:
+		return nil
 	}
 }
 

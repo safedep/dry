@@ -332,6 +332,8 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 		return nil, fmt.Errorf("failed to create exec: %w", err)
 	}
 
+	// When we need to attach, we will start separate Go routines that interact with
+	// the IO streams provided by Docker daemon
 	if needsAttach {
 		resp, err := s.client.ContainerExecAttach(ctx, execSession.ID, container.ExecStartOptions{
 			Tty: enableTty,
@@ -345,6 +347,8 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 		var ioErr error
 		ioDone := make(chan struct{})
 
+		// Handle IO in separate Go routine so that the main go routine can
+		// enforce context deadline
 		go func() {
 			defer close(ioDone)
 			ioErr = s.handleExecIO(ctx, &resp, opts, enableTty)
@@ -404,66 +408,61 @@ func (s *dockerSandbox) Execute(ctx context.Context, command string, args []stri
 	}
 }
 
-// handleExecIO handles copying data between the exec streams and the provided readers/writers
 func (s *dockerSandbox) handleExecIO(ctx context.Context, resp *types.HijackedResponse, opts SandboxExecOpts, tty bool) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, 3)
 
-	// Handle stdin
 	if opts.Stdin != nil {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			_, err := io.Copy(resp.Conn, opts.Stdin)
+
 			// Always close write side after copying, even if there was an error
+			// This is required else processes reading from the stdin will block
 			resp.CloseWrite()
 			if err != nil && err != io.EOF {
 				errChan <- fmt.Errorf("stdin copy error: %w", err)
 			}
-		}()
+		})
 	} else {
 		// Close write side if no stdin
 		resp.CloseWrite()
 	}
 
-	// Handle stdout and stderr
 	if tty {
 		// In TTY mode, stdout and stderr are merged
 		if opts.Stdout != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				_, err := io.Copy(opts.Stdout, resp.Reader)
 				if err != nil && err != io.EOF {
 					errChan <- fmt.Errorf("stdout copy error: %w", err)
 				}
-			}()
+			})
 		}
 	} else {
 		// Non-TTY mode: separate stdout and stderr
 		if opts.Stdout != nil || opts.Stderr != nil {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				// Use stdcopy to demultiplex Docker's stream format
 				// Pass nil for streams we don't want to capture
 				stdout := opts.Stdout
 				stderr := opts.Stderr
+
 				if stdout == nil {
 					stdout = io.Discard
 				}
+
 				if stderr == nil {
 					stderr = io.Discard
 				}
+
 				_, err := stdcopy.StdCopy(stdout, stderr, resp.Reader)
 				if err != nil && err != io.EOF {
 					errChan <- fmt.Errorf("stdout/stderr copy error: %w", err)
 				}
-			}()
+			})
 		}
 	}
 
-	// Wait for all IO operations to complete
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
@@ -474,7 +473,6 @@ func (s *dockerSandbox) handleExecIO(ctx context.Context, resp *types.HijackedRe
 	case <-ctx.Done():
 		return ctx.Err()
 	case err := <-errChan:
-		// Return first error, but continue waiting for other goroutines
 		return err
 	case <-done:
 		return nil

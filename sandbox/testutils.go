@@ -19,6 +19,7 @@ func isSandboxEndToEndTestEnabled() bool {
 func getDockerSocketPath(t *testing.T) string {
 	path := os.Getenv("TEST_DOCKER_SANDBOX_SOCKET_PATH")
 	if path == "" {
+		t.Log("TEST_DOCKER_SANDBOX_SOCKET_PATH is not set, using default docker socket path")
 		path = "/var/run/docker.sock"
 	}
 

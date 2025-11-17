@@ -135,7 +135,7 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerati
 			return "", NewTokenLimitError(GoogleVertex, g.GetId(), err.Error())
 		}
 
-		err := errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
+		err = errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
 		return "", NewModelUnavailableError(GoogleVertex, g.GetId(), err.Error())
 	}
 

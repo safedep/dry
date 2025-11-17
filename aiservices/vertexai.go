@@ -2,6 +2,7 @@ package aiservices
 
 import (
 	"context"
+	"strings"
 
 	"cloud.google.com/go/auth/credentials"
 	"github.com/cloudwego/eino-ext/components/model/gemini"
@@ -130,7 +131,11 @@ func (g googleVertexAIModel) GenerateSingle(ctx context.Context, req LLMGenerati
 			"model":    g.GetId(),
 		}).Inc()
 
-		err := errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
+		if strings.Contains(err.Error(), "exceeds the maximum number of tokens allowed") {
+			return "", NewTokenLimitError(GoogleVertex, g.GetId(), err.Error())
+		}
+
+		err = errors.Wrap(err, "error generating response from Eino Vertex AI LLM")
 		return "", NewModelUnavailableError(GoogleVertex, g.GetId(), err.Error())
 	}
 

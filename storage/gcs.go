@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/storage"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -47,7 +48,8 @@ func WithGoogleStoragePartitionByDate() googleCloudStorageDriverOpts {
 var _ StorageWriter = (*googleCloudStorageDriver)(nil)
 
 func NewGoogleCloudStorageDriver(config GoogleCloudStorageDriverConfig,
-	opts ...googleCloudStorageDriverOpts) (*googleCloudStorageDriver, error) {
+	opts ...googleCloudStorageDriverOpts,
+) (*googleCloudStorageDriver, error) {
 	clientOpts := []option.ClientOption{}
 
 	if config.CredentialFile != "" {
@@ -130,4 +132,94 @@ func (d *googleCloudStorageDriver) prefix(key string) (string, error) {
 	}
 
 	return filepath.Join(prefix, key), nil
+}
+
+// Exists checks if a key exists in storage
+func (d *googleCloudStorageDriver) Exists(ctx context.Context, key string) (bool, error) {
+	keyName, err := d.prefix(key)
+	if err != nil {
+		return false, err
+	}
+
+	object := d.client.Bucket(d.config.BucketName).Object(keyName)
+	_, err = object.Attrs(ctx)
+	if err == storage.ErrObjectNotExist {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to check object existence: %w", err)
+	}
+	return true, nil
+}
+
+// GetMetadata retrieves metadata for a stored object
+func (d *googleCloudStorageDriver) GetMetadata(ctx context.Context, key string) (*ObjectMetadata, error) {
+	keyName, err := d.prefix(key)
+	if err != nil {
+		return nil, err
+	}
+
+	object := d.client.Bucket(d.config.BucketName).Object(keyName)
+	attrs, err := object.Attrs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object attributes: %w", err)
+	}
+
+	checksum := ""
+	if attrs.MD5 != nil {
+		checksum = string(attrs.MD5)
+	}
+
+	return &ObjectMetadata{
+		Key:         key,
+		Size:        attrs.Size,
+		ContentType: attrs.ContentType,
+		Checksum:    checksum,
+		CreatedAt:   attrs.Created,
+		UpdatedAt:   attrs.Updated,
+	}, nil
+}
+
+// List returns keys matching a prefix
+func (d *googleCloudStorageDriver) List(ctx context.Context, prefix string) ([]string, error) {
+	keyPrefix, err := d.prefix(prefix)
+	if err != nil {
+		return nil, err
+	}
+
+	var keys []string
+	it := d.client.Bucket(d.config.BucketName).Objects(ctx, &storage.Query{
+		Prefix: keyPrefix,
+	})
+
+	for {
+		attrs, err := it.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to list objects: %w", err)
+		}
+
+		// Remove prefix to get relative key
+		relKey := strings.TrimPrefix(attrs.Name, keyPrefix)
+		keys = append(keys, relKey)
+	}
+
+	return keys, nil
+}
+
+// Delete removes an object from storage
+func (d *googleCloudStorageDriver) Delete(ctx context.Context, key string) error {
+	keyName, err := d.prefix(key)
+	if err != nil {
+		return err
+	}
+
+	object := d.client.Bucket(d.config.BucketName).Object(keyName)
+	err = object.Delete(ctx)
+	if err != nil && err != storage.ErrObjectNotExist {
+		return fmt.Errorf("failed to delete object: %w", err)
+	}
+	return nil
 }

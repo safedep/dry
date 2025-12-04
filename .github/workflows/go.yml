@@ -25,8 +25,8 @@ jobs:
     - name: Install dependencies
       run: go mod download
 
-      - name: Install OpenAPI Tools
-        run: go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.10.1
+    - name: Install OpenAPI Tools
+      run: go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.10.1
 
     # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
     - name: Install sysbox-run docker host runtime
@@ -42,11 +42,11 @@ jobs:
     - name: Download Mods
       run: go mod tidy
 
-      - name: Generate mockery mocks
-        run: go tool mockery
+    - name: Generate mockery mocks
+      run: go tool mockery
 
-      - name: Generate Code
-        run: go generate -v ./...
+    - name: Generate Code
+      run: go generate -v ./...
 
     - name: Test Code
       run: go test -v ./...

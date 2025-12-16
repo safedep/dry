@@ -38,10 +38,9 @@ func NewStorageManager(storage storage.Storage, metadata MetadataStore, config S
 //   - github.com/gin-gonic/gin -> github.com-gin-gonic-gin
 //   - github.com/user/repo/v2 -> github.com-user-repo-v2
 func encodeName(name string) string {
-	// Replace slashes with hyphens
 	encoded := strings.ReplaceAll(name, "/", "-")
-	// Remove @ prefix (common in npm scoped packages)
 	encoded = strings.TrimPrefix(encoded, "@")
+
 	return encoded
 }
 
@@ -53,16 +52,12 @@ func generateArtifactID(info ArtifactInfo, strategy ArtifactIDStrategy, contentH
 
 	switch strategy {
 	case ArtifactIDStrategyConvention:
-		// Format: ecosystem:name:version
 		return fmt.Sprintf("%s:%s:%s", ecosystem, encodedName, info.Version)
 
 	case ArtifactIDStrategyContentHash:
-		// Format: ecosystem:hash
 		return fmt.Sprintf("%s:%s", ecosystem, contentHash)
 
 	case ArtifactIDStrategyHybrid:
-		// Format: ecosystem:name:version:hash
-		// Use shorter hash (first 8 chars) for hybrid
 		shortHash := contentHash
 		if len(contentHash) > 8 {
 			shortHash = contentHash[:8]
@@ -70,7 +65,6 @@ func generateArtifactID(info ArtifactInfo, strategy ArtifactIDStrategy, contentH
 		return fmt.Sprintf("%s:%s:%s:%s", ecosystem, encodedName, info.Version, shortHash)
 
 	default:
-		// Fallback to convention
 		return fmt.Sprintf("%s:%s:%s", ecosystem, encodedName, info.Version)
 	}
 }
@@ -125,13 +119,11 @@ func (sm *storageManager) Store(ctx context.Context, info ArtifactInfo, reader i
 	var buf bytes.Buffer
 	var contentHash string
 
-	// Determine if we need to read content based on strategy
 	needsContentHash := sm.config.ArtifactIDStrategy == ArtifactIDStrategyContentHash ||
 		sm.config.ArtifactIDStrategy == ArtifactIDStrategyHybrid ||
 		sm.config.IncludeContentHash
 
 	if needsContentHash {
-		// Read content and compute hash
 		hash := sha256.New()
 		tee := io.TeeReader(reader, &buf)
 
@@ -140,27 +132,22 @@ func (sm *storageManager) Store(ctx context.Context, info ArtifactInfo, reader i
 		}
 
 		hashBytes := hash.Sum(nil)
-		contentHash = hex.EncodeToString(hashBytes[:8]) // First 8 bytes (16 hex chars)
+		contentHash = hex.EncodeToString(hashBytes[:8])
 	} else {
-		// Just buffer the content without hashing
 		if _, err := io.Copy(&buf, reader); err != nil {
 			return "", fmt.Errorf("failed to read content: %w", err)
 		}
 	}
 
-	// Generate artifact ID using common function (single source of truth)
 	artifactID = generateArtifactID(info, sm.config.ArtifactIDStrategy, contentHash)
 
-	// Check if already exists (deduplication)
 	if sm.config.CacheEnabled {
 		exists, err := sm.Exists(ctx, artifactID)
 		if err == nil && exists {
-			// Already exists, return the ID without re-storing
 			return artifactID, nil
 		}
 	}
 
-	// Store to backend
 	key := sm.getStorageKey(artifactID)
 	if err := sm.storage.Put(key, &buf); err != nil {
 		return "", fmt.Errorf("failed to store artifact: %w", err)
@@ -176,6 +163,7 @@ func (sm *storageManager) Get(ctx context.Context, artifactID string) (io.ReadCl
 	if err != nil {
 		return nil, fmt.Errorf("failed to get artifact %s: %w", artifactID, err)
 	}
+
 	return reader, nil
 }
 
@@ -183,7 +171,6 @@ func (sm *storageManager) Get(ctx context.Context, artifactID string) (io.ReadCl
 func (sm *storageManager) Exists(ctx context.Context, artifactID string) (bool, error) {
 	key := sm.getStorageKey(artifactID)
 
-	// Try to get metadata first (faster)
 	if sm.config.MetadataEnabled && sm.metadata != nil {
 		_, err := sm.metadata.Get(ctx, artifactID)
 		if err == nil {
@@ -191,7 +178,6 @@ func (sm *storageManager) Exists(ctx context.Context, artifactID string) (bool, 
 		}
 	}
 
-	// Check storage directly
 	return sm.storage.Exists(ctx, key)
 }
 
@@ -217,15 +203,12 @@ func (sm *storageManager) GetMetadata(ctx context.Context, artifactID string) (*
 func (sm *storageManager) Delete(ctx context.Context, artifactID string) error {
 	key := sm.getStorageKey(artifactID)
 
-	// Delete from storage
 	if err := sm.storage.Delete(ctx, key); err != nil {
 		return fmt.Errorf("failed to delete artifact from storage: %w", err)
 	}
 
-	// Delete metadata
 	if sm.config.MetadataEnabled && sm.metadata != nil {
 		if err := sm.metadata.Delete(ctx, artifactID); err != nil {
-			// Log warning but don't fail if metadata deletion fails
 			return fmt.Errorf("failed to delete metadata: %w", err)
 		}
 	}
@@ -243,10 +226,7 @@ func (sm *storageManager) GetStorage() storage.Storage {
 // Returns: artifacts/npm/express/4.17.1/extracted/
 // Uses path.Join() for cross-platform compatibility (always uses / separator)
 func computeExtractionKey(artifactID string, keyPrefix string) string {
-	// Get the artifact storage key
 	artifactKey := computeStorageKeyFromID(artifactID, keyPrefix)
-
-	// Replace /artifact suffix with /extracted/
 	if strings.HasSuffix(artifactKey, "/artifact") {
 		return strings.TrimSuffix(artifactKey, "artifact") + "extracted/"
 	}

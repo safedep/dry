@@ -199,6 +199,9 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 	var fetchErr error
 	urlIndex := 0
 
+	reqCtx, cancel := context.WithTimeout(ctx, config.Timeout)
+	defer cancel()
+
 	for attempt := 0; attempt <= config.RetryAttempts; attempt++ {
 		currentURL := urls[urlIndex]
 
@@ -207,13 +210,12 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 			if delay > config.MaxRetryDelay {
 				delay = config.MaxRetryDelay
 			}
+
 			log.Debugf("Retry attempt %d/%d for %s (waiting %v)",
 				attempt, config.RetryAttempts, currentURL, delay)
+
 			time.Sleep(delay)
 		}
-
-		reqCtx, cancel := context.WithTimeout(ctx, config.Timeout)
-		defer cancel()
 
 		req, err := http.NewRequestWithContext(reqCtx, "GET", currentURL, nil)
 		if err != nil {
@@ -222,6 +224,7 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 				log.Debugf("Non-retryable request creation error: %v", err)
 				break
 			}
+
 			continue
 		}
 
@@ -234,6 +237,7 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 				log.Debugf("Non-retryable network error for %s: %v", currentURL, err)
 				break
 			}
+
 			continue
 		}
 
@@ -260,6 +264,7 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 					if retryDelay > config.MaxRetryDelay {
 						retryDelay = config.MaxRetryDelay
 					}
+
 					log.Debugf("Rate limited, respecting Retry-After: %v", retryDelay)
 					time.Sleep(retryDelay)
 				}
@@ -276,6 +281,7 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 				log.Debugf("Non-retryable body read error for %s: %v", currentURL, err)
 				break
 			}
+
 			continue
 		}
 

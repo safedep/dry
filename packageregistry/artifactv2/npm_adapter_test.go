@@ -46,11 +46,11 @@ func TestNewNpmAdapterV2(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, adapter)
 
-	// Test with custom options
 	adapter, err = NewNpmAdapterV2(
 		WithCacheEnabled(false),
 		WithPersistArtifacts(true),
 	)
+
 	require.NoError(t, err)
 	assert.NotNil(t, adapter)
 }
@@ -121,18 +121,15 @@ func TestNpmAdapterV2_Fetch(t *testing.T) {
 		URL:       server.URL,
 	}
 
-	// Fetch package
 	reader, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	assert.NotNil(t, reader)
+
 	defer reader.Close()
 
-	// Verify artifact ID
 	assert.NotEmpty(t, reader.ID())
 
-	// Verify metadata (Note: metadata might be minimal if metadata store isn't enabled)
 	metadata := reader.Metadata()
-	// The metadata should at least have the artifact ID
 	assert.NotEmpty(t, metadata.ID)
 }
 
@@ -142,7 +139,6 @@ func TestNpmAdapterV2_FetchWithChecksum(t *testing.T) {
 	}
 	packageContent := createTestNpmPackage(t, testFiles)
 
-	// Compute actual checksum
 	actualChecksum, err := computeSHA256(bytes.NewReader(packageContent))
 	require.NoError(t, err)
 
@@ -150,6 +146,7 @@ func TestNpmAdapterV2_FetchWithChecksum(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(packageContent)
 	}))
+
 	defer server.Close()
 
 	adapter, err := NewNpmAdapterV2(WithHTTPClient(server.Client()))
@@ -157,7 +154,6 @@ func TestNpmAdapterV2_FetchWithChecksum(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Test with correct checksum
 	info := ArtifactInfo{
 		Name:      "test-checksum",
 		Version:   "1.0.0",
@@ -171,10 +167,10 @@ func TestNpmAdapterV2_FetchWithChecksum(t *testing.T) {
 	assert.NotNil(t, reader)
 	reader.Close()
 
-	// Test with incorrect checksum (different package to avoid cache)
 	info.Name = "test-checksum-fail"
 	info.Version = "2.0.0"
 	info.Checksum = "0000000000000000000000000000000000000000000000000000000000000000"
+
 	_, err = adapter.Fetch(ctx, info)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "checksum mismatch")
@@ -193,6 +189,7 @@ func TestNpmAdapterV2_FetchWithRetry(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write(packageContent)
 	}))
@@ -201,8 +198,9 @@ func TestNpmAdapterV2_FetchWithRetry(t *testing.T) {
 	adapter, err := NewNpmAdapterV2(
 		WithHTTPClient(server.Client()),
 		WithRetry(5, 10*time.Millisecond),
-		WithCacheEnabled(false), // Disable cache so retry logic is tested
+		WithCacheEnabled(false),
 	)
+
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -218,7 +216,6 @@ func TestNpmAdapterV2_FetchWithRetry(t *testing.T) {
 	assert.NotNil(t, reader)
 	reader.Close()
 
-	// Verify retries happened
 	assert.Equal(t, 3, attempts)
 }
 
@@ -236,7 +233,6 @@ func TestNpmAdapterV2_FetchCaching(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Use a unique temp directory for this test
 	tempDir := t.TempDir()
 
 	adapter, err := NewNpmAdapterV2(
@@ -254,22 +250,17 @@ func TestNpmAdapterV2_FetchCaching(t *testing.T) {
 		URL:       server.URL,
 	}
 
-	// First fetch
 	reader1, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	artifactID1 := reader1.ID()
 	reader1.Close()
 
-	// Second fetch (should use cache)
 	reader2, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	artifactID2 := reader2.ID()
 	reader2.Close()
 
-	// Should have same artifact ID
 	assert.Equal(t, artifactID1, artifactID2)
-
-	// Should only fetch once (second time from cache)
 	assert.Equal(t, 1, fetchCount)
 }
 
@@ -296,20 +287,17 @@ func TestNpmAdapterV2_Load(t *testing.T) {
 		URL:       server.URL,
 	}
 
-	// Fetch first
 	reader1, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	artifactID := reader1.ID()
 	reader1.Close()
 
-	// Load by ID
 	reader2, err := adapter.Load(ctx, artifactID)
 	require.NoError(t, err)
 	assert.NotNil(t, reader2)
 	assert.Equal(t, artifactID, reader2.ID())
 	reader2.Close()
 
-	// Load non-existent artifact
 	_, err = adapter.Load(ctx, "npm:nonexistent:1.0.0")
 	assert.Error(t, err)
 }
@@ -339,7 +327,6 @@ func TestNpmAdapterV2_LoadFromSource(t *testing.T) {
 	assert.NotNil(t, reader)
 	assert.NotEmpty(t, reader.ID())
 
-	// Verify metadata was stored with proper info
 	metadata := reader.Metadata()
 	assert.Equal(t, "test-from-source", metadata.Name)
 	assert.Equal(t, "1.0.0", metadata.Version)
@@ -374,22 +361,17 @@ func TestNpmAdapterV2_GetMetadata(t *testing.T) {
 		URL:       server.URL,
 	}
 
-	// Fetch to store metadata
 	reader, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	artifactID := reader.ID()
 	reader.Close()
 
-	// Try to get metadata - it might not be available depending on storage configuration
-	// but at least the call should not crash
 	metadata, err := adapter.GetMetadata(ctx, artifactID)
 	if err == nil {
-		// If metadata is available, verify it
 		assert.Equal(t, artifactID, metadata.ID)
 		assert.NotEmpty(t, metadata.Name)
 		assert.NotEmpty(t, metadata.Version)
 	}
-	// If metadata is not available, that's also OK for this test
 }
 
 func TestNpmAdapterV2_Exists(t *testing.T) {
@@ -404,7 +386,6 @@ func TestNpmAdapterV2_Exists(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Use a unique temp directory for this test
 	tempDir := t.TempDir()
 
 	adapter, err := NewNpmAdapterV2(
@@ -422,17 +403,14 @@ func TestNpmAdapterV2_Exists(t *testing.T) {
 		URL:       server.URL,
 	}
 
-	// Should not exist initially
 	exists, _, err := adapter.Exists(ctx, info)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
-	// Fetch the package
 	reader, err := adapter.Fetch(ctx, info)
 	require.NoError(t, err)
 	reader.Close()
 
-	// Should exist now
 	exists, artifactID, err := adapter.Exists(ctx, info)
 	require.NoError(t, err)
 	assert.True(t, exists)
@@ -466,7 +444,6 @@ func TestNpmReaderV2_Reader(t *testing.T) {
 	require.NoError(t, err)
 	defer reader.Close()
 
-	// Get raw reader
 	rawReader, err := reader.Reader(ctx)
 	require.NoError(t, err)
 	defer rawReader.Close()
@@ -505,7 +482,6 @@ func TestNpmReaderV2_EnumFiles(t *testing.T) {
 	require.NoError(t, err)
 	defer reader.Close()
 
-	// Enumerate files
 	var foundFiles []string
 	err = reader.EnumFiles(ctx, func(info FileInfo) error {
 		foundFiles = append(foundFiles, info.Path)
@@ -549,7 +525,6 @@ func TestNpmReaderV2_ReadFile(t *testing.T) {
 	require.NoError(t, err)
 	defer reader.Close()
 
-	// Read existing file
 	fileReader, err := reader.ReadFile(ctx, "package/index.js")
 	require.NoError(t, err)
 	defer fileReader.Close()
@@ -558,7 +533,6 @@ func TestNpmReaderV2_ReadFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "console.log('test')", string(content))
 
-	// Try to read non-existent file
 	_, err = reader.ReadFile(ctx, "package/nonexistent.js")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
@@ -804,7 +778,6 @@ func TestNpmAdapterV2_FetchWithMirrorFallback(t *testing.T) {
 	}))
 	defer primaryServer.Close()
 
-	// Mirror returns success
 	mirrorServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		attempts["mirror"]++
 		w.WriteHeader(http.StatusOK)
@@ -812,7 +785,6 @@ func TestNpmAdapterV2_FetchWithMirrorFallback(t *testing.T) {
 	}))
 	defer mirrorServer.Close()
 
-	// Create adapter with mirrors (not using WithHTTPClient since we need different servers)
 	adapter, err := NewNpmAdapterV2(
 		WithRegistryMirrors([]string{mirrorServer.URL}),
 		WithCacheEnabled(false),
@@ -974,11 +946,11 @@ func TestNpmReaderV2_Extract(t *testing.T) {
 		{
 			name: "package with nested files",
 			packageFiles: map[string]string{
-				"package/index.js":        "main",
-				"package/lib/util.js":     "util",
-				"package/lib/helper.js":   "helper",
-				"package/test/test.js":    "test",
-				"package/package.json":    "{}",
+				"package/index.js":      "main",
+				"package/lib/util.js":   "util",
+				"package/lib/helper.js": "helper",
+				"package/test/test.js":  "test",
+				"package/package.json":  "{}",
 			},
 			expectedFiles: 5,
 		},
@@ -1047,34 +1019,34 @@ func TestNpmReaderV2_Extract(t *testing.T) {
 
 func TestComputeExtractionKey(t *testing.T) {
 	tests := []struct {
-		name         string
-		artifactID   string
-		keyPrefix    string
-		expectedKey  string
+		name        string
+		artifactID  string
+		keyPrefix   string
+		expectedKey string
 	}{
 		{
-			name:         "convention format without prefix",
-			artifactID:   "ecosystem_npm:express:4.17.1",
-			keyPrefix:    "",
-			expectedKey:  "artifacts/ecosystem_npm/express/4.17.1/extracted/",
+			name:        "convention format without prefix",
+			artifactID:  "ecosystem_npm:express:4.17.1",
+			keyPrefix:   "",
+			expectedKey: "artifacts/ecosystem_npm/express/4.17.1/extracted/",
 		},
 		{
-			name:         "convention format with prefix",
-			artifactID:   "ecosystem_npm:express:4.17.1",
-			keyPrefix:    "prod/",
-			expectedKey:  "prod/artifacts/ecosystem_npm/express/4.17.1/extracted/",
+			name:        "convention format with prefix",
+			artifactID:  "ecosystem_npm:express:4.17.1",
+			keyPrefix:   "prod/",
+			expectedKey: "prod/artifacts/ecosystem_npm/express/4.17.1/extracted/",
 		},
 		{
-			name:         "content hash format",
-			artifactID:   "ecosystem_npm:a1b2c3d4",
-			keyPrefix:    "",
-			expectedKey:  "artifacts/ecosystem_npm/a1b2c3d4/extracted/",
+			name:        "content hash format",
+			artifactID:  "ecosystem_npm:a1b2c3d4",
+			keyPrefix:   "",
+			expectedKey: "artifacts/ecosystem_npm/a1b2c3d4/extracted/",
 		},
 		{
-			name:         "hybrid format",
-			artifactID:   "ecosystem_npm:lodash:4.17.21:abc123",
-			keyPrefix:    "",
-			expectedKey:  "artifacts/ecosystem_npm/lodash/4.17.21-abc123/extracted/",
+			name:        "hybrid format",
+			artifactID:  "ecosystem_npm:lodash:4.17.21:abc123",
+			keyPrefix:   "",
+			expectedKey: "artifacts/ecosystem_npm/lodash/4.17.21-abc123/extracted/",
 		},
 	}
 

@@ -61,27 +61,43 @@ func (m *inMemoryMetadataStore) Get(ctx context.Context, artifactID string) (*Ar
 // GetByArtifact retrieves metadata using ArtifactInfo
 // This method uses the package lookup index to find metadata
 func (m *inMemoryMetadataStore) GetByArtifact(ctx context.Context, info ArtifactInfo) (*ArtifactMetadata, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
 	key := makePackageKey(info.Ecosystem, info.Name, info.Version)
+
+	// First attempt: try with read lock
+	m.mu.RLock()
 	artifactID, ok := m.byPackage[key]
 	if !ok {
+		m.mu.RUnlock()
 		return nil, fmt.Errorf("artifact not found: %s", key)
 	}
 
 	metadata, ok := m.byID[artifactID]
-	if !ok {
-		// Inconsistent state, remove the dangling reference
+	if ok {
 		m.mu.RUnlock()
-		m.mu.Lock()
-		delete(m.byPackage, key)
-		m.mu.Unlock()
-		m.mu.RLock()
-		return nil, fmt.Errorf("metadata not found for artifact: %s", artifactID)
+		return &metadata, nil
 	}
 
-	return &metadata, nil
+	// Inconsistent state detected: artifactID exists in byPackage but not in byID
+	// Release read lock and acquire write lock to clean up
+	m.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Re-check the state under write lock (another goroutine may have fixed it)
+	artifactID, ok = m.byPackage[key]
+	if !ok {
+		return nil, fmt.Errorf("artifact not found: %s", key)
+	}
+
+	metadata, ok = m.byID[artifactID]
+	if ok {
+		return &metadata, nil
+	}
+
+	// Still inconsistent, remove the dangling reference
+	delete(m.byPackage, key)
+	return nil, fmt.Errorf("metadata not found for artifact: %s (removed dangling reference)", artifactID)
 }
 
 // Delete removes metadata

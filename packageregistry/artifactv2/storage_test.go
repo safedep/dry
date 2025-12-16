@@ -404,21 +404,13 @@ func TestComputeArtifactID(t *testing.T) {
 
 	// Same content should produce same ID
 	reader2 := bytes.NewReader(content)
-<<<<<<< HEAD
 	id2, err := computeArtifactID("npm", reader2)
-=======
-	id2, err := ComputeArtifactID("npm", reader2)
->>>>>>> 943ccd0 (feat: Add initial artifact v2 base implementation)
 	require.NoError(t, err)
 	assert.Equal(t, id, id2)
 
 	// Different content should produce different ID
 	reader3 := bytes.NewReader([]byte("different content"))
-<<<<<<< HEAD
 	id3, err := computeArtifactID("npm", reader3)
-=======
-	id3, err := ComputeArtifactID("npm", reader3)
->>>>>>> 943ccd0 (feat: Add initial artifact v2 base implementation)
 	require.NoError(t, err)
 	assert.NotEqual(t, id, id3)
 }

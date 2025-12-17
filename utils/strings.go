@@ -131,3 +131,23 @@ func TrimWithEllipsis(s string, maxLength int, centered bool, dots int) string {
 
 	return s[:leftLen] + ellipsis + s[len(s)-rightLen:]
 }
+
+// StringStripQuotes removes surrounding quote characters from a string
+// From string it removes outer most quote pair
+// - "abc" -> abc
+// - 'abc' -> abc
+// - \'abc\' -> abc
+// - `abc` -> abc
+func StringStripQuotes(s string) string {
+	if len(s) < 2 {
+		return s
+	}
+
+	if (s[0] == '"' && s[len(s)-1] == '"') ||
+		(s[0] == '\'' && s[len(s)-1] == '\'') ||
+		(s[0] == '`' && s[len(s)-1] == '`') {
+		return s[1 : len(s)-1]
+	}
+
+	return s
+}

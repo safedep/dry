@@ -249,3 +249,50 @@ func TestTrimWithEllipsis(t *testing.T) {
 		})
 	}
 }
+
+func TestStringStripQuotes(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		// Standard Cases
+		{"Double Quotes", `"hello"`, "hello"},
+		{"Single Quotes", `'world'`, "world"},
+		{"Backticks", "`golang`", "golang"},
+
+		// No Quotes / No Change
+		{"No Quotes", "plain text", "plain text"},
+		{"Leading Quote Only", `"missing end`, `"missing end`},
+		{"Trailing Quote Only", `missing start"`, `missing start"`},
+		{"Mismatched Quotes", ` 'mismatch"`, ` 'mismatch"`},
+
+		// Edge Cases: Length
+		{"Empty String", "", ""},
+		{"Single Quote Char", `"`, `"`},
+		{"Two Matching Quotes Only", `""`, ""},
+		{"Two Mismatched Quotes", `"'`, `"'`},
+
+		// Internal Quotes (should remain)
+		{"Internal Double Quotes", `"he"llo"`, `he"llo`},
+		{"Quotes inside different quotes", `"'quoted'"`, `'quoted'`},
+
+		// Spaces
+		{"Spaces outside quotes", ` "space" `, ` "space" `},
+		{"Spaces inside quotes", `" space "`, ` space `},
+
+		// Escaped Quotes
+		{"Escaped Quote Inside", `"word\"word"`, `word\"word`},
+		{"Backslash at Start", `\path\`, `\path\`},
+		{"Escaped Newline", `"\n"`, `\n`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := StringStripQuotes(tt.input)
+			if result != tt.expected {
+				t.Errorf("StringStripQuotes(%q) = %q; want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

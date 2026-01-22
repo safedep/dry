@@ -92,6 +92,7 @@ func (b *usefulErrorBuilder) WithAdditionalHelp(additionalHelp string) *usefulEr
 	return b
 }
 
+// WithReferenceURL sets a reference URL associated with the error.
 func (b *usefulErrorBuilder) WithReferenceURL(url string) *usefulErrorBuilder {
 	b.referenceURL = url
 	return b

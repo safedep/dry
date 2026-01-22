@@ -296,6 +296,15 @@ func TestUsefulErrorBuilder_Wrap(t *testing.T) {
 	assert.Equal(t, "An error occurred, but no human-readable message is available.", wrappedErr.HumanError())
 }
 
+func TestUsefulErrorBuilder_UnWrap(t *testing.T) {
+	originalErr := errors.New("original error")
+	wrappedErr := NewUsefulError().Wrap(originalErr)
+
+	unwrappedErr := wrappedErr.Unwrap()
+
+	assert.Equal(t, "original error", unwrappedErr.Error())
+}
+
 func TestUsefulErrorBuilder_ComplexScenario(t *testing.T) {
 	originalErr := errors.New("file not found")
 

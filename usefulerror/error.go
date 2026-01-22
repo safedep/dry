@@ -170,11 +170,7 @@ func AsUsefulError(err error) (UsefulError, bool) {
 		return nil, false
 	}
 
-	if usefulErr, ok := err.(UsefulError); ok {
-		return usefulErr, true
-	}
-
-	var usefulErr *usefulErrorBuilder
+	var usefulErr UsefulError
 	if errors.As(err, &usefulErr) {
 		return usefulErr, true
 	}

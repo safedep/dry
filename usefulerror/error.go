@@ -25,6 +25,9 @@ type UsefulError interface {
 	// as common line flags to use to fix the error.
 	AdditionalHelp() string
 
+	// ReferenceURL returns a reference URL for an error
+	ReferenceURL() string
+
 	// Code returns a string that can be used to identify the error types
 	// Meant for programmatic use, such as logging or categorization
 	Code() string
@@ -35,11 +38,14 @@ type usefulErrorBuilder struct {
 	humanError     string
 	help           string
 	additionalHelp string
+	referenceURL   string
 	code           string
 	msg            string
 }
 
 var _ UsefulError = (*usefulErrorBuilder)(nil)
+
+var _ error = (*usefulErrorBuilder)(nil)
 
 func Useful() *usefulErrorBuilder {
 	return &usefulErrorBuilder{}
@@ -77,6 +83,11 @@ func (b *usefulErrorBuilder) WithMsg(msg string) *usefulErrorBuilder {
 // WithAdditionalHelp sets a string that provides additional help or guidance.
 func (b *usefulErrorBuilder) WithAdditionalHelp(additionalHelp string) *usefulErrorBuilder {
 	b.additionalHelp = additionalHelp
+	return b
+}
+
+func (b *usefulErrorBuilder) WithReferenceURL(url string) *usefulErrorBuilder {
+	b.referenceURL = url
 	return b
 }
 
@@ -139,18 +150,22 @@ func (b *usefulErrorBuilder) AdditionalHelp() string {
 	return b.additionalHelp
 }
 
+func (b *usefulErrorBuilder) ReferenceURL() string {
+	return b.referenceURL
+}
+
 // AsUsefulError attempts to convert a given error into a UsefulError.
 func AsUsefulError(err error) (UsefulError, bool) {
 	if err == nil {
 		return nil, false
 	}
 
-	var usefulErr *usefulErrorBuilder
-	if errors.As(err, &usefulErr) {
+	if usefulErr, ok := err.(UsefulError); ok {
 		return usefulErr, true
 	}
 
-	if usefulErr, ok := err.(UsefulError); ok {
+	var usefulErr *usefulErrorBuilder
+	if errors.As(err, &usefulErr) {
 		return usefulErr, true
 	}
 

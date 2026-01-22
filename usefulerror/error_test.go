@@ -178,6 +178,36 @@ func TestUsefulErrorBuilder_Code(t *testing.T) {
 	}
 }
 
+func TestUsefulErrorBuilder_ReferenceURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		builder  func() *usefulErrorBuilder
+		expected string
+	}{
+		{
+			name: "with reference URL set",
+			builder: func() *usefulErrorBuilder {
+				return Useful().WithReferenceURL("https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E")
+			},
+			expected: "https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E",
+		},
+		{
+			name: "empty reference URL",
+			builder: func() *usefulErrorBuilder {
+				return Useful()
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.builder()
+			assert.Equal(t, tt.expected, err.ReferenceURL())
+		})
+	}
+}
+
 func TestUsefulErrorBuilder_ChainedMethods(t *testing.T) {
 	err := Useful().
 		WithCode("TEST001").
@@ -191,6 +221,23 @@ func TestUsefulErrorBuilder_ChainedMethods(t *testing.T) {
 	assert.Equal(t, "Try this fix", err.Help())
 	assert.Equal(t, "Or try this", err.AdditionalHelp())
 	assert.Equal(t, "TEST001", err.Code())
+}
+
+func TestUsefulErrorBuilder_ChainedMethodsWithReferenceURL(t *testing.T) {
+	err := Useful().
+		WithCode("TEST001").
+		WithMsg("test message").
+		WithHumanError("User friendly error").
+		WithHelp("Try this fix").
+		WithAdditionalHelp("Or try this").
+		WithReferenceURL("https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E")
+
+	assert.Equal(t, "TEST001: test message", err.Error())
+	assert.Equal(t, "User friendly error", err.HumanError())
+	assert.Equal(t, "Try this fix", err.Help())
+	assert.Equal(t, "Or try this", err.AdditionalHelp())
+	assert.Equal(t, "TEST001", err.Code())
+	assert.Equal(t, "https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E", err.ReferenceURL())
 }
 
 func TestAsUsefulError(t *testing.T) {

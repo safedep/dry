@@ -16,35 +16,35 @@ func TestUsefulErrorBuilder_Error(t *testing.T) {
 		{
 			name: "with original error",
 			builder: func() *usefulErrorBuilder {
-				return Useful().Wrap(errors.New("original error"))
+				return NewUsefulError().Wrap(errors.New("original error"))
 			},
 			expected: "original error",
 		},
 		{
 			name: "with WithMsg only",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithMsg("test message")
+				return NewUsefulError().WithMsg("test message")
 			},
 			expected: "test message",
 		},
 		{
 			name: "with code and WithMsg",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithCode("TEST001").WithMsg("test message")
+				return NewUsefulError().WithCode("TEST001").WithMsg("test message")
 			},
 			expected: "TEST001: test message",
 		},
 		{
 			name: "with code only",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithCode("TEST001")
+				return NewUsefulError().WithCode("TEST001")
 			},
-			expected: "unknown error",
+			expected: "TEST001: unknown error",
 		},
 		{
 			name: "empty builder",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "unknown error",
 		},
@@ -67,14 +67,14 @@ func TestUsefulErrorBuilder_HumanError(t *testing.T) {
 		{
 			name: "with human error set",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithHumanError("Something went wrong")
+				return NewUsefulError().WithHumanError("Something went wrong")
 			},
 			expected: "Something went wrong",
 		},
 		{
 			name: "empty human error",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "An error occurred, but no human-readable message is available.",
 		},
@@ -97,14 +97,14 @@ func TestUsefulErrorBuilder_Help(t *testing.T) {
 		{
 			name: "with help set",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithHelp("Try running with --verbose flag")
+				return NewUsefulError().WithHelp("Try running with --verbose flag")
 			},
 			expected: "Try running with --verbose flag",
 		},
 		{
 			name: "empty help",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "No additional help is available for this error.",
 		},
@@ -127,14 +127,14 @@ func TestUsefulErrorBuilder_AdditionalHelp(t *testing.T) {
 		{
 			name: "with additional help set",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithAdditionalHelp("Use --force to override")
+				return NewUsefulError().WithAdditionalHelp("Use --force to override")
 			},
 			expected: "Use --force to override",
 		},
 		{
 			name: "empty additional help",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "No additional help is available for this error.",
 		},
@@ -157,14 +157,14 @@ func TestUsefulErrorBuilder_Code(t *testing.T) {
 		{
 			name: "with code set",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithCode("ERR001")
+				return NewUsefulError().WithCode("ERR001")
 			},
 			expected: "ERR001",
 		},
 		{
 			name: "empty code",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "unknown",
 		},
@@ -187,14 +187,14 @@ func TestUsefulErrorBuilder_ReferenceURL(t *testing.T) {
 		{
 			name: "with reference URL set",
 			builder: func() *usefulErrorBuilder {
-				return Useful().WithReferenceURL("https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E")
+				return NewUsefulError().WithReferenceURL("https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E")
 			},
 			expected: "https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E",
 		},
 		{
 			name: "empty reference URL",
 			builder: func() *usefulErrorBuilder {
-				return Useful()
+				return NewUsefulError()
 			},
 			expected: "",
 		},
@@ -209,7 +209,7 @@ func TestUsefulErrorBuilder_ReferenceURL(t *testing.T) {
 }
 
 func TestUsefulErrorBuilder_ChainedMethods(t *testing.T) {
-	err := Useful().
+	err := NewUsefulError().
 		WithCode("TEST001").
 		WithMsg("test message").
 		WithHumanError("User friendly error").
@@ -224,7 +224,7 @@ func TestUsefulErrorBuilder_ChainedMethods(t *testing.T) {
 }
 
 func TestUsefulErrorBuilder_ChainedMethodsWithReferenceURL(t *testing.T) {
-	err := Useful().
+	err := NewUsefulError().
 		WithCode("TEST001").
 		WithMsg("test message").
 		WithHumanError("User friendly error").
@@ -255,7 +255,7 @@ func TestAsUsefulError(t *testing.T) {
 		},
 		{
 			name:        "useful error builder",
-			input:       Useful().WithMsg("test"),
+			input:       NewUsefulError().WithMsg("test"),
 			expectOk:    true,
 			expectError: false,
 		},
@@ -284,13 +284,13 @@ func TestAsUsefulError(t *testing.T) {
 func TestUsefulErrorBuilder_ImplementsUsefulError(t *testing.T) {
 	var _ UsefulError = (*usefulErrorBuilder)(nil)
 
-	builder := Useful()
+	builder := NewUsefulError()
 	assert.Implements(t, (*UsefulError)(nil), builder)
 }
 
 func TestUsefulErrorBuilder_Wrap(t *testing.T) {
 	originalErr := errors.New("original error")
-	wrappedErr := Useful().Wrap(originalErr)
+	wrappedErr := NewUsefulError().Wrap(originalErr)
 
 	assert.Equal(t, "original error", wrappedErr.Error())
 	assert.Equal(t, "An error occurred, but no human-readable message is available.", wrappedErr.HumanError())
@@ -299,7 +299,7 @@ func TestUsefulErrorBuilder_Wrap(t *testing.T) {
 func TestUsefulErrorBuilder_ComplexScenario(t *testing.T) {
 	originalErr := errors.New("file not found")
 
-	err := Useful().
+	err := NewUsefulError().
 		Wrap(originalErr).
 		WithCode("FILE001").
 		WithHumanError("The configuration file could not be found").

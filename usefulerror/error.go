@@ -2,6 +2,7 @@ package usefulerror
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -47,7 +48,7 @@ var _ UsefulError = (*usefulErrorBuilder)(nil)
 
 var _ error = (*usefulErrorBuilder)(nil)
 
-func Useful() *usefulErrorBuilder {
+func NewUsefulError() *usefulErrorBuilder {
 	return &usefulErrorBuilder{}
 }
 
@@ -56,13 +57,18 @@ func (b *usefulErrorBuilder) Wrap(originalError error) *usefulErrorBuilder {
 	return b
 }
 
+// Unwrap returns the wrapped original error to support errors.Is and errors.As.
+func (b *usefulErrorBuilder) Unwrap() error {
+	return b.originalError
+}
+
 // WithHumanError sets a string that is more human-readable.
 func (b *usefulErrorBuilder) WithHumanError(humanError string) *usefulErrorBuilder {
 	b.humanError = humanError
 	return b
 }
 
-// WithHelp sets a string that provides additional help or guidance.
+// WithHelp sets a string that provides help or guidance.
 func (b *usefulErrorBuilder) WithHelp(help string) *usefulErrorBuilder {
 	b.help = help
 	return b
@@ -80,7 +86,7 @@ func (b *usefulErrorBuilder) WithMsg(msg string) *usefulErrorBuilder {
 	return b
 }
 
-// WithAdditionalHelp sets a string that provides additional help or guidance.
+// WithAdditionalHelp sets a string that provides tooling-related instructions.
 func (b *usefulErrorBuilder) WithAdditionalHelp(additionalHelp string) *usefulErrorBuilder {
 	b.additionalHelp = additionalHelp
 	return b
@@ -98,8 +104,14 @@ func (b *usefulErrorBuilder) Error() string {
 		return b.originalError.Error()
 	}
 
-	if b.msg == "" {
+	// If neither code nor message is set, fall back to a generic error string.
+	if b.code == "" && b.msg == "" {
 		return "unknown error"
+	}
+
+	// If only a code is set, return the code directly.
+	if b.code != "" && b.msg == "" {
+		return fmt.Sprintf("%s: unknown error", b.code)
 	}
 
 	msgParts := []string{}
@@ -107,9 +119,7 @@ func (b *usefulErrorBuilder) Error() string {
 		msgParts = append(msgParts, b.code)
 	}
 
-	if b.msg != "" {
-		msgParts = append(msgParts, b.msg)
-	}
+	msgParts = append(msgParts, b.msg)
 
 	return strings.Join(msgParts, ": ")
 }
@@ -123,7 +133,7 @@ func (b *usefulErrorBuilder) HumanError() string {
 	return b.humanError
 }
 
-// Help returns a string that provides additional help or guidance.
+// Help returns a string that provides help or guidance specific to the business logic of the error.
 func (b *usefulErrorBuilder) Help() string {
 	if b.help == "" {
 		return "No additional help is available for this error."
@@ -141,7 +151,7 @@ func (b *usefulErrorBuilder) Code() string {
 	return b.code
 }
 
-// AdditionalHelp returns a string that provides additional help or guidance.
+// AdditionalHelp returns a string that provides tooling-related instructions.
 func (b *usefulErrorBuilder) AdditionalHelp() string {
 	if b.additionalHelp == "" {
 		return "No additional help is available for this error."

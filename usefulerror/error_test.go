@@ -2,6 +2,7 @@ package usefulerror
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -324,4 +325,27 @@ func TestUsefulErrorBuilder_ComplexScenario(t *testing.T) {
 	usefulErr, ok := AsUsefulError(err)
 	assert.True(t, ok)
 	assert.Equal(t, err, usefulErr)
+}
+
+func TestAsUsefulError_DeepInChain(t *testing.T) {
+	usefulErr := NewUsefulError().
+		WithCode("DEEP001").
+		WithMsg("deep error").
+		WithHumanError("A useful error deep in the chain").
+		WithHelp("This should be found even when wrapped multiple times")
+
+	// Wrap it multiple times
+	level1 := fmt.Errorf("level 1 wrapper: %w", usefulErr)
+	level2 := fmt.Errorf("level 2 wrapper: %w", level1)
+	level3 := fmt.Errorf("level 3 wrapper: %w", level2)
+
+	// Find the UsefulError deep in the chain
+	foundUsefulErr, ok := AsUsefulError(level3)
+	assert.True(t, ok)
+	assert.NotNil(t, foundUsefulErr)
+
+	assert.Equal(t, "DEEP001: deep error", foundUsefulErr.Error())
+	assert.Equal(t, "A useful error deep in the chain", foundUsefulErr.HumanError())
+	assert.Equal(t, "This should be found even when wrapped multiple times", foundUsefulErr.Help())
+	assert.Equal(t, "DEEP001", foundUsefulErr.Code())
 }

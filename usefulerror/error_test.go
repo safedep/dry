@@ -296,7 +296,7 @@ func TestUsefulErrorBuilder_Wrap(t *testing.T) {
 	assert.Equal(t, "An error occurred, but no human-readable message is available.", wrappedErr.HumanError())
 }
 
-func TestUsefulErrorBuilder_UnWrap(t *testing.T) {
+func TestUsefulErrorBuilder_Unwrap(t *testing.T) {
 	originalErr := errors.New("original error")
 	wrappedErr := NewUsefulError().Wrap(originalErr)
 

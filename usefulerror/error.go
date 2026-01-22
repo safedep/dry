@@ -23,7 +23,7 @@ type UsefulError interface {
 
 	// AdditionalHelp returns a string that provides additional help or guidance
 	// This is useful for providing specific tooling related instructions such
-	// as common line flags to use to fix the error.
+	// as command line flags to use to fix the error.
 	AdditionalHelp() string
 
 	// ReferenceURL returns a reference URL for an error

@@ -165,19 +165,39 @@ func (b *usefulErrorBuilder) ReferenceURL() string {
 	return b.referenceURL
 }
 
-// AsUsefulError attempts to convert a given error into a UsefulError.
+// AsUsefulError attempts to convert a given error into a UsefulError. Follow are the precedence rules:
+// 1. If the error is already a UsefulError, return it immediately.
+// 2. If the error is wrapped by a UsefulError, return the wrapped error.
+// 3. If there is a converter that can convert the error into a UsefulError, use it.
+// 4. If no converter can convert the error into a UsefulError, return false.
+//
+// Error conversion is done on a best-effort basis using the registered converters. The first converter that can convert the error
+// into a UsefulError will be used and the conversion will stop. Internally we maintain two registries for error converters:
+//
+// - Internal registry for standard error types.
+// - Application registry for application-specific error types.
+//
+// Application registered error converters take precedence over internal error converters. This allows application code
+// to register error converters for its own error types and override the default behavior for standard error types.
 func AsUsefulError(err error) (UsefulError, bool) {
 	if err == nil {
 		return nil, false
 	}
 
-	// check if err is already a UsefulError & return early
+	// Check if err is already a UsefulError & return early
 	if usefulErr, ok := err.(UsefulError); ok {
 		return usefulErr, true
 	}
 
+	// Check if there is a wrapped error that is a UsefulError
 	var usefulErr UsefulError
 	if errors.As(err, &usefulErr) {
+		return usefulErr, true
+	}
+
+	// Check if there is a converter that can convert the error into a UsefulError
+	usefulErr, ok := convertToUsefulError(err)
+	if ok {
 		return usefulErr, true
 	}
 

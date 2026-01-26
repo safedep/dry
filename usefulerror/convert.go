@@ -63,8 +63,8 @@ func RegisterErrorConverter(identifier string, converterFunc ErrorConverterFunc)
 	registerErrorConverter(registryIdentifierApplication, identifier, converterFunc)
 }
 
-// registerInternalErrorConverters registers internal error converters for standard error types.
-func registerInternalErrorConverters(identifier string, converterFunc ErrorConverterFunc) {
+// registerInternalErrorConverter registers an internal error converter for standard error types.
+func registerInternalErrorConverter(identifier string, converterFunc ErrorConverterFunc) {
 	registerErrorConverter(registryIdentifierInternal, identifier, converterFunc)
 }
 

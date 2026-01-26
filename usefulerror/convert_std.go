@@ -11,7 +11,7 @@ import (
 // mean we should register every single error type, but rather the most common ones that are likely to
 // be encountered in practice.
 func init() {
-	registerInternalErrorConverters("os/err_not_exist", func(err error) (UsefulError, bool) {
+	registerInternalErrorConverter("os/err_not_exist", func(err error) (UsefulError, bool) {
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, fs.ErrNotExist) {
 			return NewUsefulError().
 				WithCode(ErrNotFound).

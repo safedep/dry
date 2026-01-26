@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	registerInternalErrorConverters("grpc/unauthenticated", func(err error) (UsefulError, bool) {
+	registerInternalErrorConverter("grpc/unauthenticated", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.Unauthenticated {
 			return NewUsefulError().
 				WithCode(ErrAuthenticationFailed).

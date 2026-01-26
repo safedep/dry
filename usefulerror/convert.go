@@ -7,16 +7,22 @@ import (
 	"github.com/safedep/dry/log"
 )
 
+const (
+	registryIdentifierInternal    = "internal"
+	registryIdentifierApplication = "application"
+)
+
 // ErrorConverterFunc is the contract for implementing error convertors across different error types
 type ErrorConverterFunc func(err error) (UsefulError, bool)
 
+// registryIdentifierMap is a map of registry identifiers used for deduplication of registry identifiers.
+var registryIdentifierMap = make(map[string]bool)
+
 // internalErrorConverterRegistry is a registry of error converters for different error types.
-// The map stores a converter identifier as the key and the converter as the value.
-var internalErrorConverterRegistry = make(map[string]ErrorConverterFunc)
+var internalErrorConverterRegistry = make([]ErrorConverterFunc, 0)
 
 // applicationErrorConverterRegistry is a registry of error converters for application-specific error types.
-// The map stores a converter identifier as the key and the converter as the value.
-var applicationErrorConverterRegistry = make(map[string]ErrorConverterFunc)
+var applicationErrorConverterRegistry = make([]ErrorConverterFunc, 0)
 
 // errorConverterRegistryMutex is a mutex for synchronizing access to error converter registries.
 var errorConverterRegistryMutex sync.RWMutex
@@ -54,24 +60,32 @@ func convertToUsefulError(err error) (UsefulError, bool) {
 // Attempting to register a duplicate identifier will panic. This is done to prevent
 // silent overwriting of existing error converters.
 func RegisterErrorConverter(identifier string, converterFunc ErrorConverterFunc) {
-	registerErrorConverter(applicationErrorConverterRegistry, identifier, converterFunc)
+	registerErrorConverter(registryIdentifierApplication, identifier, converterFunc)
 }
 
 // registerInternalErrorConverters registers internal error converters for standard error types.
 func registerInternalErrorConverters(identifier string, converterFunc ErrorConverterFunc) {
-	registerErrorConverter(internalErrorConverterRegistry, identifier, converterFunc)
+	registerErrorConverter(registryIdentifierInternal, identifier, converterFunc)
 }
 
 // registerErrorConverter registers a new error converter for a given identifier in a given registry.
-func registerErrorConverter(registry map[string]ErrorConverterFunc, identifier string, converterFunc ErrorConverterFunc) {
+func registerErrorConverter(registryType string, identifier string, converterFunc ErrorConverterFunc) {
 	errorConverterRegistryMutex.Lock()
 	defer errorConverterRegistryMutex.Unlock()
 
-	if _, exists := registry[identifier]; exists {
-		panic(fmt.Sprintf("error converter with identifier %s already registered", identifier))
+	prefixedIdentifier := fmt.Sprintf("%s/%s", registryType, identifier)
+
+	if _, exists := registryIdentifierMap[prefixedIdentifier]; exists {
+		panic(fmt.Sprintf("error converter with identifier %s already registered", prefixedIdentifier))
 	}
 
-	log.Debugf("Registering error converter for identifier: %s", identifier)
+	log.Debugf("Registering error converter for identifier: %s", prefixedIdentifier)
 
-	registry[identifier] = converterFunc
+	registryIdentifierMap[prefixedIdentifier] = true
+
+	if registryType == registryIdentifierInternal {
+		internalErrorConverterRegistry = append(internalErrorConverterRegistry, converterFunc)
+	} else {
+		applicationErrorConverterRegistry = append(applicationErrorConverterRegistry, converterFunc)
+	}
 }

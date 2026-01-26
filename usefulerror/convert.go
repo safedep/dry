@@ -12,7 +12,7 @@ const (
 	registryIdentifierApplication = "application"
 )
 
-// ErrorConverterFunc is the contract for implementing error convertors across different error types
+// ErrorConverterFunc is the contract for implementing error converters across different error types
 type ErrorConverterFunc func(err error) (UsefulError, bool)
 
 // registryIdentifierMap is a map of registry identifiers used for deduplication of registry identifiers.

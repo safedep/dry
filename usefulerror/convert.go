@@ -70,6 +70,14 @@ func registerInternalErrorConverters(identifier string, converterFunc ErrorConve
 
 // registerErrorConverter registers a new error converter for a given identifier in a given registry.
 func registerErrorConverter(registryType string, identifier string, converterFunc ErrorConverterFunc) {
+	if identifier == "" {
+		panic("error converter identifier cannot be empty")
+	}
+
+	if converterFunc == nil {
+		panic("error converter function cannot be nil")
+	}
+
 	errorConverterRegistryMutex.Lock()
 	defer errorConverterRegistryMutex.Unlock()
 

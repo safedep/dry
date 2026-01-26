@@ -19,7 +19,7 @@ var internalErrorConverterRegistry = make(map[string]ErrorConverterFunc)
 var applicationErrorConverterRegistry = make(map[string]ErrorConverterFunc)
 
 // errorConverterRegistryMutex is a mutex for synchronizing access to error converter registries.
-var errorConverterRegistryMutex sync.Mutex
+var errorConverterRegistryMutex sync.RWMutex
 
 // convertToUsefulError converts an error into a UsefulError. This enumerates all
 // registered converters and returns the first one that can convert the error.
@@ -28,6 +28,9 @@ func convertToUsefulError(err error) (UsefulError, bool) {
 	if err == nil {
 		return nil, false
 	}
+
+	errorConverterRegistryMutex.RLock()
+	defer errorConverterRegistryMutex.RUnlock()
 
 	for _, converterFunc := range applicationErrorConverterRegistry {
 		usefulErr, ok := converterFunc(err)

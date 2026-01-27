@@ -3,10 +3,85 @@ package usefulerror
 import (
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
+
+func TestAsUsefulError(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      error
+		assertions func(t *testing.T, result UsefulError, ok bool)
+	}{
+		{
+			name:  "nil error",
+			input: nil,
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.False(t, ok)
+				assert.Nil(t, result)
+			},
+		},
+		{
+			name:  "useful error builder",
+			input: NewUsefulError().WithMsg("test"),
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.True(t, ok)
+				assert.NotNil(t, result)
+				assert.Implements(t, (*UsefulError)(nil), result)
+				assert.Equal(t, "test", result.Error())
+			},
+		},
+		{
+			name:  "regular error",
+			input: errors.New("regular error"),
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.False(t, ok)
+				assert.Nil(t, result)
+			},
+		},
+		{
+			name:  "os/err_not_exist is converted to useful error",
+			input: fmt.Errorf("file not found: %w", os.ErrNotExist),
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.True(t, ok)
+				assert.NotNil(t, result)
+				assert.Equal(t, ErrNotFound, result.Code())
+				assert.Equal(t, "File or directory not found", result.HumanError())
+			},
+		},
+		{
+			name:  "grpc/unauthenticated is converted to useful error",
+			input: status.Errorf(codes.Unauthenticated, "authentication failed"),
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.True(t, ok)
+				assert.NotNil(t, result)
+				assert.Equal(t, ErrAuthenticationFailed, result.Code())
+				assert.Equal(t, "Authentication failed", result.HumanError())
+			},
+		},
+		{
+			name:  "nested grpc/unauthenticated is converted to useful error",
+			input: fmt.Errorf("authentication failed: %w", status.Errorf(codes.Unauthenticated, "authentication failed")),
+			assertions: func(t *testing.T, result UsefulError, ok bool) {
+				assert.True(t, ok)
+				assert.NotNil(t, result)
+				assert.Equal(t, ErrAuthenticationFailed, result.Code())
+				assert.Equal(t, "Authentication failed", result.HumanError())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, ok := AsUsefulError(tt.input)
+			tt.assertions(t, result, ok)
+		})
+	}
+}
 
 func TestUsefulErrorBuilder_Error(t *testing.T) {
 	tests := []struct {
@@ -239,47 +314,6 @@ func TestUsefulErrorBuilder_ChainedMethodsWithReferenceURL(t *testing.T) {
 	assert.Equal(t, "Or try this", err.AdditionalHelp())
 	assert.Equal(t, "TEST001", err.Code())
 	assert.Equal(t, "https://app.safedep.io/community/malysis/01KF17TN5XE9135Z28EEF33D2E", err.ReferenceURL())
-}
-
-func TestAsUsefulError(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       error
-		expectOk    bool
-		expectError bool
-	}{
-		{
-			name:        "nil error",
-			input:       nil,
-			expectOk:    false,
-			expectError: false,
-		},
-		{
-			name:        "useful error builder",
-			input:       NewUsefulError().WithMsg("test"),
-			expectOk:    true,
-			expectError: false,
-		},
-		{
-			name:        "regular error",
-			input:       errors.New("regular error"),
-			expectOk:    false,
-			expectError: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, ok := AsUsefulError(tt.input)
-			assert.Equal(t, tt.expectOk, ok)
-			if tt.expectOk {
-				assert.NotNil(t, result)
-				assert.Implements(t, (*UsefulError)(nil), result)
-			} else {
-				assert.Nil(t, result)
-			}
-		})
-	}
 }
 
 func TestUsefulErrorBuilder_ImplementsUsefulError(t *testing.T) {

@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/fatih/color"
@@ -23,6 +25,12 @@ func init() {
 // GetColorConfig returns the global color configuration
 func GetColorConfig() *ColorConfig {
 	return globalColorConfig
+}
+
+func SetColorConfig(colorCfg *ColorConfig) {
+	if colorCfg != nil {
+		globalColorConfig = colorCfg
+	}
 }
 
 type colorFn func(format string, a ...interface{}) string
@@ -118,6 +126,62 @@ func (c *ColorConfig) BoldText(s string) string {
 	return colors.Bold("%s", s)
 }
 
+func (c *ColorConfig) MinimalError(code, msg, hint string) string {
+	var sb strings.Builder
+	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
+		sb.WriteString(fmt.Sprintf("%s  %s\n", code, msg))
+
+		if hint != "" {
+			sb.WriteString(fmt.Sprintf(" %s %s\n", "→", hint))
+		}
+		return sb.String()
+	}
+
+	sb.WriteString(fmt.Sprintf("%s  %s\n", colors.ErrorCode(" %s ", code), colors.Red(msg)))
+	if hint != "" {
+		sb.WriteString(fmt.Sprintf(" %s %s\n", colors.Dim("→"), colors.Dim(hint)))
+	}
+
+	return sb.String()
+}
+
+func (c *ColorConfig) VerboseError(code, msg, hint, additionalHelp, originalError string) string {
+	var sb strings.Builder
+	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
+		sb.WriteString(fmt.Sprintf("%s  %s\n", code, msg))
+
+		if hint != "" {
+			sb.WriteString(fmt.Sprintf(" %s %s\n", "→", hint))
+		}
+
+		if additionalHelp != "" {
+			sb.WriteString(fmt.Sprintf(" %s %s\n", "→", additionalHelp))
+		}
+
+		if originalError != "" {
+			sb.WriteString(fmt.Sprintf(" %s %s\n", "┄", originalError))
+		}
+
+		return sb.String()
+	}
+
+	sb.WriteString(fmt.Sprintf("%s  %s\n", colors.ErrorCode(" %s ", code), colors.Red(msg)))
+
+	if hint != "" {
+		sb.WriteString(fmt.Sprintf(" %s %s\n", colors.Dim("→"), colors.Dim(hint)))
+	}
+
+	if additionalHelp != "" {
+		sb.WriteString(fmt.Sprintf(" %s %s\n", colors.Dim("→"), colors.Dim(additionalHelp)))
+	}
+
+	if originalError != "" {
+		sb.WriteString(fmt.Sprintf(" %s %s\n", colors.Dim("┄"), colors.Dim(originalError)))
+	}
+
+	return sb.String()
+}
+
 /*
 Background “badge” functions
 
@@ -177,6 +241,21 @@ func ErrorText(s string) string   { return globalColorConfig.ErrorText(s) }
 func SuccessText(s string) string { return globalColorConfig.SuccessText(s) }
 func FaintText(s string) string   { return globalColorConfig.FaintText(s) }
 func BoldText(s string) string    { return globalColorConfig.BoldText(s) }
+
+/*
+ * Internal
+ */
+func printMinimalError(code, message, hint string) {
+	str := globalColorConfig.MinimalError(code, message, hint)
+
+	fmt.Print(str)
+}
+
+func printVerboseError(code, message, hint, additionalHelp, originalError string) {
+	str := globalColorConfig.VerboseError(code, message, hint, additionalHelp, originalError)
+
+	fmt.Print(str)
+}
 
 /*
 Background badges

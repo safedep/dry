@@ -8,8 +8,6 @@ import (
 	"github.com/fatih/color"
 )
 
-// Package tui provides terminal color support with automatic capability detection
-// and dark/light mode awareness.
 // ColorConfig holds the terminal color configuration and context
 type ColorConfig struct {
 	profile           colorprofile.Profile
@@ -50,7 +48,7 @@ type TerminalColors struct {
 	NeutralBg colorFn
 }
 
-var Colors = TerminalColors{
+var colors = TerminalColors{
 	Normal:    color.New().SprintfFunc(),
 	Red:       color.New(color.FgRed, color.Bold).SprintfFunc(),
 	Yellow:    color.New(color.FgYellow).SprintfFunc(),
@@ -72,9 +70,7 @@ var Colors = TerminalColors{
 Semantic foreground functions
 
 Rule of thumb:
-- NoTTY/Ascii: return plain text (no styling) for maximum compatibility.
-- ANSI: use traditional base colors, minimal bold.
-- ANSI256/TrueColor: prefer Hi variants for legibility, avoid unnecessary bold.
+- ANSI/ANSI256/TrueColor: use the base colors definitions.
 */
 
 // InfoText returns informational foreground text.
@@ -82,7 +78,7 @@ func (c *ColorConfig) InfoText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Cyan("%s", s)
+	return colors.Cyan("%s", s)
 }
 
 // WarningText returns a warning foreground text in muted yellow.
@@ -90,7 +86,7 @@ func (c *ColorConfig) WarningText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Yellow("%s", s)
+	return colors.Yellow("%s", s)
 }
 
 // ErrorText returns an error foreground text in restrained red.
@@ -98,7 +94,7 @@ func (c *ColorConfig) ErrorText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Red("%s", s)
+	return colors.Red("%s", s)
 }
 
 // SuccessText returns a success foreground text in gentle green.
@@ -106,7 +102,7 @@ func (c *ColorConfig) SuccessText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Green("%s", s)
+	return colors.Green("%s", s)
 }
 
 // FaintText returns text with faint/dim styling (secondary information).
@@ -114,7 +110,7 @@ func (c *ColorConfig) FaintText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Dim("%s", s)
+	return colors.Dim("%s", s)
 }
 
 // BoldText returns text with bold styling (use sparingly, e.g., titles).
@@ -122,7 +118,7 @@ func (c *ColorConfig) BoldText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.Bold("%s", s)
+	return colors.Bold("%s", s)
 }
 
 /*
@@ -137,7 +133,7 @@ func (c *ColorConfig) ErrorBgText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.ErrorBg("%s", s)
+	return colors.ErrorBg("%s", s)
 }
 
 // WarningBgText returns text with a warning badge background.
@@ -145,7 +141,7 @@ func (c *ColorConfig) WarningBgText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.WarningBg("%s", s)
+	return colors.WarningBg("%s", s)
 }
 
 // InfoBgText returns text with an informational badge background.
@@ -153,7 +149,7 @@ func (c *ColorConfig) InfoBgText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.InfoBg("%s", s)
+	return colors.InfoBg("%s", s)
 }
 
 // SuccessBgText returns text with a success badge background.
@@ -161,7 +157,7 @@ func (c *ColorConfig) SuccessBgText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.SuccessBg("%s", s)
+	return colors.SuccessBg("%s", s)
 }
 
 // NeutralBgText returns text with a neutral (white) badge background, useful for
@@ -170,7 +166,7 @@ func (c *ColorConfig) NeutralBgText(s string) string {
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
 		return s
 	}
-	return Colors.NeutralBg("%s", s)
+	return colors.NeutralBg("%s", s)
 }
 
 /*

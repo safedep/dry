@@ -4,22 +4,19 @@ import (
 	"os"
 
 	"github.com/charmbracelet/colorprofile"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"
 )
 
 // ColorConfig holds the terminal color configuration and context
 type ColorConfig struct {
-	profile           colorprofile.Profile
-	hasDarkBackground bool
+	profile colorprofile.Profile
 }
 
 var globalColorConfig *ColorConfig
 
 func init() {
 	globalColorConfig = &ColorConfig{
-		profile:           colorprofile.Detect(os.Stdout, os.Environ()),
-		hasDarkBackground: lipgloss.HasDarkBackground(),
+		profile: colorprofile.Detect(os.Stdout, os.Environ()),
 	}
 }
 

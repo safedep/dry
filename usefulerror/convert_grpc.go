@@ -75,8 +75,8 @@ func init() {
 	registerInternalErrorConverter("grpc/resource_exhausted", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.ResourceExhausted {
 			return NewUsefulError().
-				WithCode(ErrRateLimitExceeded).
-				WithHumanError("Rate limit exceeded").
+				WithCode(ErrQuotaExceeded).
+				WithHumanError("Quota exceeded").
 				WithHelp("Reduce request frequency or increase your quota.").
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
@@ -143,19 +143,6 @@ func init() {
 				WithCode(ErrNetworkError).
 				WithHumanError("Request cancelled").
 				WithHelp("The request was cancelled before completion.").
-				WithAdditionalHelp(st.Message()).
-				Wrap(err), true
-		}
-		return nil, false
-	})
-
-	// Unknown -> generic internal
-	registerInternalErrorConverter("grpc/unknown", func(err error) (UsefulError, bool) {
-		if st, ok := status.FromError(err); ok && st.Code() == codes.Unknown {
-			return NewUsefulError().
-				WithCode(ErrInternalServerError).
-				WithHumanError("Unknown error").
-				WithHelp("An unknown error occurred. Check logs for more details.").
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}

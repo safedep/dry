@@ -7,6 +7,7 @@ const (
 	ErrAuthenticationFailed = "authentication_failed"
 	ErrAuthorizationFailed  = "authorization_failed"
 	ErrRateLimitExceeded    = "rate_limit_exceeded"
+	ErrQuotaExceeded        = "quota_exceeded"
 	ErrInternalServerError  = "internal_server_error"
 	ErrBadRequest           = "bad_request"
 	ErrNotFound             = "not_found"

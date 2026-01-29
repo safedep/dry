@@ -145,55 +145,6 @@ func TestPrintVerboseError_ASCII(t *testing.T) {
 	}
 }
 
-func setAsciiProfile(t *testing.T) {
-	t.Helper()
-	SetColorConfig(&ColorConfig{profile: colorprofile.Ascii})
-}
-
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	assert.NoError(t, err, "failed to create pipe")
-
-	os.Stdout = w
-
-	// Run the function that prints to stdout
-	f()
-
-	// Restore stdout before reading to avoid deadlocks in case f() also writes
-	_ = w.Close()
-	os.Stdout = orig
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	_ = r.Close()
-
-	return buf.String()
-}
-
-func captureStderr(t *testing.T, f func()) string {
-	t.Helper()
-
-	orig := os.Stderr
-	r, w, err := os.Pipe()
-	assert.NoError(t, err, "failed to create pipe")
-
-	os.Stderr = w
-
-	f()
-
-	_ = w.Close()
-	os.Stderr = orig
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	_ = r.Close()
-
-	return buf.String()
-}
-
 // TestFormatError_WithUsefulError tests FormatError with a UsefulError input
 func TestFormatError_WithUsefulError(t *testing.T) {
 	setAsciiProfile(t)
@@ -535,4 +486,58 @@ func TestSetColorConfig_NilSafe(t *testing.T) {
 
 	current := GetColorConfig()
 	assert.Equal(t, original, current, "config should not change when nil is passed")
+}
+
+func setAsciiProfile(t *testing.T) {
+	t.Helper()
+	original := GetColorConfig()
+	SetColorConfig(NewColorConfig(colorprofile.Ascii))
+
+	t.Cleanup(func() {
+		SetColorConfig(original)
+	})
+}
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+
+	orig := os.Stdout
+	r, w, err := os.Pipe()
+	assert.NoError(t, err, "failed to create pipe")
+
+	os.Stdout = w
+
+	// Run the function that prints to stdout
+	f()
+
+	// Restore stdout before reading to avoid deadlocks in case f() also writes
+	_ = w.Close()
+	os.Stdout = orig
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	_ = r.Close()
+
+	return buf.String()
+}
+
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
+
+	orig := os.Stderr
+	r, w, err := os.Pipe()
+	assert.NoError(t, err, "failed to create pipe")
+
+	os.Stderr = w
+
+	f()
+
+	_ = w.Close()
+	os.Stderr = orig
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	_ = r.Close()
+
+	return buf.String()
 }

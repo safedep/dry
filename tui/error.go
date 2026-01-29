@@ -13,6 +13,10 @@ import (
 // When isVerbose is true, additional details are included in the output.
 // Returns 1 as the exit code (for use with os.Exit if desired).
 func FormatError(err error, isVerbose bool) int {
+	if err == nil {
+		return 0
+	}
+
 	usefulErr, ok := usefulerror.AsUsefulError(err)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

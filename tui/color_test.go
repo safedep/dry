@@ -145,18 +145,25 @@ func TestPrintVerboseError_ASCII(t *testing.T) {
 	}
 }
 
-// TestFormatError_WithUsefulError tests FormatError with a UsefulError input
-func TestFormatError_WithUsefulError(t *testing.T) {
+// TestErrorExit_WithUsefulError tests ErrorExit with a UsefulError input
+func TestErrorExit_WithUsefulError(t *testing.T) {
 	setAsciiProfile(t)
+
+	var exitCode int
+	SetExitFunc(func(code int) {
+		exitCode = code
+	})
+	t.Cleanup(func() {
+		SetExitFunc(nil)
+	})
 
 	usefulErr := usefulerror.NewUsefulError().
 		WithCode("test_error_code").
 		WithHumanError("Something went wrong").
 		WithHelp("Try again later")
 
-	var exitCode int
 	out := captureStderr(t, func() {
-		exitCode = FormatError(usefulErr, false)
+		ErrorExit(usefulErr, false)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")
@@ -164,9 +171,17 @@ func TestFormatError_WithUsefulError(t *testing.T) {
 	assert.Contains(t, out, "Something went wrong", "expected human error in output")
 }
 
-// TestFormatError_WithUsefulError_Verbose tests FormatError with verbose flag
-func TestFormatError_WithUsefulError_Verbose(t *testing.T) {
+// TestErrorExit_WithUsefulError_Verbose tests ErrorExit with verbose flag
+func TestErrorExit_WithUsefulError_Verbose(t *testing.T) {
 	setAsciiProfile(t)
+
+	var exitCode int
+	SetExitFunc(func(code int) {
+		exitCode = code
+	})
+	t.Cleanup(func() {
+		SetExitFunc(nil)
+	})
 
 	usefulErr := usefulerror.NewUsefulError().
 		WithCode("verbose_error").
@@ -174,9 +189,8 @@ func TestFormatError_WithUsefulError_Verbose(t *testing.T) {
 		WithHelp("Check logs").
 		WithAdditionalHelp("Run with --debug for more info")
 
-	var exitCode int
 	out := captureStderr(t, func() {
-		exitCode = FormatError(usefulErr, true)
+		ErrorExit(usefulErr, true)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")
@@ -185,15 +199,22 @@ func TestFormatError_WithUsefulError_Verbose(t *testing.T) {
 	assert.Contains(t, out, "Run with --debug for more info", "expected additional help in output")
 }
 
-// TestFormatError_WithNonUsefulError tests FormatError with a regular error
-func TestFormatError_WithNonUsefulError_Minimal(t *testing.T) {
+// TestErrorExit_WithNonUsefulError tests ErrorExit with a regular error
+func TestErrorExit_WithNonUsefulError(t *testing.T) {
 	setAsciiProfile(t)
+
+	var exitCode int
+	SetExitFunc(func(code int) {
+		exitCode = code
+	})
+	t.Cleanup(func() {
+		SetExitFunc(nil)
+	})
 
 	regularErr := errors.New("simple error message")
 
-	var exitCode int
 	out := captureStderr(t, func() {
-		exitCode = FormatError(regularErr, false)
+		ErrorExit(regularErr, false)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")

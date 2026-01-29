@@ -42,7 +42,7 @@ func TestPrintMinimalError_ASCII(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out := captureStdout(t, func() {
+			out := captureStderr(t, func() {
 				printMinimalError(tt.code, tt.message, tt.hint)
 			})
 
@@ -136,7 +136,7 @@ func TestPrintVerboseError_ASCII(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			out := captureStdout(t, func() {
+			out := captureStderr(t, func() {
 				printVerboseError(tt.code, tt.message, tt.hint, tt.additionalHelp, tt.originalError)
 			})
 
@@ -155,7 +155,7 @@ func TestFormatError_WithUsefulError(t *testing.T) {
 		WithHelp("Try again later")
 
 	var exitCode int
-	out := captureStdout(t, func() {
+	out := captureStderr(t, func() {
 		exitCode = FormatError(usefulErr, false)
 	})
 
@@ -175,7 +175,7 @@ func TestFormatError_WithUsefulError_Verbose(t *testing.T) {
 		WithAdditionalHelp("Run with --debug for more info")
 
 	var exitCode int
-	out := captureStdout(t, func() {
+	out := captureStderr(t, func() {
 		exitCode = FormatError(usefulErr, true)
 	})
 
@@ -497,30 +497,6 @@ func setAsciiProfile(t *testing.T) {
 		SetColorConfig(original)
 	})
 }
-
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	assert.NoError(t, err, "failed to create pipe")
-
-	os.Stdout = w
-
-	// Run the function that prints to stdout
-	f()
-
-	// Restore stdout before reading to avoid deadlocks in case f() also writes
-	_ = w.Close()
-	os.Stdout = orig
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	_ = r.Close()
-
-	return buf.String()
-}
-
 func captureStderr(t *testing.T, f func()) string {
 	t.Helper()
 

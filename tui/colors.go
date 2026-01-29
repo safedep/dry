@@ -33,7 +33,7 @@ func init() {
 	}
 }
 
-// GetColorConfig returns a copy of the global color configuration.
+// GetColorConfig returns the global color configuration.
 // It is safe for concurrent use.
 func GetColorConfig() *ColorConfig {
 	colorConfigMu.RLock()
@@ -279,13 +279,13 @@ func BoldText(s string) string    { return GetColorConfig().BoldText(s) }
 func printMinimalError(code, message, hint string) {
 	str := GetColorConfig().MinimalError(code, message, hint)
 
-	fmt.Print(str)
+	fmt.Fprint(os.Stderr, str)
 }
 
 func printVerboseError(code, message, hint, additionalHelp, originalError string) {
 	str := GetColorConfig().VerboseError(code, message, hint, additionalHelp, originalError)
 
-	fmt.Print(str)
+	fmt.Fprint(os.Stderr, str)
 }
 
 /*

@@ -13,7 +13,7 @@ func ErrorExit(err error, isVerbose bool) {
 		os.Exit(1)
 	}
 
-	// Use help as hint, but for unknown errors show bug report link
+	// Use the error's help text as the hint
 	hint := usefulErr.Help()
 
 	if isVerbose {

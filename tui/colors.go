@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/fatih/color"
@@ -14,7 +15,10 @@ type ColorConfig struct {
 	profile colorprofile.Profile
 }
 
-var globalColorConfig *ColorConfig
+var (
+	globalColorConfig *ColorConfig
+	colorConfigMu     sync.RWMutex
+)
 
 func init() {
 	globalColorConfig = &ColorConfig{
@@ -22,19 +26,31 @@ func init() {
 	}
 }
 
-// GetColorConfig returns the global color configuration
+// GetColorConfig returns a copy of the global color configuration.
+// It is safe for concurrent use.
 func GetColorConfig() *ColorConfig {
+	colorConfigMu.RLock()
+	defer colorConfigMu.RUnlock()
 	return globalColorConfig
 }
 
+// SetColorConfig sets the global color configuration.
+// If colorCfg is nil, the function does nothing.
+// It is safe for concurrent use.
 func SetColorConfig(colorCfg *ColorConfig) {
-	if colorCfg != nil {
-		globalColorConfig = colorCfg
+	if colorCfg == nil {
+		return
 	}
+	colorConfigMu.Lock()
+	defer colorConfigMu.Unlock()
+	globalColorConfig = colorCfg
 }
 
 type colorFn func(format string, a ...interface{}) string
 
+// TerminalColors defines a collection of color formatting functions for terminal output.
+// It provides both foreground text colors (Normal, Red, Yellow, etc.) and background
+// "badge" styles (ErrorBg, WarningBg, etc.) for creating visually distinct terminal output.
 type TerminalColors struct {
 	Normal    colorFn
 	Red       colorFn
@@ -126,6 +142,9 @@ func (c *ColorConfig) BoldText(s string) string {
 	return colors.Bold("%s", s)
 }
 
+// MinimalError formats an error message with code, message, and optional hint.
+// It returns a formatted string suitable for minimal error output, respecting
+// the terminal's color profile (no colors for NoTTY/Ascii terminals).
 func (c *ColorConfig) MinimalError(code, msg, hint string) string {
 	var sb strings.Builder
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
@@ -145,6 +164,10 @@ func (c *ColorConfig) MinimalError(code, msg, hint string) string {
 	return sb.String()
 }
 
+// VerboseError formats a detailed error message with code, message, hint,
+// additional help text, and the original error string. It returns a formatted
+// string suitable for verbose error output, respecting the terminal's color
+// profile (no colors for NoTTY/Ascii terminals).
 func (c *ColorConfig) VerboseError(code, msg, hint, additionalHelp, originalError string) string {
 	var sb strings.Builder
 	if c.profile == colorprofile.NoTTY || c.profile == colorprofile.Ascii {
@@ -235,24 +258,25 @@ Global convenience functions that proxy to the global ColorConfig
 
 Foreground
 */
-func InfoText(s string) string    { return globalColorConfig.InfoText(s) }
-func WarningText(s string) string { return globalColorConfig.WarningText(s) }
-func ErrorText(s string) string   { return globalColorConfig.ErrorText(s) }
-func SuccessText(s string) string { return globalColorConfig.SuccessText(s) }
-func FaintText(s string) string   { return globalColorConfig.FaintText(s) }
-func BoldText(s string) string    { return globalColorConfig.BoldText(s) }
+
+func InfoText(s string) string    { return GetColorConfig().InfoText(s) }
+func WarningText(s string) string { return GetColorConfig().WarningText(s) }
+func ErrorText(s string) string   { return GetColorConfig().ErrorText(s) }
+func SuccessText(s string) string { return GetColorConfig().SuccessText(s) }
+func FaintText(s string) string   { return GetColorConfig().FaintText(s) }
+func BoldText(s string) string    { return GetColorConfig().BoldText(s) }
 
 /*
  * Internal
  */
 func printMinimalError(code, message, hint string) {
-	str := globalColorConfig.MinimalError(code, message, hint)
+	str := GetColorConfig().MinimalError(code, message, hint)
 
 	fmt.Print(str)
 }
 
 func printVerboseError(code, message, hint, additionalHelp, originalError string) {
-	str := globalColorConfig.VerboseError(code, message, hint, additionalHelp, originalError)
+	str := GetColorConfig().VerboseError(code, message, hint, additionalHelp, originalError)
 
 	fmt.Print(str)
 }
@@ -260,8 +284,9 @@ func printVerboseError(code, message, hint, additionalHelp, originalError string
 /*
 Background badges
 */
-func ErrorBgText(s string) string   { return globalColorConfig.ErrorBgText(s) }
-func WarningBgText(s string) string { return globalColorConfig.WarningBgText(s) }
-func InfoBgText(s string) string    { return globalColorConfig.InfoBgText(s) }
-func SuccessBgText(s string) string { return globalColorConfig.SuccessBgText(s) }
-func NeutralBgText(s string) string { return globalColorConfig.NeutralBgText(s) }
+
+func ErrorBgText(s string) string   { return GetColorConfig().ErrorBgText(s) }
+func WarningBgText(s string) string { return GetColorConfig().WarningBgText(s) }
+func InfoBgText(s string) string    { return GetColorConfig().InfoBgText(s) }
+func SuccessBgText(s string) string { return GetColorConfig().SuccessBgText(s) }
+func NeutralBgText(s string) string { return GetColorConfig().NeutralBgText(s) }

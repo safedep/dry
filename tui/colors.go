@@ -15,6 +15,13 @@ type ColorConfig struct {
 	profile colorprofile.Profile
 }
 
+// NewColorConfig creates a ColorConfig with the specified color profile.
+// Use this to create a config with a specific profile (e.g., for testing
+// or to force a particular color mode like colorprofile.Ascii for CI environments).
+func NewColorConfig(profile colorprofile.Profile) *ColorConfig {
+	return &ColorConfig{profile: profile}
+}
+
 var (
 	globalColorConfig *ColorConfig
 	colorConfigMu     sync.RWMutex

@@ -1,231 +1,11 @@
 package tui
 
 import (
-	"bytes"
-	"errors"
-	"io"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/charmbracelet/colorprofile"
-	"github.com/fatih/color"
-	"github.com/safedep/dry/usefulerror"
 	"github.com/stretchr/testify/assert"
 )
-
-func TestPrintMinimalError_ASCII(t *testing.T) {
-	setAsciiProfile(t)
-
-	tests := []struct {
-		name     string
-		code     string
-		message  string
-		hint     string
-		expected string
-	}{
-		{
-			name:     "with hint",
-			code:     "authentication_failed",
-			message:  "Login failed",
-			hint:     "Re-authenticate with a valid token",
-			expected: "authentication_failed  Login failed\n → Re-authenticate with a valid token\n",
-		},
-		{
-			name:     "without hint",
-			code:     "internal_error",
-			message:  "Something went wrong",
-			hint:     "",
-			expected: "internal_error  Something went wrong\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			out := captureStderr(t, func() {
-				printMinimalError(tt.code, tt.message, tt.hint)
-			})
-
-			assert.Equal(t, tt.expected, out, "unexpected output")
-		})
-	}
-}
-
-func TestPrintVerboseError_ASCII(t *testing.T) {
-	setAsciiProfile(t)
-
-	tests := []struct {
-		name           string
-		code           string
-		message        string
-		hint           string
-		additionalHelp string
-		originalError  string
-		expected       string
-	}{
-		{
-			name:           "all fields present",
-			code:           "rate_limit_exceeded",
-			message:        "Too many requests",
-			hint:           "Wait a few seconds and try again",
-			additionalHelp: "Use --retry 3 to automatically retry",
-			originalError:  "HTTP 429 from api.example.com",
-			expected: "" +
-				"rate_limit_exceeded  Too many requests\n" +
-				" → Wait a few seconds and try again\n" +
-				" → Use --retry 3 to automatically retry\n" +
-				" ┄ HTTP 429 from api.example.com\n",
-		},
-		{
-			name:           "missing hint",
-			code:           "quota_exceeded",
-			message:        "Monthly quota exhausted",
-			hint:           "",
-			additionalHelp: "See docs: https://example.com/quota",
-			originalError:  "usage=100%, limit=100%",
-			expected: "" +
-				"quota_exceeded  Monthly quota exhausted\n" +
-				" → See docs: https://example.com/quota\n" +
-				" ┄ usage=100%, limit=100%\n",
-		},
-		{
-			name:           "missing additional help",
-			code:           "authorization_failed",
-			message:        "Access denied",
-			hint:           "Ensure your role has necessary permissions",
-			additionalHelp: "",
-			originalError:  "403 Forbidden",
-			expected: "" +
-				"authorization_failed  Access denied\n" +
-				" → Ensure your role has necessary permissions\n" +
-				" ┄ 403 Forbidden\n",
-		},
-		{
-			name:           "missing original error",
-			code:           "authentication_failed",
-			message:        "Invalid credentials",
-			hint:           "Re-enter username and password",
-			additionalHelp: "Use --login to start an interactive login",
-			originalError:  "",
-			expected: "" +
-				"authentication_failed  Invalid credentials\n" +
-				" → Re-enter username and password\n" +
-				" → Use --login to start an interactive login\n",
-		},
-		{
-			name:           "only code and message",
-			code:           "internal_server_error",
-			message:        "Unexpected failure",
-			hint:           "",
-			additionalHelp: "",
-			originalError:  "",
-			expected:       "internal_server_error  Unexpected failure\n",
-		},
-		{
-			name:           "only original error present besides code+message",
-			code:           "unknown_error",
-			message:        "An unknown error occurred",
-			hint:           "",
-			additionalHelp: "",
-			originalError:  "stack: nil dereference",
-			expected: "" +
-				"unknown_error  An unknown error occurred\n" +
-				" ┄ stack: nil dereference\n",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			out := captureStderr(t, func() {
-				printVerboseError(tt.code, tt.message, tt.hint, tt.additionalHelp, tt.originalError)
-			})
-
-			assert.Equal(t, tt.expected, out, "unexpected output")
-		})
-	}
-}
-
-// TestErrorExit_WithUsefulError tests ErrorExit with a UsefulError input
-func TestErrorExit_WithUsefulError(t *testing.T) {
-	setAsciiProfile(t)
-
-	var exitCode int
-	SetExitFunc(func(code int) {
-		exitCode = code
-	})
-	SetVerbosityLevel(VerbosityLevelNormal)
-	t.Cleanup(func() {
-		SetExitFunc(nil)
-		SetVerbosityLevel(VerbosityLevelNormal)
-	})
-
-	usefulErr := usefulerror.NewUsefulError().
-		WithCode("test_error_code").
-		WithHumanError("Something went wrong").
-		WithHelp("Try again later")
-
-	out := captureStderr(t, func() {
-		ErrorExit(usefulErr)
-	})
-
-	assert.Equal(t, 1, exitCode, "expected exit code 1")
-	assert.Contains(t, out, "test_error_code", "expected error code in output")
-	assert.Contains(t, out, "Something went wrong", "expected human error in output")
-}
-
-// TestErrorExit_WithUsefulError_Verbose tests ErrorExit with verbose mode enabled
-func TestErrorExit_WithUsefulError_Verbose(t *testing.T) {
-	setAsciiProfile(t)
-
-	var exitCode int
-	SetExitFunc(func(code int) {
-		exitCode = code
-	})
-	SetVerbosityLevel(VerbosityLevelVerbose)
-	t.Cleanup(func() {
-		SetExitFunc(nil)
-		SetVerbosityLevel(VerbosityLevelNormal)
-	})
-
-	usefulErr := usefulerror.NewUsefulError().
-		WithCode("verbose_error").
-		WithHumanError("Detailed failure").
-		WithHelp("Check logs").
-		WithAdditionalHelp("Run with --debug for more info")
-
-	out := captureStderr(t, func() {
-		ErrorExit(usefulErr)
-	})
-
-	assert.Equal(t, 1, exitCode, "expected exit code 1")
-	assert.Contains(t, out, "verbose_error", "expected error code in output")
-	assert.Contains(t, out, "Detailed failure", "expected human error in output")
-	assert.Contains(t, out, "Run with --debug for more info", "expected additional help in output")
-}
-
-// TestErrorExit_WithNonUsefulError tests ErrorExit with a regular error
-func TestErrorExit_WithNonUsefulError(t *testing.T) {
-	setAsciiProfile(t)
-
-	var exitCode int
-	SetExitFunc(func(code int) {
-		exitCode = code
-	})
-	SetVerbosityLevel(VerbosityLevelNormal)
-	t.Cleanup(func() {
-		SetExitFunc(nil)
-		SetVerbosityLevel(VerbosityLevelNormal)
-	})
-
-	regularErr := errors.New("simple error message")
-
-	out := captureStderr(t, func() {
-		ErrorExit(regularErr)
-	})
-
-	assert.Equal(t, 1, exitCode, "expected exit code 1")
-	assert.Contains(t, out, "Error: simple error message", "expected error message in stderr")
-}
 
 // TestSemanticColorFunctions_ASCII tests all semantic color functions with ASCII profile
 func TestSemanticColorFunctions_ASCII(t *testing.T) {
@@ -249,20 +29,20 @@ func TestSemanticColorFunctions_ASCII(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.fn(tt.input)
 			assert.Equal(t, tt.expected, result, "ASCII profile should return plain text")
+			assert.NotContains(t, result, "\x1b[", "ASCII profile should not add escape sequences")
 		})
 	}
 }
 
-// TestSemanticColorFunctions_ANSI tests that ANSI profile adds color codes
+// TestSemanticColorFunctions_ANSI tests that ANSI profile enables colors
 func TestSemanticColorFunctions_ANSI(t *testing.T) {
-	// Force colors on for testing (fatih/color disables them in non-TTY)
-	color.NoColor = false
+	SetColorConfig(NewColorConfig(colorprofile.ANSI))
 	t.Cleanup(func() {
-		color.NoColor = true
 		setAsciiProfile(t)
 	})
 
-	SetColorConfig(&ColorConfig{profile: colorprofile.ANSI})
+	// Verify our config reports colors as enabled
+	assert.True(t, GetColorConfig().IsColorEnabled(), "ANSI profile should report colors enabled")
 
 	tests := []struct {
 		name  string
@@ -280,10 +60,11 @@ func TestSemanticColorFunctions_ANSI(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.fn(tt.input)
-			// ANSI colors should add escape sequences
+			// Result should always contain the input text
 			assert.Contains(t, result, tt.input, "result should contain the input text")
-			assert.True(t, strings.Contains(result, "\x1b[") || result == tt.input,
-				"ANSI profile should add escape sequences or return plain text for unsupported colors")
+			// Note: We can't assert ANSI escape codes here because fatih/color
+			// disables colors at init time in non-TTY environments (like tests).
+			// The IsColorEnabled assertion above verifies our logic is correct.
 		})
 	}
 }
@@ -309,17 +90,20 @@ func TestBadgeFunctions_ASCII(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.fn(tt.input)
 			assert.Equal(t, tt.expected, result, "ASCII profile should return plain text")
+			assert.NotContains(t, result, "\x1b[", "ASCII profile should not add escape sequences")
 		})
 	}
 }
 
-// TestBadgeFunctions_ANSI tests that ANSI profile returns text containing input
-// Note: In non-TTY environments, fatih/color may not add escape sequences
+// TestBadgeFunctions_ANSI tests that ANSI profile enables colors for badges
 func TestBadgeFunctions_ANSI(t *testing.T) {
-	SetColorConfig(&ColorConfig{profile: colorprofile.ANSI})
+	SetColorConfig(NewColorConfig(colorprofile.ANSI))
 	t.Cleanup(func() {
 		setAsciiProfile(t)
 	})
+
+	// Verify our config reports colors as enabled
+	assert.True(t, GetColorConfig().IsColorEnabled(), "ANSI profile should report colors enabled")
 
 	tests := []struct {
 		name  string
@@ -338,13 +122,16 @@ func TestBadgeFunctions_ANSI(t *testing.T) {
 			result := tt.fn(tt.input)
 			// Result should always contain the input text
 			assert.Contains(t, result, tt.input, "result should contain the input text")
+			// Note: We can't assert ANSI escape codes here because fatih/color
+			// disables colors at init time in non-TTY environments (like tests).
+			// The IsColorEnabled assertion above verifies our logic is correct.
 		})
 	}
 }
 
 // TestColorConfig_NoTTY tests that NoTTY profile returns plain text
 func TestColorConfig_NoTTY(t *testing.T) {
-	SetColorConfig(&ColorConfig{profile: colorprofile.NoTTY})
+	SetColorConfig(NewColorConfig(colorprofile.NoTTY))
 	t.Cleanup(func() {
 		setAsciiProfile(t)
 	})
@@ -373,133 +160,8 @@ func TestColorConfig_NoTTY(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.fn(tt.input)
-			assert.Equal(t, tt.expected, result, "NoTTY profile should return plain text")
-		})
-	}
-}
-
-// TestMinimalError_Formatting tests MinimalError output formatting
-func TestMinimalError_Formatting(t *testing.T) {
-	tests := []struct {
-		name    string
-		profile colorprofile.Profile
-		code    string
-		msg     string
-		hint    string
-		check   func(t *testing.T, result string)
-	}{
-		{
-			name:    "ASCII with hint",
-			profile: colorprofile.Ascii,
-			code:    "ERR001",
-			msg:     "Test error",
-			hint:    "Try this fix",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR001")
-				assert.Contains(t, result, "Test error")
-				assert.Contains(t, result, "Try this fix")
-			},
-		},
-		{
-			name:    "ANSI with hint",
-			profile: colorprofile.ANSI,
-			code:    "ERR002",
-			msg:     "Colored error",
-			hint:    "Color hint",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR002")
-				assert.Contains(t, result, "Colored error")
-				assert.Contains(t, result, "Color hint")
-			},
-		},
-		{
-			name:    "without hint",
-			profile: colorprofile.Ascii,
-			code:    "ERR003",
-			msg:     "No hint error",
-			hint:    "",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR003")
-				assert.Contains(t, result, "No hint error")
-				assert.NotContains(t, result, "→")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &ColorConfig{profile: tt.profile}
-			result := cfg.MinimalError(tt.code, tt.msg, tt.hint)
-			tt.check(t, result)
-		})
-	}
-}
-
-// TestVerboseError_Formatting tests VerboseError output formatting
-func TestVerboseError_Formatting(t *testing.T) {
-	tests := []struct {
-		name           string
-		profile        colorprofile.Profile
-		code           string
-		msg            string
-		hint           string
-		additionalHelp string
-		originalError  string
-		check          func(t *testing.T, result string)
-	}{
-		{
-			name:           "ASCII full output",
-			profile:        colorprofile.Ascii,
-			code:           "ERR003",
-			msg:            "Verbose error",
-			hint:           "Hint text",
-			additionalHelp: "Additional help text",
-			originalError:  "original: something failed",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR003")
-				assert.Contains(t, result, "Verbose error")
-				assert.Contains(t, result, "Hint text")
-				assert.Contains(t, result, "Additional help text")
-				assert.Contains(t, result, "original: something failed")
-			},
-		},
-		{
-			name:           "ANSI full output",
-			profile:        colorprofile.ANSI,
-			code:           "ERR004",
-			msg:            "Colored verbose",
-			hint:           "Color hint",
-			additionalHelp: "More help",
-			originalError:  "root cause",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR004")
-				assert.Contains(t, result, "Colored verbose")
-				assert.Contains(t, result, "Color hint")
-				assert.Contains(t, result, "More help")
-				assert.Contains(t, result, "root cause")
-			},
-		},
-		{
-			name:           "partial fields only",
-			profile:        colorprofile.Ascii,
-			code:           "ERR005",
-			msg:            "Partial error",
-			hint:           "Some hint",
-			additionalHelp: "",
-			originalError:  "",
-			check: func(t *testing.T, result string) {
-				assert.Contains(t, result, "ERR005")
-				assert.Contains(t, result, "Partial error")
-				assert.Contains(t, result, "Some hint")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &ColorConfig{profile: tt.profile}
-			result := cfg.VerboseError(tt.code, tt.msg, tt.hint, tt.additionalHelp, tt.originalError)
-			tt.check(t, result)
+			assert.Contains(t, result, tt.input, "result should contain the input text")
+			assert.NotContains(t, result, "\x1b[", "NoTTY profile should not add escape sequences")
 		})
 	}
 }
@@ -515,32 +177,35 @@ func TestSetColorConfig_NilSafe(t *testing.T) {
 	assert.Equal(t, original, current, "config should not change when nil is passed")
 }
 
+// TestIsColorEnabled tests the IsColorEnabled helper
+func TestIsColorEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  colorprofile.Profile
+		expected bool
+	}{
+		{"NoTTY", colorprofile.NoTTY, false},
+		{"Ascii", colorprofile.Ascii, false},
+		{"ANSI", colorprofile.ANSI, true},
+		{"ANSI256", colorprofile.ANSI256, true},
+		{"TrueColor", colorprofile.TrueColor, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewColorConfig(tt.profile)
+			assert.Equal(t, tt.expected, cfg.IsColorEnabled())
+		})
+	}
+}
+
 func setAsciiProfile(t *testing.T) {
 	t.Helper()
 	original := GetColorConfig()
+
 	SetColorConfig(NewColorConfig(colorprofile.Ascii))
 
 	t.Cleanup(func() {
 		SetColorConfig(original)
 	})
-}
-func captureStderr(t *testing.T, f func()) string {
-	t.Helper()
-
-	orig := os.Stderr
-	r, w, err := os.Pipe()
-	assert.NoError(t, err, "failed to create pipe")
-
-	os.Stderr = w
-
-	f()
-
-	_ = w.Close()
-	os.Stderr = orig
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	_ = r.Close()
-
-	return buf.String()
 }

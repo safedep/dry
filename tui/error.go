@@ -70,3 +70,30 @@ func ErrorExit(err error) {
 
 	exitFunc(1)
 }
+
+// printMinimalError prints a minimal error message to stderr.
+// This is the default error rendering used when verbosity is normal or silent.
+func printMinimalError(code, message, hint string) {
+	fmt.Fprintf(os.Stderr, "%s  %s\n", ErrorCodeText(code), ErrorText(message))
+
+	if hint != "" {
+		fmt.Fprintf(os.Stderr, " %s %s\n", FaintText("→"), FaintText(hint))
+	}
+}
+
+// printVerboseError prints a detailed error message to stderr.
+// This is used when verbosity level is set to verbose.
+// Color handling is delegated to the color functions which respect the color profile.
+func printVerboseError(code, message, hint, additionalHelp, originalError string) {
+	fmt.Fprintf(os.Stderr, "%s  %s\n", ErrorCodeText(code), ErrorText(message))
+
+	if hint != "" {
+		fmt.Fprintf(os.Stderr, " %s %s\n", FaintText("→"), FaintText(hint))
+	}
+	if additionalHelp != "" {
+		fmt.Fprintf(os.Stderr, " %s %s\n", FaintText("→"), FaintText(additionalHelp))
+	}
+	if originalError != "" {
+		fmt.Fprintf(os.Stderr, " %s %s\n", FaintText("┄"), FaintText(originalError))
+	}
+}

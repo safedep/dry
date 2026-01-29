@@ -153,8 +153,10 @@ func TestErrorExit_WithUsefulError(t *testing.T) {
 	SetExitFunc(func(code int) {
 		exitCode = code
 	})
+	SetVerbosityLevel(VerbosityLevelNormal)
 	t.Cleanup(func() {
 		SetExitFunc(nil)
+		SetVerbosityLevel(VerbosityLevelNormal)
 	})
 
 	usefulErr := usefulerror.NewUsefulError().
@@ -163,7 +165,7 @@ func TestErrorExit_WithUsefulError(t *testing.T) {
 		WithHelp("Try again later")
 
 	out := captureStderr(t, func() {
-		ErrorExit(usefulErr, false)
+		ErrorExit(usefulErr)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")
@@ -171,7 +173,7 @@ func TestErrorExit_WithUsefulError(t *testing.T) {
 	assert.Contains(t, out, "Something went wrong", "expected human error in output")
 }
 
-// TestErrorExit_WithUsefulError_Verbose tests ErrorExit with verbose flag
+// TestErrorExit_WithUsefulError_Verbose tests ErrorExit with verbose mode enabled
 func TestErrorExit_WithUsefulError_Verbose(t *testing.T) {
 	setAsciiProfile(t)
 
@@ -179,8 +181,10 @@ func TestErrorExit_WithUsefulError_Verbose(t *testing.T) {
 	SetExitFunc(func(code int) {
 		exitCode = code
 	})
+	SetVerbosityLevel(VerbosityLevelVerbose)
 	t.Cleanup(func() {
 		SetExitFunc(nil)
+		SetVerbosityLevel(VerbosityLevelNormal)
 	})
 
 	usefulErr := usefulerror.NewUsefulError().
@@ -190,7 +194,7 @@ func TestErrorExit_WithUsefulError_Verbose(t *testing.T) {
 		WithAdditionalHelp("Run with --debug for more info")
 
 	out := captureStderr(t, func() {
-		ErrorExit(usefulErr, true)
+		ErrorExit(usefulErr)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")
@@ -207,14 +211,16 @@ func TestErrorExit_WithNonUsefulError(t *testing.T) {
 	SetExitFunc(func(code int) {
 		exitCode = code
 	})
+	SetVerbosityLevel(VerbosityLevelNormal)
 	t.Cleanup(func() {
 		SetExitFunc(nil)
+		SetVerbosityLevel(VerbosityLevelNormal)
 	})
 
 	regularErr := errors.New("simple error message")
 
 	out := captureStderr(t, func() {
-		ErrorExit(regularErr, false)
+		ErrorExit(regularErr)
 	})
 
 	assert.Equal(t, 1, exitCode, "expected exit code 1")

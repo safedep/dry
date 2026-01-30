@@ -1,6 +1,7 @@
 package usefulerror
 
 import (
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -22,10 +23,21 @@ func init() {
 	// PermissionDenied -> authorization failure
 	registerInternalErrorConverter("grpc/permission_denied", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.PermissionDenied {
+			help := "You do not have permission to perform this action."
+			code := ErrAuthorizationFailed
+
+			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
+				switch errInfo.Reason {
+				case "entitlement_not_available":
+					code = ErrMissingEntitlements
+					help = "Access to this feature requires a SafeDep Pro subscription. See https://safedep.io/pricing"
+				}
+			}
+
 			return NewUsefulError().
-				WithCode(ErrAuthorizationFailed).
+				WithCode(code).
 				WithHumanError("Permission denied").
-				WithHelp("You do not have permission to perform this action.").
+				WithHelp(help).
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}
@@ -148,4 +160,15 @@ func init() {
 		}
 		return nil, false
 	})
+}
+
+func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo, bool) {
+	for _, d := range st.Details() {
+		switch det := d.(type) {
+		case *errdetails.ErrorInfo:
+			return det, true
+		}
+	}
+
+	return nil, false
 }

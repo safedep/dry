@@ -103,7 +103,7 @@ func init() {
 					reason := errInfo.Metadata["reason"]
 					switch reason {
 					case ErrAppQuotaReasonLimitReached:
-						help = "Feature quota limit exceeded. Upgrade subscription for higher limit"
+						help = "Feature quota limit exceeded. Upgrade your plan for higher limit"
 						code = ErrRateLimitExceeded
 					case ErrAppQuotaReasonFeatureNotAvailable:
 						help = "Feature not available for your subscription tier."

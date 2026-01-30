@@ -6,6 +6,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+const (
+	ErrAppEntitlementNotAvailable        = "entitlement_not_available"
+	ErrAppQuotaExceeded                  = "quota_exceeded"
+	ErrAppQuotaReasonFeatureNotAvailable = "feature_not_available"
+	ErrAppQuotaReasonLimitReached        = "limit_reached"
+)
+
 func init() {
 	// Unauthenticated -> authentication failure
 	registerInternalErrorConverter("grpc/unauthenticated", func(err error) (UsefulError, bool) {
@@ -28,7 +35,7 @@ func init() {
 
 			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
 				switch errInfo.Reason {
-				case "entitlement_not_available":
+				case ErrAppEntitlementNotAvailable:
 					code = ErrMissingEntitlements
 					help = "Access to this feature requires a SafeDep Pro subscription. See https://safedep.io/pricing"
 				}
@@ -86,10 +93,30 @@ func init() {
 	// ResourceExhausted -> rate limiting / quota exceeded
 	registerInternalErrorConverter("grpc/resource_exhausted", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.ResourceExhausted {
+			help := "Reduce request frequency or increase your quota."
+			code := ErrQuotaExceeded
+			humanError := "Quota exceeded"
+
+			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
+				switch errInfo.Reason {
+				case ErrAppQuotaExceeded:
+					reason := errInfo.Metadata["reason"]
+					switch reason {
+					case ErrAppQuotaReasonLimitReached:
+						help = "Feature quota limit exceeded. Upgrade subscription for higher limit"
+						code = ErrRateLimitExceeded
+					case ErrAppQuotaReasonFeatureNotAvailable:
+						help = "Feature not available for your subscription tier."
+						code = ErrMissingEntitlements
+						humanError = "Feature unavailable"
+					}
+				}
+			}
+
 			return NewUsefulError().
-				WithCode(ErrQuotaExceeded).
-				WithHumanError("Quota exceeded").
-				WithHelp("Reduce request frequency or increase your quota.").
+				WithCode(code).
+				WithHumanError(humanError).
+				WithHelp(help).
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}

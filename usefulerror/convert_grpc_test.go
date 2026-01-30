@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -150,4 +151,70 @@ func TestConvertGRPCToUsefulError_NestedWrapped(t *testing.T) {
 	assert.Equal(t, ErrAuthorizationFailed, result.Code())
 	assert.Equal(t, "Permission denied", result.HumanError())
 	assert.Contains(t, result.AdditionalHelp(), "missing entitlements")
+}
+
+func TestConvertGRPCToUsefulError_PermissionDenied_WithDetails(t *testing.T) {
+	// Build a gRPC status with ErrorInfo reason=entitlement_not_available
+	st := status.New(codes.PermissionDenied, "no access")
+	withDetails, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason: ErrAppEntitlementNotAvailable,
+		Domain: "safedep.io",
+		Metadata: map[string]string{
+			"feature": "some_feature",
+		},
+	})
+	assert.NoError(t, err)
+
+	result, ok := AsUsefulError(withDetails.Err())
+	assert.True(t, ok)
+	assert.NotNil(t, result)
+	assert.Equal(t, ErrMissingEntitlements, result.Code())
+	assert.Equal(t, "Permission denied", result.HumanError())
+	assert.Equal(t, "Access to this feature requires a SafeDep Pro subscription. See https://safedep.io/pricing", result.Help())
+	assert.Contains(t, result.AdditionalHelp(), "no access")
+}
+
+func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_FeatureNotAvailable(t *testing.T) {
+	// Build a gRPC status with ErrorInfo reason=quota_exceeded and metadata reason=feature_not_available
+	st := status.New(codes.ResourceExhausted, "quota exceeded")
+	withDetails, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason: ErrAppQuotaExceeded,
+		Domain: "safedep.io",
+		Metadata: map[string]string{
+			"reason":  ErrAppQuotaReasonFeatureNotAvailable,
+			"feature": "advanced_feature",
+			"tier":    "basic",
+		},
+	})
+	assert.NoError(t, err)
+
+	result, ok := AsUsefulError(withDetails.Err())
+	assert.True(t, ok)
+	assert.NotNil(t, result)
+	assert.Equal(t, ErrMissingEntitlements, result.Code())
+	assert.Equal(t, "Feature unavailable", result.HumanError())
+	assert.Equal(t, "Feature not available for your subscription tier.", result.Help())
+	assert.Contains(t, result.AdditionalHelp(), "quota exceeded")
+}
+
+func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_LimitReached(t *testing.T) {
+	// Build a gRPC status with ErrorInfo reason=quota_exceeded and metadata reason=limit_reached
+	st := status.New(codes.ResourceExhausted, "rate limit reached")
+	withDetails, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason: ErrAppQuotaExceeded,
+		Domain: "safedep.io",
+		Metadata: map[string]string{
+			"reason": ErrAppQuotaReasonLimitReached,
+		},
+	})
+	assert.NoError(t, err)
+
+	result, ok := AsUsefulError(withDetails.Err())
+	assert.True(t, ok)
+	assert.NotNil(t, result)
+	// For limit_reached, we map to rate limit exceeded with tailored help
+	assert.Equal(t, ErrRateLimitExceeded, result.Code())
+	assert.Equal(t, "Quota exceeded", result.HumanError())
+	assert.Equal(t, "Feature quota limit exceeded. Upgrade subscription for higher limit", result.Help())
+	assert.Contains(t, result.AdditionalHelp(), "rate limit reached")
 }

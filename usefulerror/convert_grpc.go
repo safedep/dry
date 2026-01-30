@@ -37,7 +37,7 @@ func init() {
 				switch errInfo.Reason {
 				case ErrAppEntitlementNotAvailable:
 					code = ErrMissingEntitlements
-					help = "Access to this feature requires a SafeDep Pro subscription. See https://safedep.io/pricing"
+					help = "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing"
 				}
 			}
 

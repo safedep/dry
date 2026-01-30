@@ -189,6 +189,7 @@ func init() {
 	})
 }
 
+// getErrorInfoFromGrpcStatusDetails extracts the first ErrorInfo detail from a gRPC status, if present.
 func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo, bool) {
 	for _, d := range st.Details() {
 		switch det := d.(type) {

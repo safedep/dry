@@ -170,7 +170,7 @@ func TestConvertGRPCToUsefulError_PermissionDenied_WithDetails(t *testing.T) {
 	assert.NotNil(t, result)
 	assert.Equal(t, ErrMissingEntitlements, result.Code())
 	assert.Equal(t, "Permission denied", result.HumanError())
-	assert.Equal(t, "Access to this feature requires a SafeDep Pro subscription. See https://safedep.io/pricing", result.Help())
+	assert.Equal(t, "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing", result.Help())
 	assert.Contains(t, result.AdditionalHelp(), "no access")
 }
 
@@ -215,6 +215,6 @@ func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_LimitReached(t *
 	// For limit_reached, we map to rate limit exceeded with tailored help
 	assert.Equal(t, ErrRateLimitExceeded, result.Code())
 	assert.Equal(t, "Quota exceeded", result.HumanError())
-	assert.Equal(t, "Feature quota limit exceeded. Upgrade subscription for higher limit", result.Help())
+	assert.Equal(t, "Feature quota limit exceeded. Upgrade your plan for higher limit", result.Help())
 	assert.Contains(t, result.AdditionalHelp(), "rate limit reached")
 }

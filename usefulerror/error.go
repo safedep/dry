@@ -166,11 +166,11 @@ func (b *usefulErrorBuilder) ReferenceURL() string {
 }
 
 // AsUsefulError attempts to convert a given error into a UsefulError. The following are the precedence rules:
-// 1. If the error itself implements UsefulError, return it immediately.
-// 2. Otherwise, if any error in the chain wrapped by err implements UsefulError, return that UsefulError
-//    (the first one found when traversing the chain).
-// 3. Otherwise, if there is a converter that can convert the error into a UsefulError, use it.
-// 4. If no UsefulError can be found or constructed, return (nil, false).
+//  1. If the error itself implements UsefulError, return it immediately.
+//  2. Otherwise, if any error in the chain wrapped by err implements UsefulError, return that UsefulError
+//     (the first one found when traversing the chain).
+//  3. Otherwise, if there is a converter that can convert the error into a UsefulError, use it.
+//  4. If no UsefulError can be found or constructed, return (nil, false).
 //
 // Error conversion is done on a best-effort basis using the registered converters. The first converter that can convert the error
 // into a UsefulError will be used and the conversion will stop. Internally we maintain two registries for error converters:

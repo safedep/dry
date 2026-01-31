@@ -1,8 +1,16 @@
 package usefulerror
 
 import (
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	ErrAppEntitlementNotAvailable        = "entitlement_not_available"
+	ErrAppQuotaExceeded                  = "quota_exceeded"
+	ErrAppQuotaReasonFeatureNotAvailable = "feature_not_available"
+	ErrAppQuotaReasonLimitReached        = "limit_reached"
 )
 
 func init() {
@@ -22,10 +30,21 @@ func init() {
 	// PermissionDenied -> authorization failure
 	registerInternalErrorConverter("grpc/permission_denied", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.PermissionDenied {
+			help := "You do not have permission to perform this action."
+			code := ErrAuthorizationFailed
+
+			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
+				switch errInfo.Reason {
+				case ErrAppEntitlementNotAvailable:
+					code = ErrMissingEntitlements
+					help = "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing"
+				}
+			}
+
 			return NewUsefulError().
-				WithCode(ErrAuthorizationFailed).
+				WithCode(code).
 				WithHumanError("Permission denied").
-				WithHelp("You do not have permission to perform this action.").
+				WithHelp(help).
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}
@@ -74,10 +93,30 @@ func init() {
 	// ResourceExhausted -> rate limiting / quota exceeded
 	registerInternalErrorConverter("grpc/resource_exhausted", func(err error) (UsefulError, bool) {
 		if st, ok := status.FromError(err); ok && st.Code() == codes.ResourceExhausted {
+			help := "Reduce request frequency or increase your quota."
+			code := ErrQuotaExceeded
+			humanError := "Quota exceeded"
+
+			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
+				switch errInfo.Reason {
+				case ErrAppQuotaExceeded:
+					reason := errInfo.Metadata["reason"]
+					switch reason {
+					case ErrAppQuotaReasonLimitReached:
+						help = "Feature quota limit exceeded. Upgrade your plan for higher limit"
+						code = ErrRateLimitExceeded
+					case ErrAppQuotaReasonFeatureNotAvailable:
+						help = "Feature not available for your subscription tier."
+						code = ErrMissingEntitlements
+						humanError = "Feature unavailable"
+					}
+				}
+			}
+
 			return NewUsefulError().
-				WithCode(ErrQuotaExceeded).
-				WithHumanError("Quota exceeded").
-				WithHelp("Reduce request frequency or increase your quota.").
+				WithCode(code).
+				WithHumanError(humanError).
+				WithHelp(help).
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}
@@ -148,4 +187,16 @@ func init() {
 		}
 		return nil, false
 	})
+}
+
+// getErrorInfoFromGrpcStatusDetails extracts the first ErrorInfo detail from a gRPC status, if present.
+func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo, bool) {
+	for _, d := range st.Details() {
+		switch det := d.(type) {
+		case *errdetails.ErrorInfo:
+			return det, true
+		}
+	}
+
+	return nil, false
 }

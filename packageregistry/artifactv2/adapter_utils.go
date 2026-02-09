@@ -24,21 +24,27 @@ type fetchConfig struct {
 	// Timeout for each fetch attempt
 	Timeout time.Duration
 
-	// RetryAttempts is the number of retry attempts (0 = no retries, just 1 attempt)
-	RetryAttempts int
+	// RetryAttempts is the number of retry attempts (nil = use default, 0 = no retries, just 1 attempt)
+	RetryAttempts *int
 
 	// RetryDelay is the base delay between retries (multiplied by attempt number)
-	RetryDelay time.Duration
+	// nil = use default, 0 = no delay
+	RetryDelay *time.Duration
 
 	// MaxRetryDelay is the maximum delay between retries (prevents unbounded exponential backoff)
-	MaxRetryDelay time.Duration
+	// nil = use default, 0 = no cap
+	MaxRetryDelay *time.Duration
 
 	// UserAgent to use for HTTP requests
 	UserAgent string
 
 	// MaxRedirects is the maximum number of redirects to follow
-	MaxRedirects int
+	// nil = use default, 0 = no redirects
+	MaxRedirects *int
 }
+
+func intPtr(v int) *int                      { return &v }
+func durationPtr(v time.Duration) *time.Duration { return &v }
 
 // Default values for fetchConfig
 const (
@@ -51,26 +57,27 @@ const (
 
 // applyFetchConfigDefaults applies safe defaults to fetch config
 func applyFetchConfigDefaults(config *fetchConfig) {
-	if config.RetryAttempts == 0 {
-		config.RetryAttempts = defaultRetryAttempts
+	if config.RetryAttempts == nil {
+		config.RetryAttempts = intPtr(defaultRetryAttempts)
 	}
-	if config.RetryDelay == 0 {
-		config.RetryDelay = defaultRetryDelay
+	if config.RetryDelay == nil {
+		config.RetryDelay = durationPtr(defaultRetryDelay)
 	}
-	if config.MaxRetryDelay == 0 {
-		config.MaxRetryDelay = defaultMaxRetryDelay
+	if config.MaxRetryDelay == nil {
+		config.MaxRetryDelay = durationPtr(defaultMaxRetryDelay)
 	}
 	if config.UserAgent == "" {
 		config.UserAgent = defaultUserAgent
 	}
-	if config.MaxRedirects == 0 {
-		config.MaxRedirects = defaultMaxRedirects
+	if config.MaxRedirects == nil {
+		config.MaxRedirects = intPtr(defaultMaxRedirects)
 	}
 	if config.HTTPClient == nil {
+		maxRedirects := *config.MaxRedirects
 		config.HTTPClient = &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= config.MaxRedirects {
-					return fmt.Errorf("stopped after %d redirects", config.MaxRedirects)
+				if len(via) >= maxRedirects {
+					return fmt.Errorf("stopped after %d redirects", maxRedirects)
 				}
 				return nil
 			},
@@ -195,6 +202,10 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 
 	applyFetchConfigDefaults(&config)
 
+	retryAttempts := *config.RetryAttempts
+	retryDelay := *config.RetryDelay
+	maxRetryDelay := *config.MaxRetryDelay
+
 	var content []byte
 	var fetchErr error
 	urlIndex := 0
@@ -202,17 +213,17 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 	reqCtx, cancel := context.WithTimeout(ctx, config.Timeout)
 	defer cancel()
 
-	for attempt := 0; attempt <= config.RetryAttempts; attempt++ {
+	for attempt := 0; attempt <= retryAttempts; attempt++ {
 		currentURL := urls[urlIndex]
 
 		if attempt > 0 {
-			delay := config.RetryDelay * time.Duration(attempt)
-			if delay > config.MaxRetryDelay {
-				delay = config.MaxRetryDelay
+			delay := retryDelay * time.Duration(attempt)
+			if maxRetryDelay > 0 && delay > maxRetryDelay {
+				delay = maxRetryDelay
 			}
 
 			log.Debugf("Retry attempt %d/%d for %s (waiting %v)",
-				attempt, config.RetryAttempts, currentURL, delay)
+				attempt, retryAttempts, currentURL, delay)
 
 			time.Sleep(delay)
 		}
@@ -260,13 +271,13 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 			}
 
 			if resp.StatusCode == http.StatusTooManyRequests && retryAfter != "" {
-				if retryDelay := parseRetryAfter(retryAfter); retryDelay > 0 {
-					if retryDelay > config.MaxRetryDelay {
-						retryDelay = config.MaxRetryDelay
+				if parsedDelay := parseRetryAfter(retryAfter); parsedDelay > 0 {
+					if maxRetryDelay > 0 && parsedDelay > maxRetryDelay {
+						parsedDelay = maxRetryDelay
 					}
 
-					log.Debugf("Rate limited, respecting Retry-After: %v", retryDelay)
-					time.Sleep(retryDelay)
+					log.Debugf("Rate limited, respecting Retry-After: %v", parsedDelay)
+					time.Sleep(parsedDelay)
 				}
 			}
 
@@ -291,7 +302,7 @@ func fetchHTTPWithMirrors(ctx context.Context, urls []string, config fetchConfig
 
 	if fetchErr != nil {
 		return nil, "", fmt.Errorf("failed after %d attempts: %w",
-			config.RetryAttempts+1, fetchErr)
+			retryAttempts+1, fetchErr)
 	}
 
 	return content, urls[urlIndex], nil

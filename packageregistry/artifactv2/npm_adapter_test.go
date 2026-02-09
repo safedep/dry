@@ -822,8 +822,8 @@ func TestNpmAdapterV2_FetchWithMirrorFallback(t *testing.T) {
 	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -871,8 +871,8 @@ func TestNpmAdapterV2_FetchWithMultipleMirrors(t *testing.T) {
 	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)

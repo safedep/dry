@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 
 	"github.com/safedep/dry/log"
@@ -42,7 +43,9 @@ func (a *npmAdapterV2) Fetch(ctx context.Context, info ArtifactInfo) (ArtifactRe
 	// Check if already cached
 	if a.config.cacheEnabled {
 		exists, artifactID, err := a.Exists(ctx, info)
-		if err == nil && exists {
+		if err != nil {
+			log.Warnf("Cache check failed for %s@%s: %v", info.Name, info.Version, err)
+		} else if exists {
 			log.Debugf("NPM package %s@%s found in cache: %s", info.Name, info.Version, artifactID)
 			return a.Load(ctx, artifactID)
 		}
@@ -53,7 +56,11 @@ func (a *npmAdapterV2) Fetch(ctx context.Context, info ArtifactInfo) (ArtifactRe
 	var successURL string
 
 	if info.URL != "" {
-		// User provided explicit URL - bypass mirror logic
+		// User provided explicit URL - validate scheme to prevent SSRF
+		parsed, err := url.Parse(info.URL)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return nil, fmt.Errorf("invalid URL scheme: only http and https are supported")
+		}
 		urls = []string{info.URL}
 	} else {
 		// Use primary registry + mirrors
@@ -66,8 +73,8 @@ func (a *npmAdapterV2) Fetch(ctx context.Context, info ArtifactInfo) (ArtifactRe
 	content, successURL, err := fetchHTTPWithMirrors(ctx, urls, fetchConfig{
 		HTTPClient:    a.config.httpClient,
 		Timeout:       a.config.fetchTimeout,
-		RetryAttempts: a.config.retryAttempts,
-		RetryDelay:    a.config.retryDelay,
+		RetryAttempts: intPtr(a.config.retryAttempts),
+		RetryDelay:    durationPtr(a.config.retryDelay),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch NPM package: %w", err)

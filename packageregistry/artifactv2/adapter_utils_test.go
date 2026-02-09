@@ -27,8 +27,8 @@ func TestFetchHTTPWithRetry_Success(t *testing.T) {
 	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -54,8 +54,8 @@ func TestFetchHTTPWithRetry_WithRetries(t *testing.T) {
 	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -73,8 +73,8 @@ func TestFetchHTTPWithRetry_FailureAfterRetries(t *testing.T) {
 	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 2,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(2),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -89,14 +89,68 @@ func TestFetchHTTPWithRetry_Timeout(t *testing.T) {
 	defer server.Close()
 
 	ctx := context.Background()
+	attempts := 0
+	origServer := server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		time.Sleep(100 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	origServer.Close()
+
 	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       10 * time.Millisecond,
-		RetryAttempts: 0,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(0),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
+	assert.Equal(t, 1, attempts, "With RetryAttempts=0, should make exactly 1 attempt")
+}
+
+func TestFetchHTTPWithRetry_ZeroRetriesIsExplicit(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient:    server.Client(),
+		Timeout:       5 * time.Second,
+		RetryAttempts: intPtr(0),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
+	})
+
+	assert.Error(t, err)
+	assert.Equal(t, 1, attempts, "With RetryAttempts=0 (explicit), should make exactly 1 attempt")
+}
+
+func TestFetchHTTPWithRetry_NilRetriesUsesDefault(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
+		HTTPClient: server.Client(),
+		Timeout:    30 * time.Second,
+		// RetryAttempts is nil - should use default (3)
+		// Set explicit short delay to keep test fast
+		RetryDelay: durationPtr(10 * time.Millisecond),
+	})
+
+	assert.Error(t, err)
+	assert.Equal(t, defaultRetryAttempts+1, attempts,
+		"With nil RetryAttempts, should use default (%d retries = %d attempts)",
+		defaultRetryAttempts, defaultRetryAttempts+1)
 }
 
 func TestVerifyChecksum_Success(t *testing.T) {
@@ -294,8 +348,8 @@ func TestFetchHTTPWithRetry_NoRetryOn404(t *testing.T) {
 	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5, // Set high retry count
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5), // Set high retry count
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -315,8 +369,8 @@ func TestFetchHTTPWithRetry_NoRetryOn403(t *testing.T) {
 	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -342,8 +396,8 @@ func TestFetchHTTPWithRetry_RetryOn503(t *testing.T) {
 	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -371,9 +425,9 @@ func TestFetchHTTPWithRetry_RateLimitWithRetryAfter(t *testing.T) {
 	result, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
-		MaxRetryDelay: 5 * time.Second,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
+		MaxRetryDelay: durationPtr(5 * time.Second),
 	})
 
 	elapsed := time.Since(start)
@@ -397,8 +451,8 @@ func TestFetchHTTPWithRetry_ContextCancellation(t *testing.T) {
 	_, err := fetchHTTPWithRetry(ctx, server.URL, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -432,8 +486,8 @@ func TestFetchHTTPWithRetry_NoRetryOnInvalidURL(t *testing.T) {
 	_, err := fetchHTTPWithRetry(ctx, "://invalid-url", fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -454,8 +508,8 @@ func TestFetchHTTPWithMirrors_SingleURL(t *testing.T) {
 	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server.URL}, fetchConfig{
 		HTTPClient:    server.Client(),
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -468,8 +522,8 @@ func TestFetchHTTPWithMirrors_NoURLs(t *testing.T) {
 	_, _, err := fetchHTTPWithMirrors(ctx, []string{}, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -499,8 +553,8 @@ func TestFetchHTTPWithMirrors_404Fallback(t *testing.T) {
 	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -537,8 +591,8 @@ func TestFetchHTTPWithMirrors_RoundRobin(t *testing.T) {
 	resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 5,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(5),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	require.NoError(t, err)
@@ -565,8 +619,8 @@ func TestFetchHTTPWithMirrors_AllFail(t *testing.T) {
 	_, _, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
 		HTTPClient:    http.DefaultClient,
 		Timeout:       5 * time.Second,
-		RetryAttempts: 3,
-		RetryDelay:    10 * time.Millisecond,
+		RetryAttempts: intPtr(3),
+		RetryDelay:    durationPtr(10 * time.Millisecond),
 	})
 
 	assert.Error(t, err)
@@ -630,8 +684,8 @@ func TestFetchHTTPWithMirrors_RetryableErrorsWithMirrors(t *testing.T) {
 			resultContent, successURL, err := fetchHTTPWithMirrors(ctx, []string{server1.URL, server2.URL}, fetchConfig{
 				HTTPClient:    http.DefaultClient,
 				Timeout:       5 * time.Second,
-				RetryAttempts: 3,
-				RetryDelay:    10 * time.Millisecond,
+				RetryAttempts: intPtr(3),
+				RetryDelay:    durationPtr(10 * time.Millisecond),
 			})
 
 			if tt.expectSuccess {

@@ -4,15 +4,24 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/storage"
 )
+
+// isUnsafeArchivePath returns true if the path contains traversal sequences
+// or is an absolute path, which could be used to write outside the extraction directory.
+func isUnsafeArchivePath(p string) bool {
+	cleanPath := path.Clean(p)
+	return strings.HasPrefix(cleanPath, "..") || path.IsAbs(cleanPath)
+}
 
 // archiveType represents the type of archive format
 type archiveType string
@@ -124,6 +133,12 @@ func (r *archiveReader) buildTarGzIndex(ctx context.Context) error {
 
 			if err != nil {
 				return fmt.Errorf("failed to read tar header: %w", err)
+			}
+
+			if isUnsafeArchivePath(header.Name) {
+				log.Warnf("Skipping unsafe path in archive index: %s", header.Name)
+				offset += header.Size
+				continue
 			}
 
 			cache.entries[header.Name] = &archiveEntryInfo{
@@ -319,13 +334,16 @@ func extractToStorage(
 		// Already extracted, compute metrics from existing files
 		log.Debugf("Archive already extracted to %s (%d files)", baseKey, len(existingFiles))
 
-		// Build result from existing extraction
 		totalSize := int64(0)
-		fileCount := len(existingFiles)
+		for _, file := range existingFiles {
+			if meta, metaErr := store.GetMetadata(ctx, file); metaErr == nil {
+				totalSize += meta.Size
+			}
+		}
 
 		return &ExtractResult{
 			ExtractionKey:    baseKey,
-			FileCount:        fileCount,
+			FileCount:        len(existingFiles),
 			TotalSize:        totalSize,
 			AlreadyExtracted: true,
 		}, nil
@@ -339,6 +357,11 @@ func extractToStorage(
 
 	err = archiveReader.enumFiles(ctx, func(fileInfo FileInfo) error {
 		if fileInfo.IsDir {
+			return nil
+		}
+
+		if isUnsafeArchivePath(fileInfo.Path) {
+			log.Warnf("Skipping unsafe path in archive: %s", fileInfo.Path)
 			return nil
 		}
 
@@ -367,11 +390,18 @@ func extractToStorage(
 		return nil, fmt.Errorf("failed to enumerate archive files: %w", err)
 	}
 
+	log.Debugf("Extraction complete: %d files, %d bytes", fileCount, totalSize)
+
 	if len(extractionErrors) > 0 {
 		log.Warnf("Extraction completed with %d errors", len(extractionErrors))
+		return &ExtractResult{
+			ExtractionKey:    baseKey,
+			FileCount:        fileCount,
+			TotalSize:        totalSize,
+			AlreadyExtracted: false,
+		}, fmt.Errorf("extraction completed with %d errors: %w",
+			len(extractionErrors), errors.Join(extractionErrors...))
 	}
-
-	log.Debugf("Extraction complete: %d files, %d bytes", fileCount, totalSize)
 
 	return &ExtractResult{
 		ExtractionKey:    baseKey,

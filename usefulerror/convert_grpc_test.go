@@ -8,6 +8,8 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 func TestConvertGRPCToUsefulError(t *testing.T) {
@@ -195,6 +197,37 @@ func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_FeatureNotAvaila
 	assert.Equal(t, "Feature unavailable", result.HumanError())
 	assert.Equal(t, "Feature not available for your subscription tier.", result.Help())
 	assert.Contains(t, result.AdditionalHelp(), "quota exceeded")
+}
+
+func TestConvertGRPCToUsefulError_PermissionDenied_WithAnypbDetail(t *testing.T) {
+	// Test the *anypb.Any fallback path in getErrorInfoFromGrpcStatusDetails.
+	ei := &errdetails.ErrorInfo{
+		Reason: ErrAppEntitlementNotAvailable,
+		Domain: "safedep.io",
+		Metadata: map[string]string{
+			"feature": "some_feature",
+		},
+	}
+
+	eiBytes, err := proto.Marshal(ei)
+	assert.NoError(t, err)
+
+	st := status.New(codes.PermissionDenied, "no access")
+	stProto := st.Proto()
+	stProto.Details = append(stProto.Details, &anypb.Any{
+		TypeUrl: "type.googleapis.com/google.rpc.ErrorInfo",
+		Value:   eiBytes,
+	})
+
+	reconstructed := status.FromProto(stProto)
+	result, ok := AsUsefulError(reconstructed.Err())
+
+	assert.True(t, ok)
+	assert.NotNil(t, result)
+	assert.Equal(t, ErrMissingEntitlements, result.Code())
+	assert.Equal(t, "Permission denied", result.HumanError())
+	assert.Equal(t, "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing", result.Help())
+	assert.Contains(t, result.AdditionalHelp(), "no access")
 }
 
 func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_LimitReached(t *testing.T) {

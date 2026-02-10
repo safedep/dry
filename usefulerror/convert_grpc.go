@@ -4,6 +4,8 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 const (
@@ -193,8 +195,16 @@ func init() {
 func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo, bool) {
 	for _, d := range st.Details() {
 		switch det := d.(type) {
+		// When the underlying lib already deserialized
 		case *errdetails.ErrorInfo:
 			return det, true
+
+		// When the detail is of a generic type, we will try to unmarshal it to ErrorInfo
+		case *anypb.Any:
+			var ei errdetails.ErrorInfo
+			if err := proto.Unmarshal(det.GetValue(), &ei); err == nil {
+				return &ei, true
+			}
 		}
 	}
 

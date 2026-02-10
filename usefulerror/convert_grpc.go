@@ -201,6 +201,10 @@ func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo
 
 		// When the detail is of a generic type, we will try to unmarshal it to ErrorInfo
 		case *anypb.Any:
+			if det.GetTypeUrl() != "type.googleapis.com/google.rpc.ErrorInfo" {
+				continue
+			}
+
 			var ei errdetails.ErrorInfo
 			if err := proto.Unmarshal(det.GetValue(), &ei); err == nil {
 				return &ei, true

@@ -129,6 +129,22 @@ func (n *natsMessaging) Publish(_ context.Context, topic string, data []byte) er
 	return n.conn.Publish(topic, data)
 }
 
+func (n *natsMessaging) PublishWithHeaders(_ context.Context, topic string, data []byte, headers map[string][]string) error {
+	h := make(nats.Header)
+	for key, values := range headers {
+		for _, v := range values {
+			h.Add(key, v)
+		}
+	}
+
+	msg := &nats.Msg{
+		Subject: topic,
+		Data:    data,
+		Header:  h,
+	}
+	return n.conn.PublishMsg(msg)
+}
+
 func (n *natsMessaging) Request(_ context.Context,
 	topic string, data []byte, timeout time.Duration) ([]byte, error) {
 	res, err := n.conn.Request(topic, data, timeout)

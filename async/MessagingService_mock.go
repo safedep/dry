@@ -144,6 +144,75 @@ func (_c *MockMessagingService_Publish_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// PublishWithHeaders provides a mock function for the type MockMessagingService
+func (_mock *MockMessagingService) PublishWithHeaders(ctx context.Context, topic string, data []byte, headers map[string][]string) error {
+	ret := _mock.Called(ctx, topic, data, headers)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PublishWithHeaders")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []byte, map[string][]string) error); ok {
+		r0 = returnFunc(ctx, topic, data, headers)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockMessagingService_PublishWithHeaders_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PublishWithHeaders'
+type MockMessagingService_PublishWithHeaders_Call struct {
+	*mock.Call
+}
+
+// PublishWithHeaders is a helper method to define mock.On call
+//   - ctx context.Context
+//   - topic string
+//   - data []byte
+//   - headers map[string][]string
+func (_e *MockMessagingService_Expecter) PublishWithHeaders(ctx interface{}, topic interface{}, data interface{}, headers interface{}) *MockMessagingService_PublishWithHeaders_Call {
+	return &MockMessagingService_PublishWithHeaders_Call{Call: _e.mock.On("PublishWithHeaders", ctx, topic, data, headers)}
+}
+
+func (_c *MockMessagingService_PublishWithHeaders_Call) Run(run func(ctx context.Context, topic string, data []byte, headers map[string][]string)) *MockMessagingService_PublishWithHeaders_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 []byte
+		if args[2] != nil {
+			arg2 = args[2].([]byte)
+		}
+		var arg3 map[string][]string
+		if args[3] != nil {
+			arg3 = args[3].(map[string][]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *MockMessagingService_PublishWithHeaders_Call) Return(err error) *MockMessagingService_PublishWithHeaders_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockMessagingService_PublishWithHeaders_Call) RunAndReturn(run func(ctx context.Context, topic string, data []byte, headers map[string][]string) error) *MockMessagingService_PublishWithHeaders_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // QueueSubscribe provides a mock function for the type MockMessagingService
 func (_mock *MockMessagingService) QueueSubscribe(ctx context.Context, topic string, queue string, callback MessageHandler) error {
 	ret := _mock.Called(ctx, topic, queue, callback)

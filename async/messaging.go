@@ -25,6 +25,7 @@ type MessagingService interface {
 	ClosableMessagingService
 
 	Publish(ctx context.Context, topic string, data []byte) error
+	PublishWithHeaders(ctx context.Context, topic string, data []byte, headers map[string][]string) error
 	QueueSubscribe(ctx context.Context, topic string, queue string, callback MessageHandler) error
 }
 

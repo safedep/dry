@@ -331,10 +331,11 @@ func TestHuggingFaceHubClient_InvalidResponse(t *testing.T) {
 
 func TestHuggingFaceHubClient_GetModel_E2E(t *testing.T) {
 	cases := []struct {
-		name   string
-		owner  string
-		model  string
-		assert func(t *testing.T, model *HuggingFaceModel, err error)
+		name           string
+		owner          string
+		model          string
+		hasSafeTensors bool
+		assert         func(t *testing.T, model *HuggingFaceModel, err error)
 	}{
 		{
 			name:  "Using a valid public model",
@@ -360,9 +361,20 @@ func TestHuggingFaceHubClient_GetModel_E2E(t *testing.T) {
 				if model.TransformersInfo != nil {
 					assert.NotEmpty(t, model.TransformersInfo["pipeline_tag"])
 				}
-
-				// Verify SafeTensor details
-				assert.NotNil(t, model.SafeTensors)
+			},
+		},
+		{
+			name:           "Using a model with safe tensors",
+			owner:          "microsoft",
+			model:          "phi-2",
+			hasSafeTensors: true,
+			assert: func(t *testing.T, model *HuggingFaceModel, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, model)
+				assert.Equal(t, "microsoft/phi-2", model.ID)
+				assert.Equal(t, "microsoft", model.Author)
+				assert.NotEmpty(t, model.SHA)
+				assert.Greater(t, model.Downloads, int64(0))
 			},
 		},
 		{
@@ -381,6 +393,10 @@ func TestHuggingFaceHubClient_GetModel_E2E(t *testing.T) {
 			client := NewHuggingFaceHubClient()
 			model, err := client.GetModel(context.Background(), tc.owner, tc.model)
 			tc.assert(t, model, err)
+
+			if tc.hasSafeTensors {
+				assert.NotNil(t, model.SafeTensors)
+			}
 		})
 	}
 }

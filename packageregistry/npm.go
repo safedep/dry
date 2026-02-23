@@ -197,6 +197,11 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		return nil, ErrFailedToParsePackage
 	}
 
+	// Unpublished packages return HTTP 200 but with no versions
+	if len(npmpkg.Versions) == 0 {
+		return nil, ErrPackageNotFound
+	}
+
 	pkgVerions := make([]PackageVersionInfo, 0)
 	for _, version := range npmpkg.Versions {
 		var publishedAt *time.Time

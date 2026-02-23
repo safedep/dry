@@ -74,7 +74,10 @@ type npmPackageTime struct {
 }
 
 func (t *npmPackageTime) UnmarshalJSON(data []byte) error {
-	var raw map[string]string
+	// Use json.RawMessage to handle mixed value types.
+	// The npm registry includes an "unpublished" key with an object value
+	// when a package has been unpublished, which cannot be decoded as a string.
+	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
@@ -89,7 +92,13 @@ func (t *npmPackageTime) UnmarshalJSON(data []byte) error {
 	}
 
 	for k, v := range raw {
-		ts, err := parse(v)
+		var s string
+		if err := json.Unmarshal(v, &s); err != nil {
+			// Skip non-string values (e.g. the "unpublished" object)
+			continue
+		}
+
+		ts, err := parse(s)
 		if err != nil {
 			return fmt.Errorf("failed to parse time for key %s: %w", k, err)
 		}

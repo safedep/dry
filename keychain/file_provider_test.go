@@ -147,7 +147,7 @@ func TestFileProviderDefaultPath(t *testing.T) {
 	fp, err := newFileProvider("myapp", "")
 	require.NoError(t, err)
 
-	configDir, err := os.UserConfigDir()
+	configDir, err := localConfigDir()
 	require.NoError(t, err)
 
 	expected := filepath.Join(configDir, "myapp", "creds.json")

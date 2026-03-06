@@ -57,6 +57,7 @@ A warning is logged when the file provider is used.
 |----------|---------|
 | macOS | Keychain (`/usr/bin/security`) |
 | Linux | Secret Service (GNOME Keyring via D-Bus) |
+| Windows | Windows Credential Manager |
 | Others | File fallback only |
 
 ## Security

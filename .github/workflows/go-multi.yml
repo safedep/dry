@@ -30,3 +30,9 @@ jobs:
 
       - name: Test keychain package
         run: go test -v ./keychain/...
+        env:
+          ## E2E tests exercise the real OS keychain. Linux CI runners lack a
+          ## D-Bus session and gnome-keyring-daemon, so the Secret Service
+          ## backend is unavailable. macOS and Windows runners have native
+          ## keychains available out of the box.
+          KEYCHAIN_ENABLE_E2E_TEST: ${{ runner.os != 'Linux' && 'true' || '' }}

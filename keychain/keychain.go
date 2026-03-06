@@ -38,7 +38,7 @@ type Keychain interface {
 	// Delete removes the secret associated with the given key.
 	Delete(ctx context.Context, key string) error
 
-	// Implementations should also implement io.Closer to allow for cleanup of resources.
+	// Close releases any resources held by the keychain.
 	io.Closer
 }
 

@@ -135,9 +135,35 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 		return fmt.Errorf("keychain: failed to marshal credentials: %w", err)
 	}
 
-	if err := os.WriteFile(f.filePath, data, filePermissions); err != nil {
-		return fmt.Errorf("keychain: failed to write credential file: %w", err)
+	tmp, err := os.CreateTemp(dir, ".creds-*.tmp")
+	if err != nil {
+		return fmt.Errorf("keychain: failed to create temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("keychain: failed to write temp file: %w", err)
 	}
 
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("keychain: failed to close temp file: %w", err)
+	}
+
+	if err := os.Chmod(tmpPath, filePermissions); err != nil {
+		return fmt.Errorf("keychain: failed to set file permissions: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, f.filePath); err != nil {
+		return fmt.Errorf("keychain: failed to rename credential file: %w", err)
+	}
+
+	committed = true
 	return nil
 }

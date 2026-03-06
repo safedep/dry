@@ -197,8 +197,9 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		return nil, ErrFailedToParsePackage
 	}
 
-	// Unpublished packages return HTTP 200 but with no versions
-	if len(npmpkg.Versions) == 0 {
+	// Unpublished packages return HTTP 200 but with no versions.
+	// Security holding packages have a single "x.x.x-security" version.
+	if len(npmpkg.Versions) == 0 || npmpkg.Description == "security holding package" {
 		return nil, ErrPackageNotFound
 	}
 

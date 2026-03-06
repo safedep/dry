@@ -92,6 +92,10 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 		packages = append(packages, pkg)
 	}
 
+	if len(packages) == 0 {
+		return nil, ErrNoPackagesFound
+	}
+
 	return packages, nil
 }
 

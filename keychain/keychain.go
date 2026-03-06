@@ -7,9 +7,7 @@ import (
 	"io"
 )
 
-var (
-	ErrNotFound = errors.New("keychain: secret not found")
-)
+var ErrNotFound = errors.New("keychain: secret not found")
 
 type Secret struct {
 	Value string
@@ -31,9 +29,16 @@ type Config struct {
 }
 
 type Keychain interface {
+	// Get retrieves the secret associated with the given key.
 	Get(ctx context.Context, key string) (*Secret, error)
+
+	// Set stores the secret associated with the given key.
 	Set(ctx context.Context, key string, secret *Secret) error
+
+	// Delete removes the secret associated with the given key.
 	Delete(ctx context.Context, key string) error
+
+	// Implementations should also implement io.Closer to allow for cleanup of resources.
 	io.Closer
 }
 

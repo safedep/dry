@@ -13,8 +13,8 @@ import (
 
 const (
 	fileProviderVersion = 1
-	dirPermissions      = 0700
-	filePermissions     = 0600
+	dirPermissions      = 0o700
+	filePermissions     = 0o600
 )
 
 type fileStore struct {
@@ -29,11 +29,11 @@ type fileProvider struct {
 
 func newFileProvider(appName, filePath string) (*fileProvider, error) {
 	if filePath == "" {
-		homeDir, err := os.UserHomeDir()
+		configDir, err := localConfigDir()
 		if err != nil {
-			return nil, fmt.Errorf("keychain: failed to get home directory: %w", err)
+			return nil, fmt.Errorf("keychain: failed to get config directory: %w", err)
 		}
-		filePath = filepath.Join(homeDir, ".config", appName, "creds.json")
+		filePath = filepath.Join(configDir, appName, "creds.json")
 	}
 
 	log.Warnf("Using insecure plaintext credential storage at %s", filePath)

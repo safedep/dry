@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -123,6 +124,10 @@ func TestFileProviderMultipleKeys(t *testing.T) {
 }
 
 func TestFileProviderFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping: Unix file permissions are not supported on Windows")
+	}
+
 	fp := newTestFileProvider(t)
 	ctx := context.Background()
 
@@ -142,10 +147,10 @@ func TestFileProviderDefaultPath(t *testing.T) {
 	fp, err := newFileProvider("myapp", "")
 	require.NoError(t, err)
 
-	homeDir, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	require.NoError(t, err)
 
-	expected := filepath.Join(homeDir, ".config", "myapp", "creds.json")
+	expected := filepath.Join(configDir, "myapp", "creds.json")
 	assert.Equal(t, expected, fp.filePath)
 }
 

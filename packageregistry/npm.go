@@ -2,6 +2,7 @@ package packageregistry
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -79,13 +80,20 @@ func (np *npmPublisherDiscovery) GetPublisherPackages(publisher Publisher) ([]*P
 		return nil, ErrNoPackagesFound
 	}
 
-	packages := make([]*Package, len(pubRecord.Objects))
-	for i, obj := range pubRecord.Objects {
+	var packages []*Package
+	for _, obj := range pubRecord.Objects {
 		pkg, err := npmGetPackageDetails(obj.Package.Name)
 		if err != nil {
+			if errors.Is(err, ErrPackageNotFound) {
+				continue
+			}
 			return nil, err
 		}
-		packages[i] = pkg
+		packages = append(packages, pkg)
+	}
+
+	if len(packages) == 0 {
+		return nil, ErrNoPackagesFound
 	}
 
 	return packages, nil
@@ -197,8 +205,9 @@ func npmGetPackageDetails(packageName string) (*Package, error) {
 		return nil, ErrFailedToParsePackage
 	}
 
-	// Unpublished packages return HTTP 200 but with no versions
-	if len(npmpkg.Versions) == 0 {
+	// Unpublished packages return HTTP 200 but with no versions.
+	// Security holding packages have a single "x.x.x-security" version.
+	if len(npmpkg.Versions) == 0 || npmpkg.Description == "security holding package" {
 		return nil, ErrPackageNotFound
 	}
 

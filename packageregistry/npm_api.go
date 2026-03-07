@@ -67,6 +67,28 @@ type npmPackageRepository struct {
 	Type string `json:"type"`
 }
 
+// Custom unmarshal for npmPackageRepository, because the type can be string or object
+func (r *npmPackageRepository) UnmarshalJSON(data []byte) error {
+	var repoUrl string
+	if err := json.Unmarshal(data, &repoUrl); err == nil {
+		r.Url = repoUrl
+		return nil
+	}
+
+	var repoObject struct {
+		Url  string `json:"url"`
+		Type string `json:"type"`
+	}
+
+	if err := json.Unmarshal(data, &repoObject); err == nil {
+		r.Url = repoObject.Url
+		r.Type = repoObject.Type
+		return nil
+	}
+
+	return ErrFailedToParsePackage
+}
+
 type npmPackageTime struct {
 	Created  time.Time            `json:"created"`
 	Modified time.Time            `json:"modified"`

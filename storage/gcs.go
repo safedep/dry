@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,10 +17,9 @@ type GoogleCloudStorageDriverConfig struct {
 }
 
 type googleCloudStorageDriver struct {
-	client          *storage.Client
-	config          GoogleCloudStorageDriverConfig
-	writeTimeout    time.Duration
-	partitionByDate bool
+	client       *storage.Client
+	config       GoogleCloudStorageDriverConfig
+	writeTimeout time.Duration
 }
 
 type googleCloudStorageDriverOpts func(*googleCloudStorageDriver)
@@ -35,12 +33,6 @@ func WithGoogleStorageClient(client *storage.Client) googleCloudStorageDriverOpt
 func WithGoogleStorageWriteTimeout(timeout time.Duration) googleCloudStorageDriverOpts {
 	return func(d *googleCloudStorageDriver) {
 		d.writeTimeout = timeout
-	}
-}
-
-func WithGoogleStoragePartitionByDate() googleCloudStorageDriverOpts {
-	return func(d *googleCloudStorageDriver) {
-		d.partitionByDate = true
 	}
 }
 
@@ -60,10 +52,9 @@ func NewGoogleCloudStorageDriver(config GoogleCloudStorageDriverConfig,
 	}
 
 	d := &googleCloudStorageDriver{
-		config:          config,
-		client:          client,
-		writeTimeout:    10 * time.Second,
-		partitionByDate: true,
+		config:       config,
+		client:       client,
+		writeTimeout: 10 * time.Second,
 	}
 
 	for _, opt := range opts {
@@ -124,10 +115,5 @@ func (d *googleCloudStorageDriver) prefix(key string) (string, error) {
 		return "", fmt.Errorf("GCS Driver: key cannot be empty")
 	}
 
-	prefix := ""
-	if d.partitionByDate {
-		prefix = filepath.Join(prefix, time.Now().UTC().Format("2006/01/02"))
-	}
-
-	return filepath.Join(prefix, key), nil
+	return key, nil
 }

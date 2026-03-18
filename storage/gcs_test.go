@@ -3,42 +3,26 @@ package storage
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGoogleCloudStorageDriverPrefix(t *testing.T) {
 	cases := []struct {
-		name            string
-		key             string
-		partitionByDate bool
-		expected        string
-		err             error
+		name     string
+		key      string
+		expected string
+		err      error
 	}{
 		{
-			name:            "no partition",
-			key:             "test",
-			partitionByDate: false,
-			expected:        "test",
+			name:     "simple key",
+			key:      "test",
+			expected: "test",
 		},
 		{
-			name:            "partition by date",
-			key:             "test",
-			partitionByDate: true,
-			expected:        fmt.Sprintf("%s/%s", time.Now().UTC().Format("2006/01/02"), "test"),
-		},
-		{
-			name:            "key has path",
-			key:             "/a/b/c/test",
-			partitionByDate: false,
-			expected:        "a/b/c/test",
-		},
-		{
-			name:            "key has path and partitioned by date",
-			key:             "/a/b/c/test",
-			partitionByDate: true,
-			expected:        fmt.Sprintf("%s/%s", time.Now().UTC().Format("2006/01/02"), "a/b/c/test"),
+			name:     "key has path",
+			key:      "/a/b/c/test",
+			expected: "a/b/c/test",
 		},
 		{
 			name: "empty key",
@@ -54,9 +38,7 @@ func TestGoogleCloudStorageDriverPrefix(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			d := &googleCloudStorageDriver{
-				partitionByDate: tc.partitionByDate,
-			}
+			d := &googleCloudStorageDriver{}
 
 			pf, err := d.prefix(tc.key)
 			if tc.err != nil {

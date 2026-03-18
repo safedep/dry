@@ -12,12 +12,7 @@ func DomainEventTopicName(serviceName, eventName string) string {
 // DomainEventNamespacedTopicName returns the topic name for a namespaced domain event.
 // If the namespace is empty, the behaviour is exactly same as DomainEventTopicName.
 func DomainEventNamespacedTopicName(serviceName, eventName, namespace string) string {
-	topicName := DomainEventTopicName(serviceName, eventName)
-	if len(namespace) == 0 {
-		return topicName
-	}
-
-	return fmt.Sprintf("namespaced.%s.%s", namespace, topicName)
+	return rpcNamespacedTopicName(DomainEventTopicName(serviceName, eventName), namespace)
 }
 
 // DomainEventTopicNameFromFullProcedureName generates a domain event topic name from a

@@ -24,7 +24,7 @@ func TestPypiGetPublisher(t *testing.T) {
 			pkgName:    "django",
 			pkgVersion: "5.1.5",
 			expectedPublishers: []Publisher{
-				{Name: "", Email: "Django Software Foundation <foundation@djangoproject.com>"},
+				{Name: "Django Software Foundation", Email: "foundation@djangoproject.com"},
 			},
 		},
 		{
@@ -107,8 +107,8 @@ func TestPypiGetPackage(t *testing.T) {
 			pkgName: "django",
 
 			expectedPackageName: "Django",
-			expectedAuthorName:  "",
-			expectedAuthorEmail: "Django Software Foundation <foundation@djangoproject.com>",
+			expectedAuthorName:  "Django Software Foundation",
+			expectedAuthorEmail: "foundation@djangoproject.com",
 			expectedMaintainers: 0,
 			expectedMinVersions: 50,
 			expectedRepoURL:     "https://github.com/django/django",

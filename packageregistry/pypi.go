@@ -3,6 +3,8 @@ package packageregistry
 import (
 	"encoding/json"
 	"fmt"
+	"net/mail"
+	"strings"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
@@ -56,16 +58,16 @@ func (np *pypiPublisherDiscovery) GetPackagePublisher(packageVersion *packagev1.
 		return nil, ErrFailedToParsePackage
 	}
 
-	if pypipkg.Info.Author == "" && pypipkg.Info.AuthorEmail == "" {
+	author := parsePypiAuthor(
+		pypipkg.Info.Author,
+		pypipkg.Info.AuthorEmail,
+		true,
+	)
+	if author.Name == "" && author.Email == "" {
 		return nil, ErrAuthorNotFound
 	}
 
-	publishers := []Publisher{
-		{
-			Name:  pypipkg.Info.Author,
-			Email: pypipkg.Info.AuthorEmail,
-		},
-	}
+	publishers := []Publisher{author}
 
 	return &PackagePublisherInfo{Publishers: publishers}, nil
 }
@@ -111,20 +113,18 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	}
 
 	maintainers := make([]Publisher, 0)
-	if pypipkg.Info.Maintainer != "" || pypipkg.Info.MaintainerEmail != "" {
+	if strings.TrimSpace(pypipkg.Info.Maintainer) != "" {
 		maintainers = append(maintainers, Publisher{
 			Name:  pypipkg.Info.Maintainer,
 			Email: pypipkg.Info.MaintainerEmail,
 		})
 	}
 
-	author := Publisher{}
-	if pypipkg.Info.Author != "" {
-		author.Name = pypipkg.Info.Author
-	}
-	if pypipkg.Info.AuthorEmail != "" {
-		author.Email = pypipkg.Info.AuthorEmail
-	}
+	author := parsePypiAuthor(
+		pypipkg.Info.Author,
+		pypipkg.Info.AuthorEmail,
+		true,
+	)
 
 	sourceGitURL, err := getNormalizedGitURL(pypipkg.Info.ProjectURLs.Source)
 	if err != nil {
@@ -154,4 +154,27 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 
 func (np *pypiPackageDiscovery) GetPackageDownloadStats(packageName string) (DownloadStats, error) {
 	return DownloadStats{}, fmt.Errorf("download stats is not supported for PyPI adapter")
+}
+
+func parsePypiAuthor(authorName, authorEmail string, splitEmailIntoName bool) Publisher {
+	name := strings.TrimSpace(authorName)
+	email := strings.TrimSpace(authorEmail)
+
+	if name == "" && email == "" {
+		return Publisher{}
+	}
+
+	if splitEmailIntoName {
+		if parsed, err := mail.ParseAddress(email); err == nil {
+			if name == "" {
+				name = strings.TrimSpace(parsed.Name)
+			}
+			email = strings.TrimSpace(parsed.Address)
+		}
+	}
+
+	return Publisher{
+		Name:  name,
+		Email: email,
+	}
 }

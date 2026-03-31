@@ -113,11 +113,13 @@ func (np *pypiPackageDiscovery) GetPackage(packageName string) (*Package, error)
 	}
 
 	maintainers := make([]Publisher, 0)
-	if strings.TrimSpace(pypipkg.Info.Maintainer) != "" {
-		maintainers = append(maintainers, Publisher{
-			Name:  pypipkg.Info.Maintainer,
-			Email: pypipkg.Info.MaintainerEmail,
-		})
+	maintainer := parsePypiAuthor(
+		pypipkg.Info.Maintainer,
+		pypipkg.Info.MaintainerEmail,
+		true,
+	)
+	if maintainer.Name != "" || maintainer.Email != "" {
+		maintainers = append(maintainers, maintainer)
 	}
 
 	author := parsePypiAuthor(

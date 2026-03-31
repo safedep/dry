@@ -98,7 +98,7 @@ func TestPypiGetPackage(t *testing.T) {
 			expectedPackageName: "requests",
 			expectedAuthorName:  "Kenneth Reitz",
 			expectedAuthorEmail: "me@kennethreitz.org",
-			expectedMaintainers: 0,
+			expectedMaintainers: 1,
 			expectedMinVersions: 30,
 			expectedRepoURL:     "https://github.com/psf/requests",
 			expectedError:       nil,

@@ -21,17 +21,9 @@ type syncConfig struct {
 
 func defaultSyncConfig(name string) *syncConfig {
 	return &syncConfig{
-		toolVersion: "unknown",
-		batchSize:   maxBatchSize,
-		maxPending:  defaultMaxPending,
-		walPath:     defaultWALPath(name),
-	}
-}
-
-// WithToolVersion sets the tool version used in NewEvent(). Default: "unknown".
-func WithToolVersion(version string) SyncOption {
-	return func(c *syncConfig) {
-		c.toolVersion = version
+		batchSize:  maxBatchSize,
+		maxPending: defaultMaxPending,
+		walPath:    defaultWALPath(name),
 	}
 }
 

@@ -14,10 +14,9 @@ import (
 
 func newTestClient(t *testing.T, transport EventTransport) *SyncClient {
 	t.Helper()
-	client, err := NewSyncClient("test-tool", transport,
+	client, err := NewSyncClient("test-tool", "1.0.0", transport,
 		NewEndpointIdentityResolver(WithEndpointID("test-endpoint")),
 		WithWALPath(filepath.Join(t.TempDir(), "test-sync.db")),
-		WithToolVersion("1.0.0"),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
@@ -26,7 +25,7 @@ func newTestClient(t *testing.T, transport EventTransport) *SyncClient {
 
 func TestNewSyncClient(t *testing.T) {
 	t.Run("missing transport returns error", func(t *testing.T) {
-		_, err := NewSyncClient("test", nil,
+		_, err := NewSyncClient("test", "1.0.0", nil,
 			NewEndpointIdentityResolver(WithEndpointID("ep")),
 			WithWALPath(filepath.Join(t.TempDir(), "test.db")),
 		)
@@ -34,7 +33,7 @@ func TestNewSyncClient(t *testing.T) {
 	})
 
 	t.Run("missing identity returns error", func(t *testing.T) {
-		_, err := NewSyncClient("test", &mockTransport{}, nil,
+		_, err := NewSyncClient("test", "1.0.0", &mockTransport{}, nil,
 			WithWALPath(filepath.Join(t.TempDir(), "test.db")),
 		)
 		assert.ErrorIs(t, err, ErrMissingIdentity)
@@ -414,7 +413,7 @@ func TestWALMarkDeliveredIdempotent(t *testing.T) {
 }
 
 func TestEmitWALFull(t *testing.T) {
-	client, err := NewSyncClient("test", &mockTransport{},
+	client, err := NewSyncClient("test", "1.0.0", &mockTransport{},
 		NewEndpointIdentityResolver(WithEndpointID("ep")),
 		WithWALPath(filepath.Join(t.TempDir(), "test.db")),
 		WithMaxPending(2),

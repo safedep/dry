@@ -3,6 +3,7 @@ package endpointsync
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,6 +17,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// validName matches lowercase alphanumeric strings with hyphens (e.g., "pmg", "my-tool").
+// Prevents path traversal when name is used in WAL path.
+var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+func isValidName(name string) bool {
+	return name != "" && validName.MatchString(name)
+}
+
 // SyncClient handles reliable event sync to SafeDep Cloud.
 type SyncClient struct {
 	name      string
@@ -27,7 +36,22 @@ type SyncClient struct {
 }
 
 // NewSyncClient creates a new sync client.
-func NewSyncClient(name string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
+//
+//   - name: tool identifier (e.g., "pmg", "gryph"). Used for WAL path
+//     (os.UserConfigDir()/safedep/<name>/sync.db) and internal logging/telemetry.
+//     Must be lowercase alphanumeric with hyphens only.
+//   - version: tool version (e.g., "1.2.3"). Included in every event for debugging
+//     and telemetry. Must not be empty.
+//   - transport: pre-configured delivery mechanism for sending events to SafeDep Cloud.
+//   - identity: resolves endpoint identity (identifier + metadata) for sync requests.
+//   - opts: optional overrides (WithBatchSize, WithMaxPending, WithWALPath).
+func NewSyncClient(name string, version string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
+	if !isValidName(name) {
+		return nil, fmt.Errorf("endpointsync: invalid name %q: must be non-empty, alphanumeric with hyphens only", name)
+	}
+	if version == "" {
+		return nil, fmt.Errorf("endpointsync: version is required")
+	}
 	if transport == nil {
 		return nil, ErrMissingTransport
 	}
@@ -41,6 +65,7 @@ func NewSyncClient(name string, transport EventTransport, identity EndpointIdent
 	}
 
 	cfg := defaultSyncConfig(name)
+	cfg.toolVersion = version
 	for _, opt := range opts {
 		opt(cfg)
 	}

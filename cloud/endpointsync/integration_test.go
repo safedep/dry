@@ -29,7 +29,7 @@ func TestIntegration_MultiBatch(t *testing.T) {
 		},
 	}
 
-	client, err := NewSyncClient("pmg", transport,
+	client, err := NewSyncClient("pmg", "1.2.3", transport,
 		NewEndpointIdentityResolver(WithEndpointID("multi-batch-test")),
 		WithWALPath(filepath.Join(t.TempDir(), "multi-batch.db")),
 		WithBatchSize(batchSize),
@@ -90,10 +90,9 @@ func TestIntegration_PMGWorkflow(t *testing.T) {
 		},
 	}
 
-	client, err := NewSyncClient("pmg", transport,
+	client, err := NewSyncClient("pmg", "1.2.3", transport,
 		NewEndpointIdentityResolver(WithEndpointID("dev-machine-1")),
 		WithWALPath(filepath.Join(t.TempDir(), "integration.db")),
-		WithToolVersion("1.2.3"),
 		WithBatchSize(10),
 	)
 	require.NoError(t, err)

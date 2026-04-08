@@ -35,6 +35,9 @@ func NewChainCredentialResolver(resolvers ...CredentialResolver) CredentialResol
 }
 
 func (r *chainCredentialResolver) Resolve() (*Credentials, error) {
+	if len(r.resolvers) == 0 {
+		return nil, fmt.Errorf("no credential resolvers configured")
+	}
 	var lastErr error
 	for _, resolver := range r.resolvers {
 		creds, err := resolver.Resolve()

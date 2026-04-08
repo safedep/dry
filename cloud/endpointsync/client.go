@@ -2,10 +2,11 @@ package endpointsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"regexp"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	controltowerv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/controltower/v1"
@@ -157,6 +158,9 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 			if err := c.store.markDelivered(corruptedIDs); err != nil {
 				log.Errorf("endpointsync: failed to discard corrupted events: %v", err)
 			}
+			if err := c.store.purge(); err != nil {
+				log.Errorf("endpointsync: failed to purge corrupted events: %v", err)
+			}
 		}
 
 		if len(toolEvents) == 0 {
@@ -225,5 +229,14 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 
 // Close releases resources.
 func (c *SyncClient) Close() error {
-	return c.store.close()
+	var errs []error
+	if err := c.store.close(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to close WAL: %w", err))
+	}
+	if c.transport != nil {
+		if err := c.transport.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close transport: %w", err))
+		}
+	}
+	return errors.Join(errs...)
 }

@@ -2,7 +2,9 @@ package endpointsync
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/safedep/dry/log"
 	_ "modernc.org/sqlite"
@@ -28,28 +30,28 @@ type wal struct {
 func openWAL(path string) (*wal, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrWALOpen, err)
+		return nil, fmt.Errorf("%w: %w", ErrWALOpen, err)
 	}
 
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Warnf("endpointsync: failed to close db after WAL mode error: %v", closeErr)
 		}
-		return nil, fmt.Errorf("%w: failed to set WAL mode: %v", ErrWALOpen, err)
+		return nil, fmt.Errorf("%w: failed to set WAL mode: %w", ErrWALOpen, err)
 	}
 
 	if err := initSchema(db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Warnf("endpointsync: failed to close db after schema init error: %v", closeErr)
 		}
-		return nil, fmt.Errorf("%w: %v", ErrWALOpen, err)
+		return nil, fmt.Errorf("%w: %w", ErrWALOpen, err)
 	}
 
 	if err := migrateSchema(db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Warnf("endpointsync: failed to close db after migration error: %v", closeErr)
 		}
-		return nil, fmt.Errorf("%w: migration failed: %v", ErrWALOpen, err)
+		return nil, fmt.Errorf("%w: migration failed: %w", ErrWALOpen, err)
 	}
 
 	return &wal{
@@ -108,7 +110,14 @@ var migrations = map[string]string{
 // in its own transaction. On success, the migration ID is inserted into
 // wal_migrations so it won't run again.
 func migrateSchema(db *sql.DB) error {
-	for id, query := range migrations {
+	ids := make([]string, 0, len(migrations))
+	for id := range migrations {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	for _, id := range ids {
+		query := migrations[id]
 		var exists int
 		err := db.QueryRow("SELECT COUNT(*) FROM wal_migrations WHERE id = ?", id).Scan(&exists)
 		if err != nil {
@@ -153,7 +162,7 @@ func (w *wal) insert(eventID string, payload []byte) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("endpointsync: tx rollback: %v", err)
 		}
 	}()
@@ -225,7 +234,7 @@ func (w *wal) markDelivered(eventIDs []string) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("endpointsync: tx rollback: %v", err)
 		}
 	}()

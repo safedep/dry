@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/safedep/dry/log"
 	_ "modernc.org/sqlite"
@@ -23,6 +24,7 @@ type walEvent struct {
 }
 
 type wal struct {
+	mu         sync.Mutex
 	db         *sql.DB
 	maxPending int
 }
@@ -157,6 +159,9 @@ func migrateSchema(db *sql.DB) error {
 }
 
 func (w *wal) insert(eventID string, payload []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	tx, err := w.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)

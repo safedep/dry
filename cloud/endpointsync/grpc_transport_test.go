@@ -2,10 +2,8 @@ package endpointsync
 
 import (
 	"context"
-	"testing"
 
 	servicev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/services/controltower/v1"
-	"github.com/stretchr/testify/assert"
 )
 
 // mockTransport implements EventTransport for testing
@@ -24,9 +22,4 @@ func (m *mockTransport) Send(ctx context.Context, req *servicev1.SyncEventsReque
 func (m *mockTransport) Close() error {
 	m.closed = true
 	return nil
-}
-
-func TestMockTransportImplementsInterface(t *testing.T) {
-	var _ EventTransport = &mockTransport{}
-	assert.True(t, true)
 }

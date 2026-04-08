@@ -1,6 +1,7 @@
 package endpointsync
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 
@@ -56,8 +57,7 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 	// does not expose the raw system UUID.
 	mid, err := machineid.ProtectedID("safedep")
 	if err != nil {
-		log.Warnf("Failed to read machine ID: %v. Endpoint deduplication may be degraded.", err)
-		mid = ""
+		return nil, fmt.Errorf("failed to read machine ID: %w", err)
 	}
 
 	return &controltowerv1.EndpointIdentity{

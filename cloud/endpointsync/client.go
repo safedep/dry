@@ -115,6 +115,10 @@ func (c *SyncClient) NewEvent() (*servicev1.ToolEvent, error) {
 
 // Emit persists a ToolEvent to the local WAL.
 func (c *SyncClient) Emit(ctx context.Context, event *servicev1.ToolEvent) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("endpointsync: emit cancelled: %w", err)
+	}
+
 	payload, err := proto.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("endpointsync: failed to marshal event: %w", err)
@@ -154,9 +158,11 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 		}
 
 		// Mark corrupted events as delivered so they don't block the sync loop.
+		// If this fails, return immediately to avoid an infinite loop re-reading
+		// the same corrupted events.
 		if len(corruptedIDs) > 0 {
 			if err := c.store.markDelivered(corruptedIDs); err != nil {
-				log.Errorf("endpointsync: failed to discard corrupted events: %v", err)
+				return totalSynced, fmt.Errorf("endpointsync: failed to discard corrupted events (aborting to prevent infinite loop): %w", err)
 			}
 			if err := c.store.purge(); err != nil {
 				log.Errorf("endpointsync: failed to purge corrupted events: %v", err)

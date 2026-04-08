@@ -17,10 +17,21 @@ func TestEndpointIdentityResolver(t *testing.T) {
 		identity, err := resolver.Resolve()
 		require.NoError(t, err)
 		assert.Equal(t, "my-machine", identity.GetIdentifier())
+		assert.NotEmpty(t, identity.GetMachineId(), "machine_id should be populated")
 		assert.NotNil(t, identity.GetMetadata())
 		assert.NotEqual(t, controltowerv1.EndpointOS_ENDPOINT_OS_UNSPECIFIED, identity.GetMetadata().GetOs())
 		assert.NotEqual(t, controltowerv1.EndpointArch_ENDPOINT_ARCH_UNSPECIFIED, identity.GetMetadata().GetArch())
 		assert.NotEmpty(t, identity.GetMetadata().GetHostname())
+	})
+
+	t.Run("machine_id is stable across calls", func(t *testing.T) {
+		resolver := NewEndpointIdentityResolver(WithEndpointID("test"))
+
+		id1, err := resolver.Resolve()
+		require.NoError(t, err)
+		id2, err := resolver.Resolve()
+		require.NoError(t, err)
+		assert.Equal(t, id1.GetMachineId(), id2.GetMachineId())
 	})
 
 	t.Run("falls back to hostname when no ID configured", func(t *testing.T) {

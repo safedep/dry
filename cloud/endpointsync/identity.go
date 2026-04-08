@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	controltowerv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/controltower/v1"
+	"github.com/denisbrodbeck/machineid"
 	"github.com/safedep/dry/log"
 )
 
@@ -47,11 +48,21 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 
 	if identifier == "" {
 		identifier = hostname
-		log.Warnf("No endpoint ID configured, using hostname %q. Set endpoint_id in config for reliable traceability.", hostname)
+		log.Debugf("No endpoint ID configured, using hostname %q", hostname)
+	}
+
+	// ProtectedID returns an HMAC-SHA256 hash of the raw machine ID using
+	// "safedep" as the app key. This is stable, unique per machine, and
+	// does not expose the raw system UUID.
+	mid, err := machineid.ProtectedID("safedep")
+	if err != nil {
+		log.Warnf("Failed to read machine ID: %v. Endpoint deduplication may be degraded.", err)
+		mid = ""
 	}
 
 	return &controltowerv1.EndpointIdentity{
 		Identifier: identifier,
+		MachineId:  mid,
 		Metadata: &controltowerv1.EndpointMetadata{
 			Hostname: hostname,
 			Os:       detectOS(),

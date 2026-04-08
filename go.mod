@@ -3,8 +3,8 @@ module github.com/safedep/dry
 go 1.25.1
 
 require (
-	buf.build/gen/go/safedep/api/grpc/go v1.6.1-20260407102445-9dc4a1f5c5b1.1
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260407102445-9dc4a1f5c5b1.1
+	buf.build/gen/go/safedep/api/grpc/go v1.6.1-20260408122114-8e64604042b0.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260408122114-8e64604042b0.1
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3
 	cloud.google.com/go/storage v1.55.0
@@ -102,6 +102,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20251022180443-0feb69152e9f // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.5.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect

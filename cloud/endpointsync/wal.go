@@ -205,6 +205,9 @@ func (w *wal) insert(eventID string, payload []byte) error {
 }
 
 func (w *wal) readPending(limit int) ([]walEvent, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	rows, err := w.db.Query(
 		"SELECT event_id, payload FROM events WHERE status = ? ORDER BY id LIMIT ?",
 		statusPending, limit,
@@ -233,6 +236,9 @@ func (w *wal) markDelivered(eventIDs []string) error {
 	if len(eventIDs) == 0 {
 		return nil
 	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	tx, err := w.db.Begin()
 	if err != nil {
@@ -273,6 +279,9 @@ func (w *wal) markDelivered(eventIDs []string) error {
 }
 
 func (w *wal) purge() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	_, err := w.db.Exec("DELETE FROM events WHERE status = ?", statusDelivered)
 	if err != nil {
 		return fmt.Errorf("failed to purge delivered events: %w", err)

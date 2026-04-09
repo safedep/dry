@@ -116,6 +116,13 @@ func (c *SyncClient) NewEvent() (*servicev1.ToolEvent, error) {
 
 // Emit persists a ToolEvent to the local WAL.
 func (c *SyncClient) Emit(ctx context.Context, event *servicev1.ToolEvent) error {
+	if event == nil {
+		return fmt.Errorf("endpointsync: event must not be nil")
+	}
+	if event.GetEventId() == "" {
+		return fmt.Errorf("endpointsync: event must have a non-empty event_id")
+	}
+
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("endpointsync: emit cancelled: %w", err)
 	}

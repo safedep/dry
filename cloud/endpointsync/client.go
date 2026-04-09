@@ -72,7 +72,7 @@ func NewSyncClient(name string, version string, transport EventTransport, identi
 	}
 
 	if err := os.MkdirAll(filepath.Dir(cfg.walPath), 0o755); err != nil {
-		return nil, fmt.Errorf("%w: failed to create WAL directory: %v", ErrWALOpen, err)
+		return nil, fmt.Errorf("%w: failed to create WAL directory: %w", ErrWALOpen, err)
 	}
 
 	store, err := openWAL(cfg.walPath)

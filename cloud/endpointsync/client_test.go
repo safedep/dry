@@ -393,8 +393,13 @@ func TestWALMarkDeliveredIdempotent(t *testing.T) {
 		require.NoError(t, w.insert("evt-2", []byte("p")))
 
 		// Mark evt-1 as delivered twice.
-		require.NoError(t, w.markDelivered([]string{"evt-1"}))
-		require.NoError(t, w.markDelivered([]string{"evt-1"})) // already delivered
+		delivered, err := w.markDelivered([]string{"evt-1"})
+		require.NoError(t, err)
+		assert.Equal(t, 1, delivered)
+
+		delivered, err = w.markDelivered([]string{"evt-1"}) // already delivered
+		require.NoError(t, err)
+		assert.Equal(t, 0, delivered)
 
 		// Now pending should be 1 (only evt-2).
 		// If the count drifted to -1, inserting 5 more would incorrectly succeed.

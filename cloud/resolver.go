@@ -38,13 +38,20 @@ func (r *chainCredentialResolver) Resolve() (*Credentials, error) {
 	if len(r.resolvers) == 0 {
 		return nil, fmt.Errorf("no credential resolvers configured")
 	}
+
 	var lastErr error
 	for _, resolver := range r.resolvers {
 		creds, err := resolver.Resolve()
-		if err == nil {
+		if err == nil && creds != nil {
 			return creds, nil
 		}
-		lastErr = err
+
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("resolver returned empty credentials")
+		}
 	}
+
 	return nil, fmt.Errorf("all credential resolvers failed: %w", lastErr)
 }

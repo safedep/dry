@@ -41,7 +41,8 @@ func TestWAL(t *testing.T) {
 		require.NoError(t, w.insert("evt-2", []byte("p2")))
 		require.NoError(t, w.insert("evt-3", []byte("p3")))
 
-		require.NoError(t, w.markDelivered([]string{"evt-1", "evt-3"}))
+		_, err = w.markDelivered([]string{"evt-1", "evt-3"})
+		require.NoError(t, err)
 		require.NoError(t, w.purge())
 
 		events, err := w.readPending(10)
@@ -104,7 +105,8 @@ func TestWALBounds(t *testing.T) {
 		err = w.insert("evt-3", []byte("p"))
 		assert.ErrorIs(t, err, ErrWALFull)
 
-		require.NoError(t, w.markDelivered([]string{"evt-1"}))
+		_, err = w.markDelivered([]string{"evt-1"})
+		require.NoError(t, err)
 
 		require.NoError(t, w.insert("evt-3", []byte("p")))
 	})

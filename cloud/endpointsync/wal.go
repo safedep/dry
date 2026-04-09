@@ -35,6 +35,17 @@ func openWAL(path string) (*wal, error) {
 		return nil, fmt.Errorf("%w: %w", ErrWALOpen, err)
 	}
 
+	// Serialize all operations through a single connection to avoid
+	// SQLITE_BUSY errors from concurrent connections in the pool.
+	db.SetMaxOpenConns(1)
+
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			log.Warnf("endpointsync: failed to close db after busy_timeout error: %v", closeErr)
+		}
+		return nil, fmt.Errorf("%w: failed to set busy_timeout: %w", ErrWALOpen, err)
+	}
+
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			log.Warnf("endpointsync: failed to close db after WAL mode error: %v", closeErr)
@@ -232,9 +243,9 @@ func (w *wal) readPending(limit int) ([]walEvent, error) {
 	return events, rows.Err()
 }
 
-func (w *wal) markDelivered(eventIDs []string) error {
+func (w *wal) markDelivered(eventIDs []string) (int, error) {
 	if len(eventIDs) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	w.mu.Lock()
@@ -242,7 +253,7 @@ func (w *wal) markDelivered(eventIDs []string) error {
 
 	tx, err := w.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
@@ -257,11 +268,11 @@ func (w *wal) markDelivered(eventIDs []string) error {
 			statusDelivered, id, statusPending,
 		)
 		if err != nil {
-			return fmt.Errorf("failed to mark event delivered: %w", err)
+			return 0, fmt.Errorf("failed to mark event delivered: %w", err)
 		}
 		affected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("failed to get rows affected: %w", err)
+			return 0, fmt.Errorf("failed to get rows affected: %w", err)
 		}
 		actualCount += affected
 	}
@@ -271,11 +282,11 @@ func (w *wal) markDelivered(eventIDs []string) error {
 			"UPDATE wal_meta SET pending_count = pending_count - ? WHERE id = 1",
 			actualCount,
 		); err != nil {
-			return fmt.Errorf("failed to update pending count: %w", err)
+			return 0, fmt.Errorf("failed to update pending count: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	return int(actualCount), tx.Commit()
 }
 
 func (w *wal) purge() error {

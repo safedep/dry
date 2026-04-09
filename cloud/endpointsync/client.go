@@ -169,7 +169,7 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 		// If this fails, return immediately to avoid an infinite loop re-reading
 		// the same corrupted events.
 		if len(corruptedIDs) > 0 {
-			if err := c.store.markDelivered(corruptedIDs); err != nil {
+			if _, err := c.store.markDelivered(corruptedIDs); err != nil {
 				return totalSynced, fmt.Errorf("endpointsync: failed to discard corrupted events (aborting to prevent infinite loop): %w", err)
 			}
 			if err := c.store.purge(); err != nil {
@@ -196,13 +196,14 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 
 		confirmedIDs := resp.GetConfirmedEventIds()
 		if len(confirmedIDs) > 0 {
-			if err := c.store.markDelivered(confirmedIDs); err != nil {
+			delivered, err := c.store.markDelivered(confirmedIDs)
+			if err != nil {
 				return totalSynced, fmt.Errorf("endpointsync: failed to mark delivered: %w", err)
 			}
 			if err := c.store.purge(); err != nil {
 				log.Errorf("endpointsync: failed to purge delivered events: %v", err)
 			}
-			totalSynced += len(confirmedIDs)
+			totalSynced += delivered
 		}
 
 		// Process failed events. Permanent failures (DUPLICATE, INVALID_PAYLOAD)
@@ -224,7 +225,7 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 			}
 		}
 		if len(permanentFailureIDs) > 0 {
-			if err := c.store.markDelivered(permanentFailureIDs); err != nil {
+			if _, err := c.store.markDelivered(permanentFailureIDs); err != nil {
 				return totalSynced, fmt.Errorf("endpointsync: failed to discard permanently failed events: %w", err)
 			}
 			if err := c.store.purge(); err != nil {

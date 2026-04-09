@@ -162,3 +162,51 @@ func TestIntegration_PMGWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, synced)
 }
+
+func TestIntegration_EmitFailsWhenWALFull(t *testing.T) {
+	const maxPending = 3
+
+	transport := &mockTransport{
+		sendFunc: func(ctx context.Context, req *servicev1.SyncEventsRequest) (*servicev1.SyncEventsResponse, error) {
+			ids := make([]string, len(req.GetEvents()))
+			for i, e := range req.GetEvents() {
+				ids[i] = e.GetEventId()
+			}
+			return &servicev1.SyncEventsResponse{ConfirmedEventIds: ids}, nil
+		},
+	}
+
+	client, err := NewSyncClient("pmg", "1.0.0", transport,
+		NewEndpointIdentityResolver(WithEndpointID("wal-full-test")),
+		WithWALPath(filepath.Join(t.TempDir(), "wal-full.db")),
+		WithMaxPending(maxPending),
+	)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	ctx := context.Background()
+
+	// Fill the WAL to capacity
+	for i := 0; i < maxPending; i++ {
+		event, _ := client.NewEvent()
+		event.InvocationId = "inv-wal-full"
+		require.NoError(t, client.Emit(ctx, event), "emit %d should succeed", i)
+	}
+
+	// Next emit should fail with ErrWALFull
+	event, _ := client.NewEvent()
+	event.InvocationId = "inv-wal-full"
+	err = client.Emit(ctx, event)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrWALFull)
+
+	// Sync to drain the WAL
+	synced, err := client.Sync(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, maxPending, synced)
+
+	// Emit should succeed again after sync
+	event, _ = client.NewEvent()
+	event.InvocationId = "inv-wal-full"
+	require.NoError(t, client.Emit(ctx, event))
+}

@@ -18,40 +18,41 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// validName matches lowercase alphanumeric strings with hyphens (e.g., "pmg", "my-tool").
-// Prevents path traversal when name is used in WAL path.
-var validName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+// validToolName matches lowercase alphanumeric strings with hyphens (e.g., "pmg", "my-tool").
+// Prevents path traversal when the tool name is used in WAL path.
+var validToolName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
-func isValidName(name string) bool {
-	return name != "" && validName.MatchString(name)
+func isValidToolName(name string) bool {
+	return name != "" && validToolName.MatchString(name)
 }
 
 // SyncClient handles reliable event sync to SafeDep Cloud.
 type SyncClient struct {
-	name      string
-	transport EventTransport
-	identity  *controltowerv1.EndpointIdentity
-	config    *syncConfig
-	store     *wal
-	breaker   *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+	toolName    string
+	toolVersion string
+	transport   EventTransport
+	identity    *controltowerv1.EndpointIdentity
+	config      *syncConfig
+	store       *wal
+	breaker     *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
 }
 
 // NewSyncClient creates a new sync client.
 //
-//   - name: tool identifier (e.g., "pmg", "gryph"). Used for WAL path
-//     (os.UserConfigDir()/safedep/<name>/sync.db) and internal logging/telemetry.
+//   - toolName: tool identifier (e.g., "pmg", "gryph"). Used for WAL path
+//     (os.UserConfigDir()/safedep/<toolName>/sync.db) and internal logging/telemetry.
 //     Must be lowercase alphanumeric with hyphens only.
-//   - version: tool version (e.g., "1.2.3"). Included in every event for debugging
+//   - toolVersion: tool version (e.g., "1.2.3"). Included in every event for debugging
 //     and telemetry. Must not be empty.
 //   - transport: pre-configured delivery mechanism for sending events to SafeDep Cloud.
 //   - identity: resolves endpoint identity (identifier + metadata) for sync requests.
 //   - opts: optional overrides (WithBatchSize, WithMaxPending, WithWALPath).
-func NewSyncClient(name string, version string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
-	if !isValidName(name) {
-		return nil, fmt.Errorf("endpointsync: invalid name %q: must be non-empty, alphanumeric with hyphens only", name)
+func NewSyncClient(toolName string, toolVersion string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
+	if !isValidToolName(toolName) {
+		return nil, fmt.Errorf("endpointsync: invalid tool name %q: must be non-empty, alphanumeric with hyphens only", toolName)
 	}
-	if version == "" {
-		return nil, fmt.Errorf("endpointsync: version is required")
+	if toolVersion == "" {
+		return nil, fmt.Errorf("endpointsync: tool version is required")
 	}
 	if transport == nil {
 		return nil, ErrMissingTransport
@@ -65,8 +66,7 @@ func NewSyncClient(name string, version string, transport EventTransport, identi
 		return nil, fmt.Errorf("endpointsync: failed to resolve endpoint identity: %w", err)
 	}
 
-	cfg := defaultSyncConfig(name)
-	cfg.toolVersion = version
+	cfg := defaultSyncConfig(toolName)
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -82,7 +82,7 @@ func NewSyncClient(name string, version string, transport EventTransport, identi
 	store.maxPending = cfg.maxPending
 
 	breaker := gobreaker.NewCircuitBreaker[*servicev1.SyncEventsResponse](gobreaker.Settings{
-		Name:        fmt.Sprintf("endpointsync-%s", name),
+		Name:        fmt.Sprintf("endpointsync-%s", toolName),
 		MaxRequests: 1,
 		Timeout:     5 * time.Minute,
 		ReadyToTrip: func(counts gobreaker.Counts) bool {
@@ -94,12 +94,13 @@ func NewSyncClient(name string, version string, transport EventTransport, identi
 	})
 
 	return &SyncClient{
-		name:      name,
-		transport: transport,
-		identity:  endpointIdentity,
-		config:    cfg,
-		store:     store,
-		breaker:   breaker,
+		toolName:    toolName,
+		toolVersion: toolVersion,
+		transport:   transport,
+		identity:    endpointIdentity,
+		config:      cfg,
+		store:       store,
+		breaker:     breaker,
 	}, nil
 }
 
@@ -107,8 +108,8 @@ func NewSyncClient(name string, version string, transport EventTransport, identi
 func (c *SyncClient) NewEvent() (*servicev1.ToolEvent, error) {
 	return &servicev1.ToolEvent{
 		EventId:     uuid.New().String(),
-		ToolName:    c.name,
-		ToolVersion: c.config.toolVersion,
+		ToolName:    c.toolName,
+		ToolVersion: c.toolVersion,
 		Timestamp:   timestamppb.Now(),
 	}, nil
 }

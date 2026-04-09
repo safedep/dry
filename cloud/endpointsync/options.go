@@ -7,16 +7,16 @@ import (
 
 // maxBatchSize is the maximum number of events per sync batch, matching the
 // proto field constraint of max_items: 100 on SyncEventsRequest.events.
+// This limit is enforced by the backend API; do not increase beyond 100.
 const maxBatchSize = 100
 
 // SyncOption configures optional sync client behavior.
 type SyncOption func(*syncConfig)
 
 type syncConfig struct {
-	toolVersion string
-	batchSize   int
-	maxPending  int
-	walPath     string
+	batchSize  int
+	maxPending int
+	walPath    string
 }
 
 func defaultSyncConfig(name string) *syncConfig {

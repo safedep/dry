@@ -32,6 +32,16 @@ func TestBuildKeychainConfigWithOptions(t *testing.T) {
 		assert.Equal(t, "staging", cfg.profile)
 	})
 
+	t.Run("empty profile normalizes to default", func(t *testing.T) {
+		cfg := buildKeychainConfig([]KeychainOption{WithProfile("")})
+		assert.Equal(t, DefaultProfile, cfg.profile)
+	})
+
+	t.Run("whitespace profile normalizes to default", func(t *testing.T) {
+		cfg := buildKeychainConfig([]KeychainOption{WithProfile("  ")})
+		assert.Equal(t, DefaultProfile, cfg.profile)
+	})
+
 	t.Run("with keychain handle", func(t *testing.T) {
 		kc, err := keychain.New(keychain.Config{
 			AppName:              "test-app",

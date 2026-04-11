@@ -83,6 +83,27 @@ chain := cloud.NewChainCredentialResolver(resolver, envResolver)
 
 Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
 
+### Multi-Tenancy
+
+Use named profiles to work with multiple tenants. Each profile is an isolated credential context — both API key and token credentials within a profile share the same tenant.
+
+```go
+// Store credentials for different tenants
+prodStore, _ := cloud.NewKeychainCredentialStore(cloud.WithProfile("prod"))
+prodStore.SaveAPIKeyCredential("sk-prod-key", "prod.safedep.io")
+
+stagingStore, _ := cloud.NewKeychainCredentialStore(cloud.WithProfile("staging"))
+stagingStore.SaveAPIKeyCredential("sk-staging-key", "staging.safedep.io")
+
+// Resolve from a specific profile
+resolver, _ := cloud.NewKeychainCredentialResolver(
+    cloud.CredentialTypeAPIKey,
+    cloud.WithProfile("prod"),
+)
+```
+
+The default profile is `"default"` when `WithProfile` is not specified.
+
 ## Security
 
 The security boundary is the OS user session.

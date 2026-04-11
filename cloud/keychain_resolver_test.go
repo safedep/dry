@@ -11,12 +11,16 @@ func newTestStoreAndResolver(t *testing.T, credType CredentialType, opts ...Keyc
 	t.Helper()
 	tmpFile := t.TempDir() + "/creds.json"
 	allOpts := append([]KeychainOption{
+		WithAppName("safedep-test-" + t.Name()),
 		WithInsecureFileFallbackPath(tmpFile),
 	}, opts...)
 
 	store, err := NewKeychainCredentialStore(allOpts...)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	t.Cleanup(func() {
+		require.NoError(t, store.Clear())
+		require.NoError(t, store.Close())
+	})
 
 	resolver, err := NewKeychainCredentialResolver(credType, allOpts...)
 	require.NoError(t, err)

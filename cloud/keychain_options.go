@@ -1,6 +1,10 @@
 package cloud
 
-import "github.com/safedep/dry/keychain"
+import (
+	"strings"
+
+	"github.com/safedep/dry/keychain"
+)
 
 const (
 	// DefaultAppName is the shared keychain application name used by all SafeDep tools.
@@ -29,8 +33,13 @@ func WithAppName(name string) KeychainOption {
 }
 
 // WithProfile selects a named credential profile. Defaults to "default".
+// Empty or whitespace-only values are normalized to DefaultProfile.
 func WithProfile(profile string) KeychainOption {
 	return func(c *keychainConfig) {
+		if strings.TrimSpace(profile) == "" {
+			c.profile = DefaultProfile
+			return
+		}
 		c.profile = profile
 	}
 }

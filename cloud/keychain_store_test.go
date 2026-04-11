@@ -11,24 +11,23 @@ func newTestStore(t *testing.T, opts ...KeychainOption) CredentialStore {
 	t.Helper()
 	tmpFile := t.TempDir() + "/creds.json"
 	allOpts := append([]KeychainOption{
+		WithAppName("safedep-test-" + t.Name()),
 		WithInsecureFileFallbackPath(tmpFile),
 	}, opts...)
 	store, err := NewKeychainCredentialStore(allOpts...)
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	t.Cleanup(func() {
+		require.NoError(t, store.Clear())
+		require.NoError(t, store.Close())
+	})
 	return store
 }
 
 func TestKeychainCredentialStore_SaveAPIKeyCredential(t *testing.T) {
 	t.Run("save and verify via resolver", func(t *testing.T) {
-		tmpFile := t.TempDir() + "/creds.json"
-		store, err := NewKeychainCredentialStore(
-			WithInsecureFileFallbackPath(tmpFile),
-		)
-		require.NoError(t, err)
-		defer func() { require.NoError(t, store.Close()) }()
+		store := newTestStore(t)
 
-		err = store.SaveAPIKeyCredential("sk-test-key", "tenant-123")
+		err := store.SaveAPIKeyCredential("sk-test-key", "tenant-123")
 		require.NoError(t, err)
 	})
 

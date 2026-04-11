@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -89,7 +90,7 @@ func (s *keychainCredentialStore) Clear() error {
 	fields := []string{fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain}
 	for _, field := range fields {
 		err := s.kc.Delete(ctx, s.config.keyForField(field))
-		if err != nil && err != keychain.ErrNotFound {
+		if err != nil && !errors.Is(err, keychain.ErrNotFound) {
 			return fmt.Errorf("cloud: failed to clear %s: %w", field, err)
 		}
 	}

@@ -60,6 +60,50 @@ A warning is logged when the file provider is used.
 | Windows | Windows Credential Manager |
 | Others | File fallback only |
 
+## Cloud Credential Store & Resolver
+
+The `cloud` package provides a keychain-backed credential store and resolver for SafeDep Cloud. Configure once, use across all SafeDep tools.
+
+```go
+import "github.com/safedep/dry/cloud"
+
+// Store credentials (e.g. during login)
+store, err := cloud.NewKeychainCredentialStore()
+defer store.Close()
+store.SaveAPIKeyCredential("sk-abc123", "my-tenant")
+
+// Resolve credentials (any tool)
+resolver, err := cloud.NewKeychainCredentialResolver(cloud.CredentialTypeAPIKey)
+defer resolver.Close()
+creds, err := resolver.Resolve()
+
+// Chain with env fallback
+chain := cloud.NewChainCredentialResolver(resolver, envResolver)
+```
+
+Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
+
+### Multi-Tenancy
+
+Use named profiles to work with multiple tenants. Each profile is an isolated credential context — both API key and token credentials within a profile share the same tenant.
+
+```go
+// Store credentials for different tenants
+prodStore, _ := cloud.NewKeychainCredentialStore(cloud.WithProfile("prod"))
+prodStore.SaveAPIKeyCredential("sk-prod-key", "prod.safedep.io")
+
+stagingStore, _ := cloud.NewKeychainCredentialStore(cloud.WithProfile("staging"))
+stagingStore.SaveAPIKeyCredential("sk-staging-key", "staging.safedep.io")
+
+// Resolve from a specific profile
+resolver, _ := cloud.NewKeychainCredentialResolver(
+    cloud.CredentialTypeAPIKey,
+    cloud.WithProfile("prod"),
+)
+```
+
+The default profile is `"default"` when `WithProfile` is not specified.
+
 ## Security
 
 The security boundary is the OS user session.

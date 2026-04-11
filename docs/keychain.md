@@ -60,6 +60,29 @@ A warning is logged when the file provider is used.
 | Windows | Windows Credential Manager |
 | Others | File fallback only |
 
+## Cloud Credential Store & Resolver
+
+The `cloud` package provides a keychain-backed credential store and resolver for SafeDep Cloud. Configure once, use across all SafeDep tools.
+
+```go
+import "github.com/safedep/dry/cloud"
+
+// Store credentials (e.g. during login)
+store, err := cloud.NewKeychainCredentialStore()
+defer store.Close()
+store.SaveAPIKeyCredential("sk-abc123", "my-tenant")
+
+// Resolve credentials (any tool)
+resolver, err := cloud.NewKeychainCredentialResolver(cloud.CredentialTypeAPIKey)
+defer resolver.Close()
+creds, err := resolver.Resolve()
+
+// Chain with env fallback
+chain := cloud.NewChainCredentialResolver(resolver, envResolver)
+```
+
+Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
+
 ## Security
 
 The security boundary is the OS user session.

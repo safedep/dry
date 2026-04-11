@@ -101,19 +101,26 @@ func TestKeychainCredentialResolver_Unspecified(t *testing.T) {
 func TestKeychainCredentialResolver_ProfileIsolation(t *testing.T) {
 	t.Run("different profiles do not interfere", func(t *testing.T) {
 		tmpFile := t.TempDir() + "/creds.json"
-		baseOpts := []KeychainOption{WithInsecureFileFallbackPath(tmpFile)}
+		appName := "safedep-test-" + t.Name()
+		baseOpts := []KeychainOption{WithAppName(appName), WithInsecureFileFallbackPath(tmpFile)}
 
 		prodStore, err := NewKeychainCredentialStore(
 			append(baseOpts, WithProfile("prod"))...,
 		)
 		require.NoError(t, err)
-		defer func() { require.NoError(t, prodStore.Close()) }()
+		defer func() {
+			require.NoError(t, prodStore.Clear())
+			require.NoError(t, prodStore.Close())
+		}()
 
 		stagingStore, err := NewKeychainCredentialStore(
 			append(baseOpts, WithProfile("staging"))...,
 		)
 		require.NoError(t, err)
-		defer func() { require.NoError(t, stagingStore.Close()) }()
+		defer func() {
+			require.NoError(t, stagingStore.Clear())
+			require.NoError(t, stagingStore.Close())
+		}()
 
 		err = prodStore.SaveAPIKeyCredential("sk-prod", "prod-tenant")
 		require.NoError(t, err)
@@ -151,7 +158,7 @@ func TestKeychainCredentialResolver_ProfileIsolation(t *testing.T) {
 func TestKeychainCredentialResolver_ClearThenResolve(t *testing.T) {
 	t.Run("clear removes credentials so resolve fails", func(t *testing.T) {
 		tmpFile := t.TempDir() + "/creds.json"
-		opts := []KeychainOption{WithInsecureFileFallbackPath(tmpFile)}
+		opts := []KeychainOption{WithAppName("safedep-test-" + t.Name()), WithInsecureFileFallbackPath(tmpFile)}
 
 		store, err := NewKeychainCredentialStore(opts...)
 		require.NoError(t, err)
@@ -183,6 +190,7 @@ func TestKeychainCredentialResolver_ChainIntegration(t *testing.T) {
 
 		keychainResolver, err := NewKeychainCredentialResolver(
 			CredentialTypeAPIKey,
+			WithAppName("safedep-test-"+t.Name()),
 			WithInsecureFileFallbackPath(tmpFile),
 		)
 		require.NoError(t, err)
@@ -204,11 +212,14 @@ func TestKeychainCredentialResolver_ChainIntegration(t *testing.T) {
 
 	t.Run("keychain takes priority over env in chain", func(t *testing.T) {
 		tmpFile := t.TempDir() + "/creds.json"
-		opts := []KeychainOption{WithInsecureFileFallbackPath(tmpFile)}
+		opts := []KeychainOption{WithAppName("safedep-test-" + t.Name()), WithInsecureFileFallbackPath(tmpFile)}
 
 		store, err := NewKeychainCredentialStore(opts...)
 		require.NoError(t, err)
-		defer func() { require.NoError(t, store.Close()) }()
+		defer func() {
+			require.NoError(t, store.Clear())
+			require.NoError(t, store.Close())
+		}()
 
 		err = store.SaveAPIKeyCredential("sk-keychain-key", "keychain-tenant")
 		require.NoError(t, err)

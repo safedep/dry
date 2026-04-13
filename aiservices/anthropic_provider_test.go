@@ -19,25 +19,29 @@ func TestAnthropicProvider_Bedrock(t *testing.T) {
 	assert.Equal(t, Anthropic, provider.GetID())
 
 	testCases := []struct {
-		name         string
-		expectErr    bool
-		errCheckFunc func(error) bool
-		setupModel   func() (Model, error)
+		name            string
+		expectErr       bool
+		errCheckFunc    func(error) bool
+		expectedModelId string
+		setupModel      func() (Model, error)
 	}{
 		{
-			name: "FastModel uses Bedrock model ID",
+			name:            "FastModel uses Bedrock model ID",
+			expectedModelId: bedrockFastModelId,
 			setupModel: func() (Model, error) {
 				return provider.GetFastModel()
 			},
 		},
 		{
-			name: "ReasoningModel uses Bedrock model ID",
+			name:            "ReasoningModel uses Bedrock model ID",
+			expectedModelId: bedrockReasoningModelId,
 			setupModel: func() (Model, error) {
 				return provider.GetReasoningModel()
 			},
 		},
 		{
-			name: "GetModelByID",
+			name:            "GetModelByID",
+			expectedModelId: "anthropic.claude-3-haiku-20240307-v1:0",
 			setupModel: func() (Model, error) {
 				return provider.GetModelByID("anthropic.claude-3-haiku-20240307-v1:0")
 			},
@@ -70,6 +74,7 @@ func TestAnthropicProvider_Bedrock(t *testing.T) {
 				} else {
 					assert.NotNil(t, model)
 					assert.Equal(t, Anthropic, model.GetProviderID())
+					assert.Equal(t, tc.expectedModelId, model.GetId())
 				}
 			}
 		})
@@ -88,19 +93,22 @@ func TestAnthropicProvider_DirectAPI(t *testing.T) {
 	assert.Equal(t, Anthropic, provider.GetID())
 
 	testCases := []struct {
-		name         string
-		expectErr    bool
-		errCheckFunc func(error) bool
-		setupModel   func() (Model, error)
+		name            string
+		expectErr       bool
+		errCheckFunc    func(error) bool
+		expectedModelId string
+		setupModel      func() (Model, error)
 	}{
 		{
-			name: "FastModel uses direct API model ID",
+			name:            "FastModel uses direct API model ID",
+			expectedModelId: anthropicFastModelId,
 			setupModel: func() (Model, error) {
 				return provider.GetFastModel()
 			},
 		},
 		{
-			name: "ReasoningModel uses direct API model ID",
+			name:            "ReasoningModel uses direct API model ID",
+			expectedModelId: anthropicReasoningModelId,
 			setupModel: func() (Model, error) {
 				return provider.GetReasoningModel()
 			},
@@ -132,6 +140,7 @@ func TestAnthropicProvider_DirectAPI(t *testing.T) {
 				} else {
 					assert.NotNil(t, model)
 					assert.Equal(t, Anthropic, model.GetProviderID())
+					assert.Equal(t, tc.expectedModelId, model.GetId())
 				}
 			}
 		})

@@ -53,7 +53,7 @@ func TestAnthropicDirectAPI_GenerateSingle(t *testing.T) {
 
 	response, err = thinkingModel.GenerateSingle(context.Background(), LLMGenerationRequest{
 		SystemPrompt: "You are a helpful assistant. Answer concisely.",
-		UserPrompt:   "How many 'r's in the work strawberryrity",
+		UserPrompt:   "How many 'r's in the word strawberryrity",
 	})
 
 	require.NoError(t, err)

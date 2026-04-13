@@ -32,9 +32,9 @@ func WithResponseSchema(schema *openapi3.Schema) LLMProviderBuilderOption {
 
 // CreateLLMProviderFromEnv creates an LLMProvider based on environment variables.
 //
-// Required env vars:
+// env vars:
 //
-//	AISERVICES_LLM_PROVIDER — one of: google-vertex, anthropic
+//	AISERVICES_LLM_PROVIDER — one of: google-vertex, anthropic, default to vertex ai
 //
 // For "anthropic":
 //
@@ -58,7 +58,7 @@ func WithResponseSchema(schema *openapi3.Schema) LLMProviderBuilderOption {
 //		AISERVICES_ANTHROPIC_MAX_TOKENS              — max response tokens (default: 8192)
 //		AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS  — thinking budget for reasoning models (default: 1024)
 func CreateLLMProviderFromEnv(opts ...LLMProviderBuilderOption) (LLMProvider, error) {
-	providerType := strings.ToLower(strings.TrimSpace(os.Getenv("AISERVICES_LLM_PROVIDER")))
+	providerType := os.Getenv("AISERVICES_LLM_PROVIDER")
 	switch providerType {
 	case aiServicesLLMProviderGoogleVertexAI:
 		return createVertexAIProvider(opts...)

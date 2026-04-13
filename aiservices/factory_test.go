@@ -53,11 +53,12 @@ func TestWithResponseSchema(t *testing.T) {
 
 func TestCreateLLMProviderFromEnv(t *testing.T) {
 	tests := []struct {
-		name        string
-		envVars     map[string]string
-		opts        []LLMProviderBuilderOption
-		expectError bool
-		errorCheck  func(t *testing.T, err error)
+		name          string
+		envVars       map[string]string
+		opts          []LLMProviderBuilderOption
+		expectError   bool
+		strictSuccess bool // assert err == nil and provider != nil unconditionally
+		errorCheck    func(t *testing.T, err error)
 	}{
 		// Vertex AI cases
 		{
@@ -109,7 +110,8 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 				"AISERVICES_ANTHROPIC_USE_BEDROCK": "true",
 				"AISERVICES_AWS_BEDROCK_REGION":    "us-east-1",
 			},
-			expectError: false,
+			expectError:   false,
+			strictSuccess: true,
 		},
 		{
 			name: "anthropic bedrock backend missing region",
@@ -129,7 +131,8 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 				"AISERVICES_LLM_PROVIDER":      "anthropic",
 				"AISERVICES_ANTHROPIC_API_KEY": "test-api-key",
 			},
-			expectError: false,
+			expectError:   false,
+			strictSuccess: true,
 		},
 		{
 			name: "anthropic direct api backend missing key",
@@ -188,6 +191,9 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 				if tt.errorCheck != nil {
 					tt.errorCheck(t, err)
 				}
+			} else if tt.strictSuccess {
+				require.NoError(t, err)
+				assert.NotNil(t, provider)
 			} else {
 				// Provider construction may fail with credential errors in CI/CD.
 				// We only assert on our own validation errors.
@@ -262,6 +268,9 @@ func TestCreateVertexAIProvider(t *testing.T) {
 					tt.errorCheck(t, err)
 				}
 			} else {
+				// Note: This test will fail in actual execution because it tries to create real credentials
+				// In a real test environment, you would need to mock the credential creation
+				// For now, we're just testing the validation logic
 				if err != nil {
 					assert.Contains(t, err.Error(), "failed to load credentials")
 				}

@@ -38,11 +38,25 @@ func TestAnthropicDirectAPI_GenerateSingle(t *testing.T) {
 
 	response, err := model.GenerateSingle(context.Background(), LLMGenerationRequest{
 		SystemPrompt: "You are a helpful assistant. Answer concisely.",
-		UserPrompt:   "What is 2 + 2? Reply with the number only.",
+		UserPrompt:   "What is 2 + 2 + 3? Reply with the number only.",
 	})
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, response)
-	assert.True(t, strings.Contains(response, "4"),
-		"expected response to contain '4', got: %q", response)
+	assert.True(t, strings.Contains(response, "7"),
+		"expected response to contain '7', got: %q", response)
+
+	thinkingModel, err := provider.GetReasoningModel()
+	require.NoError(t, err)
+	require.NotNil(t, thinkingModel)
+
+	response, err = thinkingModel.GenerateSingle(context.Background(), LLMGenerationRequest{
+		SystemPrompt: "You are a helpful assistant. Answer concisely.",
+		UserPrompt:   "What is the capital of India, reply with the city name only. in Capital Letters",
+	})
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, response)
+	assert.True(t, strings.Contains(response, "NEW DELHI"),
+		"expected response to contain 'NEW DELHI', got: %q", response)
 }

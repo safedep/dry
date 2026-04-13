@@ -335,12 +335,15 @@ func TestCreateAnthropicProvider(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "invalid max tokens from env is silently ignored",
+			name: "invalid max tokens from env returns error",
 			envVars: map[string]string{
 				"AISERVICES_ANTHROPIC_API_KEY":    "test-key",
 				"AISERVICES_ANTHROPIC_MAX_TOKENS": "not-a-number",
 			},
-			expectError: false,
+			expectError: true,
+			errorCheck: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "invalid value for AISERVICES_ANTHROPIC_MAX_TOKENS")
+			},
 		},
 		{
 			name: "thinking budget tokens from env",
@@ -351,12 +354,15 @@ func TestCreateAnthropicProvider(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name: "invalid thinking budget tokens from env is silently ignored",
+			name: "invalid thinking budget tokens from env returns error",
 			envVars: map[string]string{
 				"AISERVICES_ANTHROPIC_API_KEY":                "test-key",
 				"AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS": "not-a-number",
 			},
-			expectError: false,
+			expectError: true,
+			errorCheck: func(t *testing.T, err error) {
+				assert.Contains(t, err.Error(), "invalid value for AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS")
+			},
 		},
 	}
 

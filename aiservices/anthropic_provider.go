@@ -26,7 +26,7 @@ func (p *anthropicModelProvider) GetFastModel() (LLM, error) {
 	if p.config.UseBedrock {
 		modelId = bedrockFastModelId
 	}
-	return newAnthropicChatModel(modelId, p.config)
+	return newAnthropicChatModel(modelId, p.config, false) // Fast model, no thinking
 }
 
 // GetReasoningModel returns Claude Sonnet 4.6 — optimized for reasoning.
@@ -36,7 +36,7 @@ func (p *anthropicModelProvider) GetReasoningModel() (LLM, error) {
 	if p.config.UseBedrock {
 		modelId = bedrockReasoningModelId
 	}
-	return newAnthropicChatModel(modelId, p.config)
+	return newAnthropicChatModel(modelId, p.config, true) // Reasoning model, enable thinking
 }
 
 // GetModelByID returns a Claude model by its provider-specific model ID.
@@ -44,5 +44,5 @@ func (p *anthropicModelProvider) GetModelByID(id string) (LLM, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, NewInvalidConfigError(Anthropic, "model ID cannot be empty")
 	}
-	return newAnthropicChatModel(id, p.config)
+	return newAnthropicChatModel(id, p.config, false) // default to have thinking disabled, we dont know which model the user use
 }

@@ -13,6 +13,7 @@ require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/charmbracelet/colorprofile v0.4.1
 	github.com/cloudwego/eino v0.7.13
+	github.com/cloudwego/eino-ext/components/model/claude v0.1.17
 	github.com/cloudwego/eino-ext/components/model/gemini v0.1.5
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/docker/docker v28.1.1+incompatible
@@ -116,7 +117,6 @@ require (
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/cloudwego/eino-ext/components/model/claude v0.1.17 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

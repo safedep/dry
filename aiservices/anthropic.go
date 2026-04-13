@@ -62,7 +62,7 @@ var _ LLM = &anthropicModel{}
 var _ Model = &anthropicModel{}
 
 // Docs: https://github.com/cloudwego/eino-ext/tree/main/components/model/claude#readme
-func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, error) {
+func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableThinking bool) (LLM, error) {
 	claudeConfig := &claudemodel.Config{
 		Model:     modelId,
 		MaxTokens: anthropicDefaultMaxTokens,
@@ -92,6 +92,14 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, er
 		}
 		claudeConfig.APIKey = config.APIKey
 		claudeConfig.BaseURL = config.BaseURL
+	}
+
+	// Enable thinking for reasoning models
+	if enableThinking {
+		claudeConfig.Thinking = &claudemodel.Thinking{
+			Enable:       enableThinking,
+			BudgetTokens: 1024,
+		}
 	}
 
 	chatModel, err := claudemodel.NewChatModel(context.Background(), claudeConfig)

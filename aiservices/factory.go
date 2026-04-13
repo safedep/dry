@@ -142,14 +142,18 @@ func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvid
 	}
 
 	if v := os.Getenv("AISERVICES_ANTHROPIC_MAX_TOKENS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			config.MaxTokens = &n
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for AISERVICES_ANTHROPIC_MAX_TOKENS: %w", err)
 		}
+		config.MaxTokens = &n
 	}
 	if v := os.Getenv("AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			config.ThinkingBudgetTokens = &n
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS: %w", err)
 		}
+		config.ThinkingBudgetTokens = &n
 	}
 
 	return NewAnthropicModelProvider(config)

@@ -44,5 +44,5 @@ func (p *anthropicModelProvider) GetModelByID(id string) (LLM, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, NewInvalidConfigError(Anthropic, "model ID cannot be empty")
 	}
-	return newAnthropicChatModel(id, p.config, false) // default to have thinking disabled, we dont know which model the user use
+	return newAnthropicChatModel(id, p.config, false) // Default to thinking disabled; we don't know which model the user is using.
 }

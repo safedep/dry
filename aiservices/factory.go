@@ -3,6 +3,7 @@ package aiservices
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -51,6 +52,11 @@ func WithResponseSchema(schema *openapi3.Schema) LLMProviderBuilderOption {
 //		AISERVICES_ANTHROPIC_USE_BEDROCK=false  — use direct Anthropic API backend (default)
 //		AISERVICES_ANTHROPIC_API_KEY          — required for direct API
 //		AISERVICES_ANTHROPIC_BASE_URL         — optional custom endpoint
+//
+//	 Shared optional tuning (apply to both backends):
+//
+//		AISERVICES_ANTHROPIC_MAX_TOKENS              — max response tokens (default: 8192)
+//		AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS  — thinking budget for reasoning models (default: 1024)
 func CreateLLMProviderFromEnv(opts ...LLMProviderBuilderOption) (LLMProvider, error) {
 	providerType := strings.ToLower(strings.TrimSpace(os.Getenv("AISERVICES_LLM_PROVIDER")))
 	switch providerType {
@@ -131,6 +137,17 @@ func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvid
 		}
 		if baseURL := os.Getenv("AISERVICES_ANTHROPIC_BASE_URL"); baseURL != "" {
 			config.BaseURL = &baseURL
+		}
+	}
+
+	if v := os.Getenv("AISERVICES_ANTHROPIC_MAX_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			config.MaxTokens = &n
+		}
+	}
+	if v := os.Getenv("AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			config.ThinkingBudgetTokens = &n
 		}
 	}
 

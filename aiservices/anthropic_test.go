@@ -25,6 +25,7 @@ func TestAnthropicDirectAPI_GenerateSingle(t *testing.T) {
 	t.Setenv("AISERVICES_LLM_PROVIDER", "anthropic")
 	t.Setenv("AISERVICES_ANTHROPIC_USE_BEDROCK", "false")
 	t.Setenv("AISERVICES_ANTHROPIC_API_KEY", apiKey)
+	t.Setenv("AISERVICES_ANTHROPIC_MAX_TOKENS", "1025") // our tests need less tokens (1024 is the min)
 
 	provider, err := CreateLLMProviderFromEnv()
 	require.NoError(t, err)

@@ -26,6 +26,9 @@ const (
 	// anthropicDefaultMaxTokens is the default max tokens for Claude models.
 	// Claude requires MaxTokens to be explicitly set.
 	anthropicDefaultMaxTokens = 8192
+
+	// anthropicThinkingBudgetTokens is the budget for thinking models.
+	anthropicThinkingBudgetTokens = 1024
 )
 
 // AnthropicModelConfig holds configuration for Anthropic Claude models.
@@ -51,6 +54,12 @@ type AnthropicModelConfig struct {
 	// Direct API fields (used when UseBedrock is false).
 	APIKey  string
 	BaseURL *string
+
+	// MaxTokens caps the response length. Defaults to anthropicDefaultMaxTokens when nil.
+	MaxTokens *int
+	// ThinkingBudgetTokens sets the thinking token budget for reasoning models.
+	// Defaults to anthropicThinkingBudgetTokens when nil.
+	ThinkingBudgetTokens *int
 }
 
 type anthropicModel struct {
@@ -63,9 +72,14 @@ var _ Model = &anthropicModel{}
 
 // Docs: https://github.com/cloudwego/eino-ext/tree/main/components/model/claude#readme
 func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableThinking bool) (LLM, error) {
+	maxTokens := anthropicDefaultMaxTokens
+	if config.MaxTokens != nil {
+		maxTokens = *config.MaxTokens
+	}
+
 	claudeConfig := &claudemodel.Config{
 		Model:     modelId,
-		MaxTokens: anthropicDefaultMaxTokens,
+		MaxTokens: maxTokens,
 	}
 
 	if config.UseBedrock {
@@ -96,9 +110,13 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableTh
 
 	// Enable thinking for reasoning models
 	if enableThinking {
+		thinkingBudget := anthropicThinkingBudgetTokens
+		if config.ThinkingBudgetTokens != nil {
+			thinkingBudget = *config.ThinkingBudgetTokens
+		}
 		claudeConfig.Thinking = &claudemodel.Thinking{
 			Enable:       enableThinking,
-			BudgetTokens: 1024,
+			BudgetTokens: thinkingBudget,
 		}
 	}
 

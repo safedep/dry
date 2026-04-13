@@ -8,10 +8,11 @@ import (
 )
 
 const (
-	aiServicesLLMProviderGoogleVertexAI = string(GoogleVertex)
-	aiServicesLLMProviderGoogleGemini   = string(Google)
-	aiServicesLLMProviderOpenAI         = string(OpenAI)
-	aiServicesLLMProviderAnthropic      = string(Anthropic)
+	aiServicesLLMProviderGoogleVertexAI   = string(GoogleVertex)
+	aiServicesLLMProviderGoogleGemini     = string(Google)
+	aiServicesLLMProviderOpenAI           = string(OpenAI)
+	aiServicesLLMProviderAnthropic        = string(Anthropic)
+	aiServicesLLMProviderAnthropicBedrock = string(AnthropicBedrock)
 )
 
 type llmProviderBuilderOptions struct {
@@ -35,6 +36,8 @@ func CreateLLMProviderFromEnv(opts ...LLMProviderBuilderOption) (LLMProvider, er
 	switch providerType {
 	case aiServicesLLMProviderGoogleVertexAI:
 		return createVertexAIProvider(opts...)
+	case aiServicesLLMProviderAnthropicBedrock:
+		return createAnthropicBedrockProvider(opts...)
 	case aiServicesLLMProviderOpenAI:
 		return nil, fmt.Errorf("provider not supported: OpenAI")
 	case aiServicesLLMProviderAnthropic:
@@ -72,6 +75,23 @@ func createVertexAIProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvide
 	}
 
 	return NewGoogleVertexAIModelProvider(config)
+}
+
+func createAnthropicBedrockProvider(_ ...LLMProviderBuilderOption) (LLMProvider, error) {
+	region := os.Getenv("AISERVICES_AWS_BEDROCK_REGION")
+	if region == "" {
+		return nil, fmt.Errorf("missing required environment variable for Anthropic Bedrock: " +
+			"AISERVICES_AWS_BEDROCK_REGION must be set")
+	}
+
+	return NewAnthropicBedrockModelProvider(BedrockModelConfig{
+		Region: region,
+		// Optional explicit credentials. When empty the AWS default credential chain is used.
+		AccessKey:       os.Getenv("AISERVICES_AWS_BEDROCK_ACCESS_KEY"),
+		SecretAccessKey: os.Getenv("AISERVICES_AWS_BEDROCK_SECRET_ACCESS_KEY"),
+		SessionToken:    os.Getenv("AISERVICES_AWS_BEDROCK_SESSION_TOKEN"),
+		Profile:         os.Getenv("AISERVICES_AWS_BEDROCK_PROFILE"),
+	})
 }
 
 func builderOptionsFromOpts(opts ...LLMProviderBuilderOption) *llmProviderBuilderOptions {

@@ -43,10 +43,10 @@ type AnthropicModelConfig struct {
 	// Bedrock-specific fields (used when UseBedrock is true).
 	// Region is required; the rest are optional and fall back to the credential chain.
 	Region          string
-	AccessKey       string
-	SecretAccessKey string
-	SessionToken    string
-	Profile         string
+	AccessKey       *string
+	SecretAccessKey *string
+	SessionToken    *string
+	Profile         *string
 
 	// Direct API fields (used when UseBedrock is false).
 	APIKey  string
@@ -74,10 +74,18 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, er
 		}
 		claudeConfig.ByBedrock = true
 		claudeConfig.Region = config.Region
-		claudeConfig.AccessKey = config.AccessKey
-		claudeConfig.SecretAccessKey = config.SecretAccessKey
-		claudeConfig.SessionToken = config.SessionToken
-		claudeConfig.Profile = config.Profile
+		if config.AccessKey != nil {
+			claudeConfig.AccessKey = *config.AccessKey
+		}
+		if config.SecretAccessKey != nil {
+			claudeConfig.SecretAccessKey = *config.SecretAccessKey
+		}
+		if config.SessionToken != nil {
+			claudeConfig.SessionToken = *config.SessionToken
+		}
+		if config.Profile != nil {
+			claudeConfig.Profile = *config.Profile
+		}
 	} else {
 		if config.APIKey == "" {
 			return nil, NewInvalidConfigError(Anthropic, "API key is required when using the direct Anthropic backend")

@@ -110,11 +110,19 @@ func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvid
 			return nil, fmt.Errorf("missing required environment variable for Anthropic Bedrock backend: " +
 				"AISERVICES_AWS_BEDROCK_REGION must be set")
 		}
-		// Optional explicit credentials. When empty the AWS default credential chain is used.
-		config.AccessKey = os.Getenv("AISERVICES_AWS_BEDROCK_ACCESS_KEY")
-		config.SecretAccessKey = os.Getenv("AISERVICES_AWS_BEDROCK_SECRET_ACCESS_KEY")
-		config.SessionToken = os.Getenv("AISERVICES_AWS_BEDROCK_SESSION_TOKEN")
-		config.Profile = os.Getenv("AISERVICES_AWS_BEDROCK_PROFILE")
+		// Optional explicit credentials. When nil the AWS default credential chain is used.
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_ACCESS_KEY"); v != "" {
+			config.AccessKey = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_SECRET_ACCESS_KEY"); v != "" {
+			config.SecretAccessKey = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_SESSION_TOKEN"); v != "" {
+			config.SessionToken = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_PROFILE"); v != "" {
+			config.Profile = &v
+		}
 	} else {
 		config.APIKey = os.Getenv("AISERVICES_ANTHROPIC_API_KEY")
 		if config.APIKey == "" {

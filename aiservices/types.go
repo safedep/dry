@@ -6,11 +6,10 @@ type ModelProviderIdentifier string
 
 // Aligned with https://models.dev/
 const (
-	OpenAI           ModelProviderIdentifier = "openai"
-	Anthropic        ModelProviderIdentifier = "anthropic"
-	AnthropicBedrock ModelProviderIdentifier = "anthropic-bedrock"
-	Google           ModelProviderIdentifier = "google"
-	GoogleVertex     ModelProviderIdentifier = "google-vertex"
+	OpenAI       ModelProviderIdentifier = "openai"
+	Anthropic    ModelProviderIdentifier = "anthropic"
+	Google       ModelProviderIdentifier = "google"
+	GoogleVertex ModelProviderIdentifier = "google-vertex"
 )
 
 // Model is an interface that all AI models must implement.

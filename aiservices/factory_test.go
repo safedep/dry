@@ -105,9 +105,9 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 		{
 			name: "anthropic bedrock backend",
 			envVars: map[string]string{
-				"AISERVICES_LLM_PROVIDER":            "anthropic",
-				"AISERVICES_ANTHROPIC_USE_BEDROCK":   "true",
-				"AISERVICES_AWS_BEDROCK_REGION":      "us-east-1",
+				"AISERVICES_LLM_PROVIDER":          "anthropic",
+				"AISERVICES_ANTHROPIC_USE_BEDROCK": "true",
+				"AISERVICES_AWS_BEDROCK_REGION":    "us-east-1",
 			},
 			expectError: false,
 		},
@@ -153,23 +153,23 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
 			},
 		},
-		// Unknown / empty provider
+		// Unknown / empty provider — both fall back to Vertex AI; error comes from missing Vertex AI env vars.
 		{
-			name:        "empty provider returns error",
+			name:        "empty provider falls back to vertex ai",
 			envVars:     map[string]string{},
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), `unknown provider ""`)
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 		{
-			name: "unknown provider returns error",
+			name: "unknown provider falls back to vertex ai",
 			envVars: map[string]string{
 				"AISERVICES_LLM_PROVIDER": "unknown",
 			},
 			expectError: true,
 			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), `unknown provider "unknown"`)
+				assert.Contains(t, err.Error(), "AISERVICES_GOOGLE_VERTEX_AI_PROJECT and AISERVICES_GOOGLE_VERTEX_AI_LOCATION must be set")
 			},
 		},
 	}
@@ -324,6 +324,39 @@ func TestCreateAnthropicProvider(t *testing.T) {
 			errorCheck: func(t *testing.T, err error) {
 				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
 			},
+		},
+		// Optional tuning env vars
+		{
+			name: "max tokens from env",
+			envVars: map[string]string{
+				"AISERVICES_ANTHROPIC_API_KEY":    "test-key",
+				"AISERVICES_ANTHROPIC_MAX_TOKENS": "4096",
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid max tokens from env is silently ignored",
+			envVars: map[string]string{
+				"AISERVICES_ANTHROPIC_API_KEY":    "test-key",
+				"AISERVICES_ANTHROPIC_MAX_TOKENS": "not-a-number",
+			},
+			expectError: false,
+		},
+		{
+			name: "thinking budget tokens from env",
+			envVars: map[string]string{
+				"AISERVICES_ANTHROPIC_API_KEY":                "test-key",
+				"AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS": "2048",
+			},
+			expectError: false,
+		},
+		{
+			name: "invalid thinking budget tokens from env is silently ignored",
+			envVars: map[string]string{
+				"AISERVICES_ANTHROPIC_API_KEY":                "test-key",
+				"AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS": "not-a-number",
+			},
+			expectError: false,
 		},
 	}
 

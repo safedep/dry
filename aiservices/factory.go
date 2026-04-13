@@ -69,8 +69,9 @@ func CreateLLMProviderFromEnv(opts ...LLMProviderBuilderOption) (LLMProvider, er
 	case aiServicesLLMProviderGoogleGemini:
 		return nil, fmt.Errorf("provider not supported: Google")
 	default:
-		return nil, fmt.Errorf("unknown provider %q: set AISERVICES_LLM_PROVIDER to one of: %s, %s",
-			providerType, aiServicesLLMProviderGoogleVertexAI, aiServicesLLMProviderAnthropic)
+		// Default to vertex AI for backward compatibility
+		// But this is where we would add support for other providers in the future.
+		return createVertexAIProvider(opts...)
 	}
 }
 

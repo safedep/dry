@@ -12,12 +12,12 @@ require (
 	github.com/antihax/optional v1.0.0
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/charmbracelet/colorprofile v0.4.1
+	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/cloudwego/eino v0.4.7
 	github.com/cloudwego/eino-ext/components/model/gemini v0.1.5
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/envoyproxy/go-control-plane/envoy v1.36.0
-	github.com/fatih/color v1.18.0
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
@@ -28,9 +28,11 @@ require (
 	github.com/google/go-github/v74 v74.0.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/jedib0t/go-pretty/v6 v6.7.9
 	github.com/labstack/echo-contrib v0.17.4
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/labstack/gommon v0.4.2
+	github.com/muesli/termenv v0.16.0
 	github.com/nats-io/nats.go v1.42.0
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/package-url/packageurl-go v0.1.3
@@ -53,6 +55,7 @@ require (
 	golang.org/x/mod v0.33.0
 	golang.org/x/net v0.50.0
 	golang.org/x/oauth2 v0.34.0
+	golang.org/x/term v0.42.0
 	google.golang.org/api v0.235.0
 	google.golang.org/genai v1.21.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260120221211-b8f7ae30c516
@@ -85,6 +88,7 @@ require (
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.52.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
+	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/brunoga/deep v1.2.4 // indirect
@@ -93,12 +97,13 @@ require (
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/x/ansi v0.11.3 // indirect
+	github.com/charmbracelet/x/ansi v0.11.5 // indirect
+	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/chigopher/pathlib v0.19.1 // indirect
-	github.com/clipperhouse/displaywidth v0.6.1 // indirect
+	github.com/clipperhouse/displaywidth v0.9.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
 	github.com/danieljoos/wincred v1.2.2 // indirect
@@ -143,7 +148,6 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.7.5 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jedib0t/go-pretty/v6 v6.6.7 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -186,6 +190,7 @@ require (
 	github.com/prometheus/common v0.64.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/s2-streamstore/optr v1.1.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
@@ -218,8 +223,7 @@ require (
 	golang.org/x/arch v0.20.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/term v0.40.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect

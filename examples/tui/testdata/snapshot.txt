@@ -1,0 +1,34 @@
+
+=== mode=plain ===
+SafeDep pmg dev (abcdef1) — SafeDep package manager guard
+Colors — semantic text helpers
+[INFO] Info message
+[OK] Success message
+[WARN] Warning message
+[ERR] Error message
+Badges — severity + semantic roles
+Icon set — Unicode / ASCII / Agent side-by-side
+Table — severity report with pre-styled Badge cells
+Diff — naive unified diff with colored +/-
+Console — value-typed escape hatch
+[INFO] this goes to the global writer in the global mode
+Renderable — custom types dispatched through tui.Print
+lodash@4.17.0 — High: upgrade to 4.17.21
+left-pad@1.0.0 — Low: no action required
+
+=== mode=agent ===
+tool=pmg version=dev (abcdef1) tagline="SafeDep package manager guard"
+Colors — semantic text helpers
+INFO: Info message
+OK: Success message
+WARN: Warning message
+ERR: Error message
+Badges — severity + semantic roles
+Icon set — Unicode / ASCII / Agent side-by-side
+Table — severity report with pre-styled Badge cells
+Diff — naive unified diff with colored +/-
+Console — value-typed escape hatch
+INFO: this goes to the global writer in the global mode
+Renderable — custom types dispatched through tui.Print
+lodash@4.17.0 — High: upgrade to 4.17.21
+left-pad@1.0.0 — Low: no action required

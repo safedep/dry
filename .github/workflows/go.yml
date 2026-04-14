@@ -55,3 +55,6 @@ jobs:
         SANDBOX_ENABLE_E2E_TEST: true
         TEST_DOCKER_SANDBOX_SOCKET_PATH: /var/run/docker.sock
 
+    - name: TUI discipline checks
+      run: bash scripts/check-tui-discipline.sh
+

@@ -1,7 +1,7 @@
 // tui/output/export_test.go
 //
 // Test-only helpers for the output package. Only compiled during `go test`
-// and only visible to tests in this package (output_test).
+// and only visible to tests in this package (output).
 package output
 
 import "os"

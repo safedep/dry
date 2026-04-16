@@ -3,6 +3,7 @@ package spinner
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ func TestSpinnerPlainPrintsStartAndStop(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
-	defer output.SetWriters(buf, buf) // restore to a valid writer
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	s := New("scanning")
 	s.Start()
@@ -35,6 +36,7 @@ func TestSpinnerStatusUpdatesLabel(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	s := New("resolving")
 	s.Start()
@@ -51,6 +53,7 @@ func TestSpinnerAgentModeSkipsAnimation(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	s := New("scanning")
 	s.Start()
@@ -71,6 +74,7 @@ func TestSpinnerFailUsesErrorPrefix(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	s := New("scanning")
 	s.Start()

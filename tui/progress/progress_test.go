@@ -3,6 +3,7 @@ package progress
 
 import (
 	"bytes"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,6 +17,7 @@ func TestProgressPlainEmitsLines(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	p := New()
 	tr := p.Track("downloading", 100)
@@ -34,6 +36,7 @@ func TestProgressAgentAppendOnly(t *testing.T) {
 
 	buf := &bytes.Buffer{}
 	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
 
 	p := New()
 	tr := p.Track("uploading", 4)

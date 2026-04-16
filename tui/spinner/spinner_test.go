@@ -86,3 +86,23 @@ func TestSpinnerFailUsesErrorPrefix(t *testing.T) {
 	assert.Contains(t, out, "[ERR]")
 	assert.Contains(t, out, "network error")
 }
+
+func TestSpinnerStopWaitsForAnimationExit(t *testing.T) {
+	output.SetMode(output.Rich)
+	defer output.SetMode(output.Rich)
+
+	buf := &bytes.Buffer{}
+	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
+
+	s := New("scanning")
+	s.Start()
+	time.Sleep(frameInterval * time.Millisecond / 2)
+	s.Stop("done")
+
+	select {
+	case <-s.doneCh:
+	default:
+		t.Fatal("Stop returned before animation goroutine exited")
+	}
+}

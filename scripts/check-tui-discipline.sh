@@ -41,7 +41,7 @@ hits=$(grep -rnE 'os\.Std(out|err)' tui/ --include='*.go' 2>/dev/null \
        | grep -vE '_test\.go:' \
        | grep -vE '^tui/output/' || true)
 if [ -n "$hits" ]; then
-  bad "direct os.Stdout/os.Stderr outside tui/output/ (must route through output.Writer()):"
+  bad "direct os.Stdout/os.Stderr outside tui/output/ (must route through output.Stdout() / output.Stderr()):"
   printf '%s\n' "$hits" >&2
 fi
 
@@ -57,22 +57,24 @@ offenders=$(
   grep -rln --include='*.go' -E '\\033\[|\\x1b\[' tui/ 2>/dev/null \
     | grep -vE '_test\.go$' || true
 )
-for f in $offenders; do
-  awk '
-    /ok-raw-ansi/ { allowed_until = NR + 3 }
-    /\\033\[|\\x1b\[/ {
-      if (NR > allowed_until) {
-        printf "%s:%d: %s\n", FILENAME, NR, $0
+ansi_hits=$(
+  for f in $offenders; do
+    awk '
+      /ok-raw-ansi/ { allowed_until = NR + 3 }
+      /\\033\[|\\x1b\[/ {
+        if (NR > allowed_until) {
+          printf "%s:%d: %s\n", FILENAME, NR, $0
+        }
       }
-    }
-  ' "$f"
-done | {
-  read -r first || exit 0
+    ' "$f"
+  done
+)
+if [ -n "$ansi_hits" ]; then
+  first=$(printf '%s\n' "$ansi_hits" | sed -n '1p')
   bad "hand-constructed ANSI escape not allowlisted (add '// ok-raw-ansi: <reason>' within 3 lines above):"
   echo "$first" >&2
-  cat >&2
-  fail=1
-}
+  printf '%s\n' "$ansi_hits" | sed -n '2,$p' >&2
+fi
 
 # ---------------------------------------------------------------------------
 # 4. Race tests.

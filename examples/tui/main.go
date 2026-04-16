@@ -4,10 +4,11 @@
 // backend for CI (via go test ./examples/tui).
 //
 // Components demoed as each phase lands:
-//   Phase 3: colors, icons, showcase  (done)
-//   Phase 4: banner, diff             (pending)
-//   Phase 5: table, spinner, progress (pending)
-//   Phase 6: prompt                   (pending)
+//
+//	Phase 3: colors, icons, showcase  (done)
+//	Phase 4: banner, diff             (done)
+//	Phase 5: table, spinner, progress (done)
+//	Phase 6: prompt                   (done)
 //
 // Run `go run ./examples/tui -h` for usage.
 package main

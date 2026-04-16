@@ -13,10 +13,10 @@ import (
 
 // Info returns a styled "info"-role string: colored+iconned in Rich,
 // ASCII-iconned in Plain, agent-prefixed in Agent.
-func Info(s string) string    { return render(icon.KeyInfo, theme.RoleInfo, false, s) }
-func Success(s string) string { return render(icon.KeySuccess, theme.RoleSuccess, false, s) }
-func Warning(s string) string { return render(icon.KeyWarning, theme.RoleWarning, false, s) }
-func Error(s string) string   { return render(icon.KeyError, theme.RoleError, false, s) }
+func Info(s string) string    { return render(icon.KeyInfo, theme.RoleInfo, s) }
+func Success(s string) string { return render(icon.KeySuccess, theme.RoleSuccess, s) }
+func Warning(s string) string { return render(icon.KeyWarning, theme.RoleWarning, s) }
+func Error(s string) string   { return render(icon.KeyError, theme.RoleError, s) }
 
 // Faint returns muted text with no icon prefix.
 func Faint(s string) string {
@@ -87,7 +87,7 @@ func badgeBgFor(r theme.Role) theme.Role {
 }
 
 // render is the shared implementation for Info/Success/Warning/Error.
-func render(k icon.IconKey, r theme.Role, _ bool, text string) string {
+func render(k icon.IconKey, r theme.Role, text string) string {
 	mode := output.CurrentMode()
 	ic, _ := theme.Default().Icons().Get(k)
 	glyph := ic.Resolve(mode)

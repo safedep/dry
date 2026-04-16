@@ -25,6 +25,15 @@ func TestSetDefault(t *testing.T) {
 	assert.Equal(t, "safedep", Default().Name())
 }
 
+func TestSetDefaultNilPanics(t *testing.T) {
+	resetDefaultForTest()
+
+	assert.PanicsWithValue(t, "theme.SetDefault: nil Theme", func() {
+		SetDefault(nil)
+	})
+	assert.Equal(t, "safedep", Default().Name())
+}
+
 func TestDefaultConcurrentReadWrite(t *testing.T) {
 	resetDefaultForTest()
 

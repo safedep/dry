@@ -19,6 +19,9 @@ func Default() Theme {
 // SetDefault replaces the global Theme. Typical usage: called once at program
 // startup before any output is emitted. Goroutine-safe.
 func SetDefault(t Theme) {
+	if t == nil {
+		panic("theme.SetDefault: nil Theme")
+	}
 	defaultMu.Lock()
 	def = t
 	defaultMu.Unlock()

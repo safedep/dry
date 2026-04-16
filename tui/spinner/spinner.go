@@ -23,6 +23,7 @@ type Spinner struct {
 	mu      sync.Mutex
 	label   string
 	stopCh  chan struct{}
+	doneCh  chan struct{}
 	sigCh   chan os.Signal
 	running bool
 	mode    output.Mode
@@ -45,6 +46,7 @@ func (s *Spinner) Start() {
 	s.mode = output.CurrentMode()
 	s.running = true
 	s.stopCh = make(chan struct{})
+	s.doneCh = nil
 	s.startTS = time.Now()
 	s.mu.Unlock()
 
@@ -52,6 +54,9 @@ func (s *Spinner) Start() {
 
 	switch s.mode {
 	case output.Rich:
+		s.mu.Lock()
+		s.doneCh = make(chan struct{})
+		s.mu.Unlock()
 		go s.animate()
 	case output.Plain:
 		fmt.Fprintf(output.Stderr(), "%s...\n", s.label)
@@ -102,6 +107,7 @@ func (s *Spinner) stop(richLine func() string, plainLine func() string, agentSta
 	}
 	s.running = false
 	stopCh := s.stopCh
+	doneCh := s.doneCh
 	mode := s.mode
 	label := s.label
 	s.mu.Unlock()
@@ -110,6 +116,9 @@ func (s *Spinner) stop(richLine func() string, plainLine func() string, agentSta
 	// signal goroutine tries to read from a closed channel.
 	s.uninstallSignalHandler()
 	close(stopCh)
+	if doneCh != nil {
+		<-doneCh
+	}
 
 	switch mode {
 	case output.Rich:
@@ -125,6 +134,7 @@ func (s *Spinner) stop(richLine func() string, plainLine func() string, agentSta
 func (s *Spinner) animate() {
 	t := time.NewTicker(frameInterval * time.Millisecond)
 	defer t.Stop()
+	defer close(s.doneCh)
 
 	pal := theme.Default().Palette()
 	c, _ := pal.ColorByRole(theme.RoleBrandPrimary)

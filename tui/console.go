@@ -86,10 +86,10 @@ func (c *Console) renderLine(r lineRole, text string) string {
 	return consoleRender(c.theme, c.mode, r, text)
 }
 
-// consoleRender mirrors style.render using explicit (theme, mode) — no globals.
-// Kept small: Console is a testing seam, so we do the minimum to produce
-// equivalent output. If Console grows to need the full style API, refactor
-// style.render to take (theme, mode) and call it here.
+// consoleRender intentionally mirrors the package helpers' icon/prefix
+// behavior using explicit (theme, mode). Console is primarily a testing seam,
+// so this avoids reaching back into global mode/theme state without promising
+// byte-for-byte parity with the richer style package internals.
 func consoleRender(t theme.Theme, m output.Mode, r lineRole, text string) string {
 	ic, _ := t.Icons().Get(iconKeyForLine(r))
 	glyph := ic.Resolve(m)

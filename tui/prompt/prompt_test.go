@@ -48,6 +48,12 @@ func TestConfirmExplicitNo(t *testing.T) {
 	assert.False(t, got)
 }
 
+func TestConfirmInvalidThenValid(t *testing.T) {
+	got, err := confirmFromReader(strings.NewReader("maybe\nn\n"), "Proceed?", true)
+	assert.NoError(t, err)
+	assert.False(t, got)
+}
+
 func TestSelectByIndex(t *testing.T) {
 	got, err := selectFromReader(strings.NewReader("2\n"), "Env", []string{"dev", "staging", "prod"})
 	assert.NoError(t, err)

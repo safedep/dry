@@ -1,5 +1,5 @@
 
-=== mode=plain ===
+=== mode=plain stderr ===
 SafeDep pmg dev (abcdef1) — SafeDep package manager guard
 Colors — semantic text helpers
 [INFO] Info message
@@ -16,7 +16,40 @@ Renderable — custom types dispatched through tui.Print
 lodash@4.17.0 — High: upgrade to 4.17.21
 left-pad@1.0.0 — Low: no action required
 
-=== mode=agent ===
+=== mode=plain stdout ===
+
+  [Critical]    [High]    [Medium]    [Low]    [Info]    [Success]  
+Key          Rich       Plain      Agent     
+---          ----       -----      -----     
+Success      ✓          [OK]       OK:        
+Error        ✗          [ERR]      ERR:       
+Warning      ⚠          [WARN]     WARN:      
+Info         i          [INFO]     INFO:      
+Bullet       •          *          -          
+Arrow        ›          >          >          
+┌──────────┬─────────┬────────────┐
+│ Package  │ Version │ Severity   │
+├──────────┼─────────┼────────────┤
+│ lodash   │ 4.17.0  │ [High]     │
+│ minimist │ 1.2.0   │ [Critical] │
+│ left-pad │ 1.0.0   │ [Low]      │
+└──────────┴─────────┴────────────┘
+ line one
+-line two
++line TWO
+ line three
+-line four
++line four updated
+
+Global tui.Info (default routing):
+
+Console with forced Agent mode + captured buffer:
+INFO: captured; agent mode regardless of global
+OK: also captured
+
+(Global state was not touched — Info/Success above wrote to buf, not stderr.)
+
+=== mode=agent stderr ===
 tool=pmg version=dev (abcdef1) tagline="SafeDep package manager guard"
 Colors — semantic text helpers
 INFO: Info message
@@ -32,3 +65,36 @@ INFO: this goes to the global writer in the global mode
 Renderable — custom types dispatched through tui.Print
 lodash@4.17.0 — High: upgrade to 4.17.21
 left-pad@1.0.0 — Low: no action required
+
+=== mode=agent stdout ===
+
+  [Critical]    [High]    [Medium]    [Low]    [Info]    [Success]  
+Key          Rich       Plain      Agent     
+---          ----       -----      -----     
+Success      ✓          [OK]       OK:        
+Error        ✗          [ERR]      ERR:       
+Warning      ⚠          [WARN]     WARN:      
+Info         i          [INFO]     INFO:      
+Bullet       •          *          -          
+Arrow        ›          >          >          
+                                   
+  Package    Version   Severity    
+                                   
+  lodash     4.17.0    [High]      
+  minimist   1.2.0     [Critical]  
+  left-pad   1.0.0     [Low]       
+                                   
+ line one
+-line two
++line TWO
+ line three
+-line four
++line four updated
+
+Global tui.Info (default routing):
+
+Console with forced Agent mode + captured buffer:
+INFO: captured; agent mode regardless of global
+OK: also captured
+
+(Global state was not touched — Info/Success above wrote to buf, not stderr.)

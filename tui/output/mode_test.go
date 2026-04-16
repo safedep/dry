@@ -22,6 +22,9 @@ func TestAutoDetectMode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			for _, k := range []string{"CI", "TERM", "SAFEDEP_OUTPUT", "CLAUDE_CODE", "ANTHROPIC_AGENT"} {
+				t.Setenv(k, "")
+			}
 			for k, v := range tc.env {
 				t.Setenv(k, v)
 			}

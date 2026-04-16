@@ -40,6 +40,14 @@ go run ./examples/tui -h                  # flags + env var reference
 All implemented: `colors`, `icons`, `console`, `renderable`, `banner`,
 `diff`, `table`, `spinner`, `progress`, `prompt`, `all`.
 
+For a more realistic consumer flow that mixes banner/chatter on `stderr` with
+report output on `stdout`:
+
+```bash
+go run ./examples/tui-playground --mode=plain
+./scripts/explore-tui-playground.sh agent
+```
+
 ## Output modes — what each tool should expect
 
 The library picks one of three modes per call, based on environment:

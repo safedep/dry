@@ -62,26 +62,30 @@ func promptFromReader(r io.Reader, label string) (string, error) {
 }
 
 func confirmFromReader(r io.Reader, label string, defaultYes bool) (bool, error) {
+	br := bufio.NewReader(r)
 	suffix := "[y/N]"
 	if defaultYes {
 		suffix = "[Y/n]"
 	}
-	fmt.Fprintf(output.Stderr(), "%s %s: ", label, suffix)
+	for {
+		fmt.Fprintf(output.Stderr(), "%s %s: ", label, suffix)
 
-	line, err := readLine(r)
-	if err != nil {
-		return false, err
+		line, err := readLineFromBuf(br)
+		if err != nil {
+			return false, err
+		}
+		line = strings.TrimSpace(strings.ToLower(line))
+		switch line {
+		case "":
+			return defaultYes, nil
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		default:
+			fmt.Fprintln(output.Stderr(), "invalid choice; please answer y or n")
+		}
 	}
-	line = strings.TrimSpace(strings.ToLower(line))
-	switch line {
-	case "":
-		return defaultYes, nil
-	case "y", "yes":
-		return true, nil
-	case "n", "no":
-		return false, nil
-	}
-	return defaultYes, nil
 }
 
 func selectFromReader(r io.Reader, label string, choices []string) (string, error) {

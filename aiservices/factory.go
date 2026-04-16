@@ -3,6 +3,8 @@ package aiservices
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -28,21 +30,46 @@ func WithResponseSchema(schema *openapi3.Schema) LLMProviderBuilderOption {
 	}
 }
 
-// CreateProviderFromEnv creates an LLMProvider based on environment variables.
-// It returns an error if the provider cannot be created.
+// CreateLLMProviderFromEnv creates an LLMProvider based on environment variables.
+//
+// env vars:
+//
+//	AISERVICES_LLM_PROVIDER — one of: google-vertex, anthropic, default to vertex ai
+//
+// For "anthropic":
+//
+//	 For AWS Bedrock:
+//
+//		AISERVICES_ANTHROPIC_USE_BEDROCK=true   — use AWS Bedrock backend
+//		AISERVICES_AWS_BEDROCK_REGION         — required for Bedrock
+//		AISERVICES_AWS_BEDROCK_ACCESS_KEY     — optional (falls back to credential chain)
+//		AISERVICES_AWS_BEDROCK_SECRET_ACCESS_KEY
+//		AISERVICES_AWS_BEDROCK_SESSION_TOKEN
+//		AISERVICES_AWS_BEDROCK_PROFILE
+//
+//	 For Anthropic Cloud:
+//
+//		AISERVICES_ANTHROPIC_USE_BEDROCK=false  — use direct Anthropic API backend (default)
+//		AISERVICES_ANTHROPIC_API_KEY          — required for direct API
+//		AISERVICES_ANTHROPIC_BASE_URL         — optional custom endpoint
+//
+//	 Shared optional tuning (apply to both backends):
+//
+//		AISERVICES_ANTHROPIC_MAX_TOKENS              — max response tokens (default: 8192)
+//		AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS  — thinking budget for reasoning models (default: 1024)
 func CreateLLMProviderFromEnv(opts ...LLMProviderBuilderOption) (LLMProvider, error) {
 	providerType := os.Getenv("AISERVICES_LLM_PROVIDER")
 	switch providerType {
 	case aiServicesLLMProviderGoogleVertexAI:
 		return createVertexAIProvider(opts...)
+	case aiServicesLLMProviderAnthropic:
+		return createAnthropicProvider(opts...)
 	case aiServicesLLMProviderOpenAI:
 		return nil, fmt.Errorf("provider not supported: OpenAI")
-	case aiServicesLLMProviderAnthropic:
-		return nil, fmt.Errorf("provider not supported: Anthropic")
 	case aiServicesLLMProviderGoogleGemini:
 		return nil, fmt.Errorf("provider not supported: Google")
 	default:
-		// We only support Vertex AI for now.
+		// Default to vertex AI for backward compatibility
 		// But this is where we would add support for other providers in the future.
 		return createVertexAIProvider(opts...)
 	}
@@ -72,6 +99,64 @@ func createVertexAIProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvide
 	}
 
 	return NewGoogleVertexAIModelProvider(config)
+}
+
+func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvider, error) {
+	opts := builderOptionsFromOpts(builderOpts...)
+	if opts.responseSchema != nil {
+		return nil, fmt.Errorf("WithResponseSchema is not supported for the Anthropic provider")
+	}
+
+	config := AnthropicModelConfig{
+		UseBedrock: strings.EqualFold(os.Getenv("AISERVICES_ANTHROPIC_USE_BEDROCK"), "true"),
+	}
+
+	if config.UseBedrock {
+		config.Region = os.Getenv("AISERVICES_AWS_BEDROCK_REGION")
+		if config.Region == "" {
+			return nil, fmt.Errorf("missing required environment variable for Anthropic Bedrock backend: " +
+				"AISERVICES_AWS_BEDROCK_REGION must be set")
+		}
+		// Optional explicit credentials. When nil the AWS default credential chain is used.
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_ACCESS_KEY"); v != "" {
+			config.AccessKey = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_SECRET_ACCESS_KEY"); v != "" {
+			config.SecretAccessKey = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_SESSION_TOKEN"); v != "" {
+			config.SessionToken = &v
+		}
+		if v := os.Getenv("AISERVICES_AWS_BEDROCK_PROFILE"); v != "" {
+			config.Profile = &v
+		}
+	} else {
+		config.APIKey = os.Getenv("AISERVICES_ANTHROPIC_API_KEY")
+		if config.APIKey == "" {
+			return nil, fmt.Errorf("missing required environment variable for Anthropic API backend: " +
+				"AISERVICES_ANTHROPIC_API_KEY must be set")
+		}
+		if baseURL := os.Getenv("AISERVICES_ANTHROPIC_BASE_URL"); baseURL != "" {
+			config.BaseURL = &baseURL
+		}
+	}
+
+	if v := os.Getenv("AISERVICES_ANTHROPIC_MAX_TOKENS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for AISERVICES_ANTHROPIC_MAX_TOKENS: %w", err)
+		}
+		config.MaxTokens = &n
+	}
+	if v := os.Getenv("AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for AISERVICES_ANTHROPIC_THINKING_BUDGET_TOKENS: %w", err)
+		}
+		config.ThinkingBudgetTokens = &n
+	}
+
+	return NewAnthropicModelProvider(config)
 }
 
 func builderOptionsFromOpts(opts ...LLMProviderBuilderOption) *llmProviderBuilderOptions {

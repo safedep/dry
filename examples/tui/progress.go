@@ -18,11 +18,13 @@ func demoProgress() {
 
 	for i := 0; i < 5; i++ {
 		dl.Increment(20)
-		if i < 5 {
-			vf.Increment(10) // total 50 over 5 ticks
+		if i < 4 {
+			vf.Increment(10)
+		}
+		if i == 3 {
+			vf.Done()
 		}
 		time.Sleep(80 * time.Millisecond)
 	}
 	dl.Done()
-	vf.Done()
 }

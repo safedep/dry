@@ -32,13 +32,14 @@ func TestErrorExitPrintsAndExits(t *testing.T) {
 
 	exited := -1
 	exitFn = func(code int) { exited = code; panic("exit") }
-	defer func() { exitFn = defaultExit }()
+	t.Cleanup(func() { exitFn = defaultExit })
 
-	defer func() { _ = recover() }()
+	defer func() {
+		assert.Equal(t, "exit", recover())
+		assert.Equal(t, 1, exited)
+		assert.Contains(t, buf.String(), "boom")
+	}()
 	ErrorExit(errors.New("boom"))
-
-	assert.Equal(t, 1, exited)
-	assert.Contains(t, buf.String(), "boom")
 }
 
 func TestErrorExitWithCode(t *testing.T) {
@@ -46,12 +47,13 @@ func TestErrorExitWithCode(t *testing.T) {
 
 	exited := -1
 	exitFn = func(code int) { exited = code; panic("exit") }
-	defer func() { exitFn = defaultExit }()
+	t.Cleanup(func() { exitFn = defaultExit })
 
-	defer func() { _ = recover() }()
+	defer func() {
+		assert.Equal(t, "exit", recover())
+		assert.Equal(t, 42, exited)
+	}()
 	ErrorExitWithCode(fmt.Errorf("disk"), 42)
-
-	assert.Equal(t, 42, exited)
 }
 
 func TestErrorExitVerboseShowsStack(t *testing.T) {
@@ -59,11 +61,12 @@ func TestErrorExitVerboseShowsStack(t *testing.T) {
 	output.SetVerbosity(output.Verbose)
 
 	exitFn = func(code int) { panic("exit") }
-	defer func() { exitFn = defaultExit }()
+	t.Cleanup(func() { exitFn = defaultExit })
 
-	defer func() { _ = recover() }()
+	defer func() {
+		assert.Equal(t, "exit", recover())
+		assert.Contains(t, buf.String(), "wrapped")
+		assert.Contains(t, buf.String(), "inner")
+	}()
 	ErrorExit(fmt.Errorf("wrapped: %w", errors.New("inner")))
-
-	assert.Contains(t, buf.String(), "wrapped")
-	assert.Contains(t, buf.String(), "inner")
 }

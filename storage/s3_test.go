@@ -83,6 +83,8 @@ func TestNewS3StorageDriverRequiresBucket(t *testing.T) {
 //     against a shared bucket don't collide.
 //   - Each case cleans up its own object in t.Cleanup.
 //   - Subtests run with t.Parallel() to get reasonable wall time.
+//
+// Checkout docs/s3_test_minio.md for running integration tests with MinIO
 func TestS3StorageDriver_Integration(t *testing.T) {
 	if os.Getenv("SAFEDEP_S3_INTEGRATION_TEST") != "1" {
 		t.Skip("integration test skipped; set SAFEDEP_S3_INTEGRATION_TEST=1 to run")

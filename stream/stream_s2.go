@@ -12,6 +12,9 @@ import (
 const (
 	// Default basin for SafeDep on S2
 	s2defaultBasin = "safedep-001"
+
+	// https://s2.dev/docs/limits
+	s2MaxAppendBatchSize = 1000
 )
 
 // S2BasinResolver defines a contract for resolving S2 basin information.
@@ -53,9 +56,7 @@ type S2StreamProviderConfig struct {
 
 func DefaultS2StreamProviderConfig() S2StreamProviderConfig {
 	return S2StreamProviderConfig{
-		ApiKey: os.Getenv("STREAM_PROVIDER_S2_API_KEY"),
-
-		// https://s2.dev/docs/limits
+		ApiKey:          os.Getenv("STREAM_PROVIDER_S2_API_KEY"),
 		AppendBatchSize: 100,
 	}
 }
@@ -74,15 +75,12 @@ func NewS2StreamWriter[T proto.Message](config S2StreamProviderConfig,
 	basinResolver S2BasinResolver,
 	stream Stream, serializer StreamEntitySerializer[T]) (StreamWriter[T], error) {
 
-	// Validations to fail fast
 	if config.ApiKey == "" {
 		return nil, fmt.Errorf("S2 API key is not set")
 	}
 
-	// We need to have reasonable limits on the batch size to avoid
-	// failure at S2 service end
-	if config.AppendBatchSize > 100 {
-		return nil, fmt.Errorf("batch size must be less than or equal to 100")
+	if config.AppendBatchSize == 0 || config.AppendBatchSize > s2MaxAppendBatchSize {
+		return nil, fmt.Errorf("batch size must be between 1 and %d", s2MaxAppendBatchSize)
 	}
 
 	basin, err := basinResolver.GetBasin(context.Background(), stream.Namespace, stream.TenantID)
@@ -95,10 +93,8 @@ func NewS2StreamWriter[T proto.Message](config S2StreamProviderConfig,
 		return nil, fmt.Errorf("failed to get stream ID: %w", err)
 	}
 
-	streamClient, err := s2.NewStreamClient(basin, streamId, config.ApiKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create S2 stream client: %w", err)
-	}
+	client := s2.New(config.ApiKey, nil)
+	streamClient := client.Basin(basin).Stream(s2.StreamName(streamId))
 
 	return &s2StreamWriter[T]{
 		streamClient: streamClient,
@@ -112,13 +108,16 @@ func (s *s2StreamWriter[T]) AppendOne(ctx context.Context, record *StreamEntity[
 }
 
 func (s *s2StreamWriter[T]) AppendMany(ctx context.Context, records []*StreamEntity[T]) error {
-	// We create an empty batch and append the records to it.
-	appendRecordBatch, _ := s2.NewAppendRecordBatchWithMaxCapacity(s.config.AppendBatchSize)
-	for _, record := range records {
-		if appendRecordBatch.IsFull() {
-			return fmt.Errorf("failed to append record: batch is full")
-		}
+	if len(records) == 0 {
+		return nil
+	}
 
+	if uint(len(records)) > s.config.AppendBatchSize {
+		return fmt.Errorf("too many records: %d exceeds batch size %d", len(records), s.config.AppendBatchSize)
+	}
+
+	appendRecords := make([]s2.AppendRecord, 0, len(records))
+	for _, record := range records {
 		recordBytes, err := s.serializer.Serialize(record.Record)
 		if err != nil {
 			return fmt.Errorf("failed to serialize record: %w", err)
@@ -129,18 +128,15 @@ func (s *s2StreamWriter[T]) AppendMany(ctx context.Context, records []*StreamEnt
 			headers = append(headers, s2.Header{Name: []byte(k), Value: []byte(v)})
 		}
 
-		if ret := appendRecordBatch.Append(s2.AppendRecord{
+		appendRecords = append(appendRecords, s2.AppendRecord{
 			Headers: headers,
 			Body:    recordBytes,
-		}); !ret {
-			return fmt.Errorf("failed to append record to batch")
-		}
+		})
 	}
 
-	_, err := s.streamClient.Append(ctx, &s2.AppendInput{
-		Records: appendRecordBatch,
-	})
-	if err != nil {
+	if _, err := s.streamClient.Append(ctx, &s2.AppendInput{
+		Records: appendRecords,
+	}); err != nil {
 		return fmt.Errorf("failed to send records: %w", err)
 	}
 

@@ -1,6 +1,6 @@
 # S3 Storage Driver for `dry/storage`
 
-**Status:** Design approved, awaiting implementation plan
+**Status:** Implemented
 **Date:** 2026-04-17
 **Author:** Kunal Singh (with Claude)
 

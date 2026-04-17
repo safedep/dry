@@ -73,6 +73,30 @@ func NewS3StorageDriver(config S3StorageDriverConfig,
 	}
 
 	if d.client == nil {
+		// LoadDefaultConfig walks the SDK's default credential provider
+		// chain in this order (per the AWS SDK for Go V2 developer guide):
+		//
+		//   1. Static env vars (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY /
+		//      AWS_SESSION_TOKEN)
+		//   2. Web Identity Token file (AWS_WEB_IDENTITY_TOKEN_FILE) —
+		//      this is how EKS IRSA / Pod Identity delivers credentials
+		//   3. Shared credentials / config files (~/.aws/{credentials,config})
+		//   4. ECS task role (AWS_CONTAINER_CREDENTIALS_RELATIVE_URI /
+		//      AWS_CONTAINER_CREDENTIALS_FULL_URI)
+		//   5. EC2 instance profile via IMDS (IMDSv2 preferred)
+		//
+		// Result: EC2 instance roles, ECS task roles, and EKS IRSA all
+		// work out-of-the-box — just attach the right IAM role to the
+		// instance / task / service account. Reference:
+		//
+		//   https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-gosdk.html#specifying-credentials
+		//
+		// Caveats:
+		//   - Set AWS_EC2_METADATA_DISABLED=true off-EC2 to skip the
+		//     IMDS probe and avoid a startup delay on non-EC2 hosts.
+		//   - On EKS, prefer IRSA / Pod Identity over the node's IMDS
+		//     role: IRSA scopes credentials to the pod; node IMDS grants
+		//     whatever the underlying EC2 role has.
 		cfg, err := awsconfig.LoadDefaultConfig(d.ctx)
 		if err != nil {
 			return nil, fmt.Errorf("s3 storage adapter: failed to load AWS config: %w", err)

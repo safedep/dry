@@ -106,3 +106,17 @@ func TestSpinnerStopWaitsForAnimationExit(t *testing.T) {
 		t.Fatal("Stop returned before animation goroutine exited")
 	}
 }
+
+func TestWriteCurrentFrameClearsTrailingCharacters(t *testing.T) {
+	buf := &bytes.Buffer{}
+	output.SetWriters(buf, buf)
+	t.Cleanup(func() { output.SetWriters(os.Stdout, os.Stderr) })
+
+	writeCurrentFrame("x", "matching vulnerable packages")
+	writeCurrentFrame("x", "resolving")
+
+	out := buf.String()
+	assert.Contains(t, out, "\r\033[Kx matching vulnerable packages")
+	assert.Contains(t, out, "\r\033[Kx resolving")
+	assert.Equal(t, 2, strings.Count(out, "\r\033[K"))
+}

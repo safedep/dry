@@ -150,10 +150,17 @@ func (s *Spinner) animate() {
 			label := s.label
 			s.mu.Unlock()
 			frame := brailleFrames[idx%len(brailleFrames)]
-			fmt.Fprintf(output.Stderr(), "\r%s %s", st.Render(string(frame)), label)
+			writeCurrentFrame(st.Render(string(frame)), label)
 			idx++
 		}
 	}
+}
+
+func writeCurrentFrame(frame, label string) {
+	// ok-raw-ansi: CR + ED (erase-to-end-of-line) are required for Rich-mode
+	// spinner redraws so a shorter Status() label doesn't leave trailing bytes
+	// from the previous frame on screen.
+	fmt.Fprintf(output.Stderr(), "\r\033[K%s %s", frame, label)
 }
 
 func clearCurrentLine() {

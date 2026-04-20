@@ -73,3 +73,46 @@ func TestEventLoggingMiddleware_CapturesHandlerPanic(t *testing.T) {
 		"panic path should report 500")
 	assert.Equal(t, "/boom", got["http.route"])
 }
+
+func TestEventLoggingMiddleware_DerivesStatusFromHTTPError(t *testing.T) {
+	var buf bytes.Buffer
+	defer drylog.SwapGlobalForTest(&buf)()
+
+	e := echo.New()
+	e.Use(EventLoggingMiddleware())
+	e.GET("/teapot", func(c echo.Context) error {
+		return echo.NewHTTPError(http.StatusTeapot, "no coffee here")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/teapot", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusTeapot, rec.Code)
+
+	var got map[string]any
+	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
+	assert.Equal(t, float64(http.StatusTeapot), got["http.status"],
+		"canonical line should reflect echo.HTTPError.Code even though Echo's default error handler runs after our middleware")
+	assert.Equal(t, "ERROR", got["level"])
+}
+
+func TestEventLoggingMiddleware_DerivesStatusFromGenericError(t *testing.T) {
+	var buf bytes.Buffer
+	defer drylog.SwapGlobalForTest(&buf)()
+
+	e := echo.New()
+	e.Use(EventLoggingMiddleware())
+	e.GET("/oops", func(c echo.Context) error {
+		return assert.AnError
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/oops", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	var got map[string]any
+	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
+	assert.Equal(t, float64(http.StatusInternalServerError), got["http.status"],
+		"non-HTTPError should default to 500")
+}

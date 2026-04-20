@@ -124,6 +124,48 @@ Outside an event scope (startup code, background workers), `Infof` continues to 
 - `EndFunc` is idempotent — calling it a second time is a no-op.
 - `os.Exit` / `log.Fatalf` inside an event **skips** the deferred flush — the canonical line is lost. Prefer returning an error and exiting from `main`, or call `end()` explicitly before exiting.
 
+## Guidance for Canonical Logging
+
+Canonical events work best when they capture *everything you'd want to know about a unit of work* in a single structured row. The patterns below come from running this style in production at scale.
+
+### Scope
+
+- **One event per logical unit of work.** Open `BeginEvent` at a request, message, or command boundary — never inside a loop, never per database call. The whole point is O(1) lines per request.
+- **Don't nest events.** Helper functions called from a handler must accept `ctx` and call `log.Set(ctx, ...)`, not start their own event. Nested `BeginEvent` is rejected by the API and surfaces `nested_begin: true` so misuse is loud.
+- **Own the event at the entry point.** HTTP middleware, async wrapper, and `RunCommand` already do this — handler code should never call `BeginEvent` directly inside a request.
+
+### Attribute design
+
+- **Stable, dotted, lowercase keys.** `user.id`, `db.queries`, `http.status`, `cache.hits`. Pick a key once, keep it forever. A typo makes the field unqueryable.
+- **Prefer semantic conventions.** Match OpenTelemetry attribute names where they exist (`http.method`, `http.status`, `peer.ip`, `db.system`). Easier joins across logs, traces, and metrics.
+- **Primitive values.** Numbers, booleans, short strings. Avoid embedding JSON blobs or stringified arrays — they defeat indexing and inflate row size.
+- **High-cardinality is fine on the event, dangerous as a bucket.** A `user.id` per row is normal; computing per-user counters from logs is not. Use proper metrics for cardinality-sensitive aggregations.
+
+### What to record
+
+- **Always:** `request_id` (or equivalent correlation key), inputs that shape the response (path, method, key params), outcome (status, error class), and a duration.
+- **Often useful:** counts of expensive work (`db.queries`, `external_calls`, `cache.hits`/`cache.misses`), feature flags consumed, auth/tenant identity, downstream service latencies.
+- **Errors:** call `log.Err(ctx, err)` for known failure modes — it sets the canonical line's level to `error` and adds the `error` attribute. Don't `log.Errorf` separately; that emits a second line.
+- **Counters over repeated calls.** Use `log.Counter(ctx, "db.queries", 1)` in a loop, not `Set` (which overwrites and isn't atomic).
+
+### What NOT to record
+
+- **No secrets.** Credentials, tokens, full request/response bodies, raw PII. Redact at the call site; the canonical line is structured enough that nothing should sneak in unaudited.
+- **No intermediate progress.** Don't sprinkle `log.Set(ctx, "step", "did X")` and overwrite it through the request — the canonical line shows only the final value. If you need a trail, use spans/traces.
+- **No noisy debug crumbs.** `log.Debugf` calls inside an event still emit standalone lines and defeat the "one row per request" model. Convert them to attributes or delete them.
+
+### Migration
+
+- **Migrate hot paths first.** A request that today produces 30 `Infof` lines is the highest-value candidate. Replace each `Infof` with a `Set` (or just delete it).
+- **Keep classic for non-request-shaped code.** Startup, background daemons, and one-off scripts have no canonical event scope; `Infof` is correct there.
+- **Don't mix.** Inside an event scope, prefer `log.Set` exclusively. If you have to log a one-off line during a request (e.g. a noisy library you don't control), accept the standalone line and don't double-log the same fact as both an attr and a message.
+
+### Operational
+
+- **Query first, design second.** Before adding an attribute, ask "what dashboard or alert needs this?" If the answer is "none yet," skip it — adding fields later is cheap.
+- **Treat the canonical line as a public schema.** Renaming `http.status` to `status_code` breaks every dashboard and alert downstream. Pick names you can live with.
+- **Sample at the source if you must.** v1 has no built-in sampling. If volume becomes a problem, drop entire events at the entry-point middleware (e.g. health checks), not individual fields.
+
 ## Choosing Between Classic and Canonical
 
 Use **canonical** for:

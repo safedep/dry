@@ -34,8 +34,9 @@ jobs:
       run: |
         cd /tmp
         wget https://downloads.nestybox.com/sysbox/releases/v0.7.0/sysbox-ce_0.7.0-0.linux_amd64.deb
-        sudo apt-get install jq
-        sudo apt-get install ./sysbox-ce_0.7.0-0.linux_amd64.deb
+        sudo apt-get update
+        sudo apt-get install -y jq
+        sudo apt-get install -y ./sysbox-ce_0.7.0-0.linux_amd64.deb
 
     # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
     - name: Check sysbox status

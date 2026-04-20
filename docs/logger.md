@@ -129,10 +129,12 @@ Outside an event scope (startup code, background workers), these calls emit stan
 ## Choosing Between Classic and Canonical
 
 Use **canonical** for:
+
 - HTTP APIs, async consumers, CLI commands — anything request-shaped.
 - Services with high QPS where per-event log volume is a cost concern.
 - Observability queries that want one row per request.
 
 Stick with **classic** for:
+
 - Startup logs, background daemons, code paths that aren't request-shaped.
 - Services that haven't migrated yet. Both modes coexist; migrate on your own schedule.

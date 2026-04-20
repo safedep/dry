@@ -43,8 +43,6 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 		router.Logger.SetLevel(log.DEBUG)
 	}
 
-	// middleware.Logger() intentionally omitted: canonical events cover
-	// per-request access logging.
 	router.Use(middleware.Recover())
 	router.Use(middleware.RequestID())
 	router.Use(otelecho.Middleware(config.ServiceName))

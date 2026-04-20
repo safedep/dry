@@ -31,6 +31,7 @@ func InitSlogLogger(name, env string) {
 	if err != nil {
 		panic(err)
 	}
+
 	SetGlobal(logger)
 }
 
@@ -48,6 +49,7 @@ func newSlogLogger(cfg slogLoggerConfig) (Logger, error) {
 	if cfg.logStdout {
 		writers = append(writers, slogWriterSpec{w: os.Stdout, format: cfg.resolvedFormat()})
 	}
+
 	if cfg.logFile != "" {
 		file := &lumberjack.Logger{
 			Filename:   cfg.logFile,
@@ -55,6 +57,7 @@ func newSlogLogger(cfg slogLoggerConfig) (Logger, error) {
 			MaxBackups: 3,
 			MaxAge:     7,
 		}
+
 		writers = append(writers, slogWriterSpec{w: file, format: "json"})
 	}
 
@@ -91,10 +94,12 @@ func (c slogLoggerConfig) resolvedFormat() string {
 	case "text", "json":
 		return c.format
 	}
+
 	switch c.env {
 	case "", "dev", "development", "local":
 		return "text"
 	}
+
 	return "json"
 }
 
@@ -108,6 +113,7 @@ func (s slogWriterSpec) build(level slog.Level) slog.Handler {
 	if s.format == "text" {
 		return newDevHandler(s.w, opts)
 	}
+
 	return slog.NewJSONHandler(s.w, opts)
 }
 
@@ -138,17 +144,22 @@ type slogLoggerWrapper struct {
 func (z *slogLoggerWrapper) Infof(msg string, args ...any) {
 	z.log(slog.LevelInfo, "info", msg, args...)
 }
+
 func (z *slogLoggerWrapper) Warnf(msg string, args ...any) {
 	z.log(slog.LevelWarn, "warn", msg, args...)
 }
+
 func (z *slogLoggerWrapper) Errorf(msg string, args ...any) {
 	z.log(slog.LevelError, "error", msg, args...)
 }
+
 func (z *slogLoggerWrapper) Debugf(msg string, args ...any) {
 	z.log(slog.LevelDebug, "debug", msg, args...)
 }
+
 func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
 	formatted := fmt.Sprintf(msg, args...)
+
 	// If inside an active event, flush it first so the fatal message
 	// and accumulated state reach the log before os.Exit kills deferred
 	// EndFuncs.
@@ -160,11 +171,13 @@ func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
 		if !wasEnded {
 			ev.ended = true
 		}
+
 		ev.mu.Unlock()
 		if !wasEnded {
 			z.emitCanonical(ev)
 		}
 	}
+
 	z.logger.Log(context.Background(), slog.LevelError, formatted)
 	os.Exit(1)
 }
@@ -174,6 +187,7 @@ func (z *slogLoggerWrapper) With(args map[string]any) Logger {
 	for k, v := range args {
 		attrs = append(attrs, slog.Any(k, v))
 	}
+
 	return &slogLoggerWrapper{
 		logger:          z.logger.With(attrs...),
 		captureMessages: z.captureMessages,
@@ -192,14 +206,17 @@ func (z *slogLoggerWrapper) log(level slog.Level, levelName, msg string, args ..
 			}
 			return
 		}
+
 		ev.captureMessage(levelName, formatted)
 		if level == slog.LevelError {
 			ev.mu.Lock()
 			ev.level = slog.LevelError
 			ev.mu.Unlock()
 		}
+
 		return
 	}
+
 	z.logger.Log(context.Background(), level, formatted)
 }
 
@@ -211,6 +228,7 @@ func teeHandler(hs []slog.Handler) slog.Handler {
 	if len(hs) == 1 {
 		return hs[0]
 	}
+
 	return &multiHandler{handlers: hs}
 }
 
@@ -220,8 +238,10 @@ func (m *multiHandler) Enabled(ctx context.Context, l slog.Level) bool {
 			return true
 		}
 	}
+
 	return false
 }
+
 func (m *multiHandler) Handle(ctx context.Context, r slog.Record) error {
 	var firstErr error
 	for _, h := range m.handlers {
@@ -234,6 +254,7 @@ func (m *multiHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 	return firstErr
 }
+
 func (m *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	out := make([]slog.Handler, len(m.handlers))
 	for i, h := range m.handlers {
@@ -241,6 +262,7 @@ func (m *multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	}
 	return &multiHandler{handlers: out}
 }
+
 func (m *multiHandler) WithGroup(name string) slog.Handler {
 	out := make([]slog.Handler, len(m.handlers))
 	for i, h := range m.handlers {
@@ -248,7 +270,6 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 	}
 	return &multiHandler{handlers: out}
 }
-
 
 // canonicalEmitter is the internal hook used by BeginEvent's EndFunc to
 // emit the canonical record. Implementations are the slog wrapper (real)
@@ -266,6 +287,7 @@ type canonicalEmitter interface {
 // Intended for use in package tests outside of log/.
 func SwapGlobalForTest(t testing.TB, w io.Writer) {
 	t.Helper()
+
 	prev := globalLogger
 	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug})
 	logger := slog.New(handler).With(
@@ -273,11 +295,13 @@ func SwapGlobalForTest(t testing.TB, w io.Writer) {
 		slog.String(loggerKeyServiceEnv, "test"),
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
+
 	globalLogger = &slogLoggerWrapper{
 		logger:          logger,
 		captureMessages: true,
 		devMode:         false,
 	}
+
 	t.Cleanup(func() { globalLogger = prev })
 }
 
@@ -291,15 +315,19 @@ func (z *slogLoggerWrapper) emitCanonical(ev *Event) {
 		slog.String("event", ev.name),
 		slog.Float64("duration_ms", float64(time.Since(ev.startedAt).Microseconds())/1000.0),
 	)
+
 	for k, v := range ev.attrs {
 		attrs = append(attrs, slog.Any(k, v))
 	}
+
 	if len(ev.messages) > 0 {
 		attrs = append(attrs, slog.Any("messages", ev.messages))
 	}
+
 	if ev.messagesDropped > 0 {
 		attrs = append(attrs, slog.Int("messages_dropped", ev.messagesDropped))
 	}
+
 	level := ev.level
 	ev.mu.Unlock()
 

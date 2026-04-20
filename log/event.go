@@ -84,11 +84,8 @@ func (e *Event) Name() string {
 // BeginEvent starts a canonical event scope bound to the returned
 // context. Call the returned EndFunc (typically via defer) to flush the
 // event as a single log record. A nil ctx is treated as
-// context.Background().
+// context.Background() (normalized by withContext).
 func BeginEvent(ctx context.Context, name string, opts ...EventOption) (context.Context, EndFunc) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if existing := fromContext(ctx); existing != nil {
 		existing.mu.Lock()
 		existing.attrs["nested_begin"] = true

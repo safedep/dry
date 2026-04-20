@@ -144,7 +144,7 @@ func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
 }
 
 func (z *slogLoggerWrapper) With(args map[string]any) Logger {
-	attrs := make([]any, 0, len(args)*2)
+	attrs := make([]any, 0, len(args))
 	for k, v := range args {
 		attrs = append(attrs, slog.Any(k, v))
 	}

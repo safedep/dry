@@ -15,5 +15,8 @@ func fromContext(ctx context.Context) *Event {
 }
 
 func withContext(ctx context.Context, ev *Event) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, eventContextKey, ev)
 }

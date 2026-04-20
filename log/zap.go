@@ -152,9 +152,14 @@ func (z *zapLoggerWrapper) emitCanonical(ev *Event) {
 		fields = append(fields, zap.Any(k, v))
 	}
 
-	if snap.level >= slog.LevelError {
+	switch {
+	case snap.level >= slog.LevelError:
 		z.logger.Error(snap.name, fields...)
-	} else {
+	case snap.level >= slog.LevelWarn:
+		z.logger.Warn(snap.name, fields...)
+	case snap.level >= slog.LevelInfo:
 		z.logger.Info(snap.name, fields...)
+	default:
+		z.logger.Debug(snap.name, fields...)
 	}
 }

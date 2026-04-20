@@ -12,7 +12,7 @@ import (
 
 func TestRunCommand_HappyPath(t *testing.T) {
 	var buf bytes.Buffer
-	SwapGlobalForTest(t, &buf)
+	defer SwapGlobalForTest(&buf)()
 
 	err := RunCommand(context.Background(), "backfill", func(ctx context.Context) error {
 		Set(ctx, "rows", 10)
@@ -29,7 +29,7 @@ func TestRunCommand_HappyPath(t *testing.T) {
 
 func TestRunCommand_RecordsError(t *testing.T) {
 	var buf bytes.Buffer
-	SwapGlobalForTest(t, &buf)
+	defer SwapGlobalForTest(&buf)()
 
 	err := RunCommand(context.Background(), "broken", func(ctx context.Context) error {
 		return errors.New("nope")

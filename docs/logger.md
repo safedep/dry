@@ -138,3 +138,7 @@ Stick with **classic** for:
 
 - Startup logs, background daemons, code paths that aren't request-shaped.
 - Services that haven't migrated yet. Both modes coexist; migrate on your own schedule.
+
+## References
+
+- <https://stripe.com/blog/canonical-log-lines>

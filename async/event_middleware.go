@@ -8,7 +8,7 @@ import (
 
 // WithEventLogging wraps a MessageHandler so every invocation produces
 // exactly one canonical log line including msg.subject, msg.reply_to,
-// msg.bytes, handler.duration_ms, and any error.
+// msg.bytes, duration_ms, and any error.
 //
 // Opt-in per consumer: callers apply this wrapper when registering
 // a QueueSubscribe callback.

@@ -13,7 +13,7 @@ import (
 
 func TestWithEventLogging_EmitsCanonicalLine(t *testing.T) {
 	var buf bytes.Buffer
-	drylog.SwapGlobalForTest(t, &buf)
+	defer drylog.SwapGlobalForTest(&buf)()
 
 	inner := func(ctx context.Context, data []byte, extra MessageExtra) error {
 		drylog.Set(ctx, "handler.rows", 42)
@@ -36,7 +36,7 @@ func TestWithEventLogging_EmitsCanonicalLine(t *testing.T) {
 
 func TestWithEventLogging_RecordsErr(t *testing.T) {
 	var buf bytes.Buffer
-	drylog.SwapGlobalForTest(t, &buf)
+	defer drylog.SwapGlobalForTest(&buf)()
 
 	inner := func(ctx context.Context, data []byte, extra MessageExtra) error {
 		return errors.New("bad payload")

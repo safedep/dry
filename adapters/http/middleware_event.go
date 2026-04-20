@@ -1,6 +1,8 @@
 package http
 
 import (
+	"net/http"
+
 	echo "github.com/labstack/echo/v4"
 	drylog "github.com/safedep/dry/log"
 )
@@ -26,7 +28,28 @@ func EventLoggingMiddleware() echo.MiddlewareFunc {
 					"peer.ip":     c.RealIP(),
 				}),
 			)
+			// Defers fire LIFO: response attrs are collected first (so they
+			// land on the canonical line even if the handler panics), then
+			// end() flushes the event.
 			defer end()
+			defer func() {
+				resp := c.Response()
+				attrs := map[string]any{
+					"http.status":    resp.Status,
+					"http.bytes_out": resp.Size,
+					"http.bytes_in":  req.ContentLength,
+					"http.route":     c.Path(),
+				}
+				// If a panic is propagating, Echo's outer Recover() hasn't
+				// written the 500 yet — override status to reflect what
+				// the client will receive.
+				if r := recover(); r != nil {
+					attrs["http.status"] = http.StatusInternalServerError
+					drylog.SetAttrs(ctx, attrs)
+					panic(r) // re-panic so end() captures it, then Recover writes 500
+				}
+				drylog.SetAttrs(ctx, attrs)
+			}()
 
 			c.SetRequest(req.WithContext(ctx))
 
@@ -37,14 +60,6 @@ func EventLoggingMiddleware() echo.MiddlewareFunc {
 			c.Set("dry_logger", drylog.With(map[string]any{"request_id": requestID}))
 
 			err := next(c)
-
-			resp := c.Response()
-			drylog.SetAttrs(ctx, map[string]any{
-				"http.status":    resp.Status,
-				"http.bytes_out": resp.Size,
-				"http.bytes_in":  req.ContentLength,
-				"http.route":     c.Path(),
-			})
 			if err != nil {
 				drylog.Err(ctx, err)
 			}

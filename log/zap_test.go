@@ -1,6 +1,7 @@
 package log
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -59,4 +60,24 @@ func TestProductionLoggerToFile(t *testing.T) {
 		assert.Contains(t, string(content), "Test info log message")
 		assert.Contains(t, string(content), "Test debug log message")
 	})
+}
+
+func TestZapWrapper_ImplementsCanonicalEmitter(t *testing.T) {
+	logger, err := newZapLogger("TestSvc", "test", zapLoggerConfig{})
+	assert.NoError(t, err)
+
+	// Compile-time + runtime check that zap participates in canonical
+	// event emission. Without this, BeginEvent would silently no-op for
+	// services that call log.Init() (zap) instead of log.InitSlogLogger.
+	_, ok := logger.(canonicalEmitter)
+	assert.True(t, ok, "zapLoggerWrapper must implement canonicalEmitter")
+
+	prev := globalLogger
+	defer func() { globalLogger = prev }()
+	globalLogger = logger
+
+	_, end := BeginEvent(context.Background(), "test.event")
+	// end() must not panic when zap is the global logger — zap emits the
+	// canonical record as a structured log line.
+	assert.NotPanics(t, func() { end() })
 }

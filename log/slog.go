@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
-	"testing"
 	"time"
 
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -160,10 +159,11 @@ func (z *slogLoggerWrapper) Debugf(msg string, args ...any) {
 func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
 	formatted := fmt.Sprintf(msg, args...)
 
-	// If inside an active event, flush it first so the fatal message
-	// and accumulated state reach the log before os.Exit kills deferred
-	// EndFuncs.
 	if ev := getActiveEvent(); ev != nil {
+		// Inside an active event: flush the canonical line (with the fatal
+		// message attached) before os.Exit kills the deferred EndFunc.
+		// The fatal message is carried on the canonical event as a "fatal"
+		// attr; no second standalone record is emitted.
 		ev.mu.Lock()
 		ev.attrs["fatal"] = formatted
 		ev.level = slog.LevelError
@@ -176,9 +176,12 @@ func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
 		if !wasEnded {
 			z.emitCanonical(ev)
 		}
+		clearActiveEvent()
+	} else {
+		// No active event: emit as a standalone error record.
+		z.logger.Log(context.Background(), slog.LevelError, formatted)
 	}
 
-	z.logger.Log(context.Background(), slog.LevelError, formatted)
 	os.Exit(1)
 }
 
@@ -277,36 +280,6 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 type canonicalEmitter interface {
 	emitCanonical(ev *Event)
 }
-
-// --- test helpers ---------------------------------------------------
-
-// SwapGlobalForTest installs a slog-backed JSON logger that writes to w
-// and registers a t.Cleanup to restore the previous global. Safe under
-// t.Parallel() because cleanup is per-test.
-//
-// Intended for use in package tests outside of log/.
-func SwapGlobalForTest(t testing.TB, w io.Writer) {
-	t.Helper()
-
-	prev := globalLogger
-	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug})
-	logger := slog.New(handler).With(
-		slog.String(loggerKeyServiceName, "test"),
-		slog.String(loggerKeyServiceEnv, "test"),
-		slog.String(loggerKeyLoggerType, "slog"),
-	)
-
-	globalLogger = &slogLoggerWrapper{
-		logger:          logger,
-		captureMessages: true,
-		devMode:         false,
-	}
-
-	t.Cleanup(func() { globalLogger = prev })
-}
-
-// Global returns the current global logger. Exposed for tests.
-func Global() Logger { return globalLogger }
 
 func (z *slogLoggerWrapper) emitCanonical(ev *Event) {
 	ev.mu.Lock()

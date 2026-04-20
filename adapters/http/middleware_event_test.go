@@ -15,7 +15,7 @@ import (
 
 func TestEventLoggingMiddleware_EmitsOneCanonicalLine(t *testing.T) {
 	var buf bytes.Buffer
-	drylog.SwapGlobalForTest(t, &buf)
+	defer drylog.SwapGlobalForTest(&buf)()
 
 	e := echo.New()
 	e.Use(EventLoggingMiddleware())
@@ -46,7 +46,7 @@ func TestEventLoggingMiddleware_EmitsOneCanonicalLine(t *testing.T) {
 
 func TestEventLoggingMiddleware_CapturesHandlerPanic(t *testing.T) {
 	var buf bytes.Buffer
-	drylog.SwapGlobalForTest(t, &buf)
+	defer drylog.SwapGlobalForTest(&buf)()
 
 	e := echo.New()
 	e.Use(middleware.Recover()) // converts re-panic to 500
@@ -69,4 +69,7 @@ func TestEventLoggingMiddleware_CapturesHandlerPanic(t *testing.T) {
 	assert.Equal(t, "ERROR", got["level"])
 	assert.Equal(t, "handler exploded", got["panic"])
 	assert.Contains(t, got, "stack")
+	assert.Equal(t, float64(http.StatusInternalServerError), got["http.status"],
+		"panic path should report 500")
+	assert.Equal(t, "/boom", got["http.route"])
 }

@@ -77,7 +77,5 @@ func TestZapWrapper_ImplementsCanonicalEmitter(t *testing.T) {
 	globalLogger = logger
 
 	_, end := BeginEvent(context.Background(), "test.event")
-	// end() must not panic when zap is the global logger — zap emits the
-	// canonical record as a structured log line.
 	assert.NotPanics(t, func() { end() })
 }

@@ -21,7 +21,7 @@ func newSlogTestLogger(t *testing.T, w io.Writer) *slogLoggerWrapper {
 		slog.String(loggerKeyServiceEnv, "test"),
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
-	return &slogLoggerWrapper{logger: logger, captureMessages: true}
+	return &slogLoggerWrapper{logger: logger}
 }
 
 func TestSlogWrapper_Infof_EmitsJSONLine(t *testing.T) {
@@ -49,27 +49,23 @@ func TestSlogWrapper_With_AddsAttrs(t *testing.T) {
 	assert.Equal(t, "v", got["k"])
 }
 
-func TestSlogWrapper_InfofInsideEvent_CapturesToMessages(t *testing.T) {
+// Infof calls emit their own standalone line regardless of whether an
+// event is active. Canonical events carry attributes via log.Set(ctx,...)
+// only — legacy Infof is intentionally NOT captured into the canonical
+// line (this keeps the Logger interface ctx-free and avoids goroutine
+// tracking).
+func TestSlogWrapper_InfofInsideEvent_EmitsStandaloneLine(t *testing.T) {
 	var buf bytes.Buffer
 	prev := globalLogger
 	defer func() { globalLogger = prev }()
 	globalLogger = newSlogTestLogger(t, &buf)
 
 	_, end := BeginEvent(context.Background(), "req")
-	Infof("step one: %d", 1)
-	Errorf("something failed: %s", "oops")
+	Infof("step one")
 	end()
 
 	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
-	assert.Len(t, lines, 1, "only the canonical line should be emitted")
-
-	var got map[string]any
-	_ = json.Unmarshal(lines[0], &got)
-
-	msgs, ok := got["messages"].([]any)
-	assert.True(t, ok, "messages should be an array")
-	assert.Len(t, msgs, 2)
-	assert.Equal(t, "ERROR", got["level"], "Errorf inside event promotes level")
+	assert.Len(t, lines, 2, "one standalone Infof line + one canonical line")
 }
 
 func TestSlogWrapper_InfofOutsideEvent_EmitsStandaloneLine(t *testing.T) {
@@ -83,44 +79,6 @@ func TestSlogWrapper_InfofOutsideEvent_EmitsStandaloneLine(t *testing.T) {
 	var got map[string]any
 	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
 	assert.Equal(t, "startup: port 8080", got["msg"])
-}
-
-func TestSlogWrapper_MessageCaptureCap(t *testing.T) {
-	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
-
-	_, end := BeginEvent(context.Background(), "req")
-	for i := 0; i < logCaptureMessagesCap+10; i++ {
-		Infof("msg %d", i)
-	}
-	end()
-
-	var got map[string]any
-	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
-
-	msgs := got["messages"].([]any)
-	assert.Len(t, msgs, logCaptureMessagesCap)
-	assert.Equal(t, float64(10), got["messages_dropped"])
-}
-
-func TestSlogWrapper_CaptureDisabledByEnv(t *testing.T) {
-	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	l := newSlogTestLogger(t, &buf)
-	l.captureMessages = false // simulate APP_LOG_CAPTURE_MESSAGES=false resolved at init
-	globalLogger = l
-
-	_, end := BeginEvent(context.Background(), "req")
-	Infof("dropped")
-	end()
-
-	var got map[string]any
-	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
-	_, hasMessages := got["messages"]
-	assert.False(t, hasMessages)
 }
 
 func TestDevHandler_PrintsHumanReadableLine(t *testing.T) {
@@ -146,7 +104,7 @@ func TestDevHandler_CanonicalEventPrintedAsOneBlock(t *testing.T) {
 		slog.String(loggerKeyServiceEnv, "test"),
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
-	globalLogger = &slogLoggerWrapper{logger: logger, captureMessages: true}
+	globalLogger = &slogLoggerWrapper{logger: logger}
 
 	_, end := BeginEvent(context.Background(), "http.request")
 	end()

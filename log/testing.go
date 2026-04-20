@@ -22,11 +22,7 @@ func SwapGlobalForTest(w io.Writer) (restore func()) {
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
 
-	globalLogger = &slogLoggerWrapper{
-		logger:          logger,
-		captureMessages: true,
-		devMode:         false,
-	}
+	globalLogger = &slogLoggerWrapper{logger: logger}
 
 	return func() { globalLogger = prev }
 }

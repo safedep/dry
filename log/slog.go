@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
-	"time"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -72,18 +71,7 @@ func newSlogLogger(cfg slogLoggerConfig) (Logger, error) {
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
 
-	captureMessages := true
-	if v := os.Getenv(loggerKeyEnvCaptureMessages); v != "" {
-		if b, err := strconv.ParseBool(v); err == nil {
-			captureMessages = b
-		}
-	}
-
-	return &slogLoggerWrapper{
-		logger:          root,
-		captureMessages: captureMessages,
-		devMode:         cfg.resolvedFormat() == "text",
-	}, nil
+	return &slogLoggerWrapper{logger: root}, nil
 }
 
 // resolvedFormat returns "text" or "json", honouring APP_LOG_FORMAT and
@@ -129,59 +117,29 @@ func parseLogLevel(s string) slog.Level {
 	}
 }
 
-// logCaptureMessagesCap bounds the messages[] array on a canonical
-// event. Beyond this, calls are dropped and counted.
-const logCaptureMessagesCap = 50
-
 // slogLoggerWrapper implements the existing Logger interface over slog.
 type slogLoggerWrapper struct {
-	logger          *slog.Logger
-	captureMessages bool
-	devMode         bool
+	logger *slog.Logger
 }
 
 func (z *slogLoggerWrapper) Infof(msg string, args ...any) {
-	z.log(slog.LevelInfo, "info", msg, args...)
+	z.logger.Info(fmt.Sprintf(msg, args...))
 }
 
 func (z *slogLoggerWrapper) Warnf(msg string, args ...any) {
-	z.log(slog.LevelWarn, "warn", msg, args...)
+	z.logger.Warn(fmt.Sprintf(msg, args...))
 }
 
 func (z *slogLoggerWrapper) Errorf(msg string, args ...any) {
-	z.log(slog.LevelError, "error", msg, args...)
+	z.logger.Error(fmt.Sprintf(msg, args...))
 }
 
 func (z *slogLoggerWrapper) Debugf(msg string, args ...any) {
-	z.log(slog.LevelDebug, "debug", msg, args...)
+	z.logger.Debug(fmt.Sprintf(msg, args...))
 }
 
 func (z *slogLoggerWrapper) Fatalf(msg string, args ...any) {
-	formatted := fmt.Sprintf(msg, args...)
-
-	if ev := getActiveEvent(); ev != nil {
-		// Inside an active event: flush the canonical line (with the fatal
-		// message attached) before os.Exit kills the deferred EndFunc.
-		// The fatal message is carried on the canonical event as a "fatal"
-		// attr; no second standalone record is emitted.
-		ev.mu.Lock()
-		ev.attrs["fatal"] = formatted
-		ev.level = slog.LevelError
-		wasEnded := ev.ended
-		if !wasEnded {
-			ev.ended = true
-		}
-
-		ev.mu.Unlock()
-		if !wasEnded {
-			z.emitCanonical(ev)
-		}
-		clearActiveEvent()
-	} else {
-		// No active event: emit as a standalone error record.
-		z.logger.Log(context.Background(), slog.LevelError, formatted)
-	}
-
+	z.logger.Error(fmt.Sprintf(msg, args...))
 	os.Exit(1)
 }
 
@@ -190,37 +148,7 @@ func (z *slogLoggerWrapper) With(args map[string]any) Logger {
 	for k, v := range args {
 		attrs = append(attrs, slog.Any(k, v))
 	}
-
-	return &slogLoggerWrapper{
-		logger:          z.logger.With(attrs...),
-		captureMessages: z.captureMessages,
-		devMode:         z.devMode,
-	}
-}
-
-func (z *slogLoggerWrapper) log(level slog.Level, levelName, msg string, args ...any) {
-	formatted := fmt.Sprintf(msg, args...)
-	if ev := getActiveEvent(); ev != nil {
-		if !z.captureMessages {
-			// Capture disabled. In dev, emit a standalone line so local
-			// debugging still prints. In prod, drop silently.
-			if z.devMode {
-				z.logger.Log(context.Background(), level, formatted)
-			}
-			return
-		}
-
-		ev.captureMessage(levelName, formatted)
-		if level == slog.LevelError {
-			ev.mu.Lock()
-			ev.level = slog.LevelError
-			ev.mu.Unlock()
-		}
-
-		return
-	}
-
-	z.logger.Log(context.Background(), level, formatted)
+	return &slogLoggerWrapper{logger: z.logger.With(attrs...)}
 }
 
 // --- multiHandler fans one record out to multiple handlers ---------
@@ -282,27 +210,16 @@ type canonicalEmitter interface {
 }
 
 func (z *slogLoggerWrapper) emitCanonical(ev *Event) {
-	ev.mu.Lock()
-	attrs := make([]slog.Attr, 0, len(ev.attrs)+3)
-	attrs = append(attrs,
-		slog.String("event", ev.name),
-		slog.Float64("duration_ms", float64(time.Since(ev.startedAt).Microseconds())/1000.0),
-	)
+	snap := ev.snapshot()
 
-	for k, v := range ev.attrs {
+	attrs := make([]slog.Attr, 0, len(snap.attrs)+2)
+	attrs = append(attrs,
+		slog.String("event", snap.name),
+		slog.Float64("duration_ms", snap.durationMs),
+	)
+	for k, v := range snap.attrs {
 		attrs = append(attrs, slog.Any(k, v))
 	}
 
-	if len(ev.messages) > 0 {
-		attrs = append(attrs, slog.Any("messages", ev.messages))
-	}
-
-	if ev.messagesDropped > 0 {
-		attrs = append(attrs, slog.Int("messages_dropped", ev.messagesDropped))
-	}
-
-	level := ev.level
-	ev.mu.Unlock()
-
-	z.logger.LogAttrs(context.Background(), level, ev.name, attrs...)
+	z.logger.LogAttrs(context.Background(), snap.level, snap.name, attrs...)
 }

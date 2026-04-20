@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
-	"time"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -137,34 +136,22 @@ func (z *zapLoggerWrapper) With(args map[string]any) Logger {
 }
 
 // emitCanonical satisfies canonicalEmitter so BeginEvent works for
-// services still on the zap backend. The canonical line is emitted as
-// a single structured zap record; accumulated attrs become zap fields.
+// services still on the zap backend.
 func (z *zapLoggerWrapper) emitCanonical(ev *Event) {
-	ev.mu.Lock()
-	fields := make([]zap.Field, 0, len(ev.attrs)+2)
-	fields = append(fields,
-		zap.String("event", ev.name),
-		zap.Float64("duration_ms", float64(time.Since(ev.startedAt).Microseconds())/1000.0),
-	)
+	snap := ev.snapshot()
 
-	for k, v := range ev.attrs {
+	fields := make([]zap.Field, 0, len(snap.attrs)+2)
+	fields = append(fields,
+		zap.String("event", snap.name),
+		zap.Float64("duration_ms", snap.durationMs),
+	)
+	for k, v := range snap.attrs {
 		fields = append(fields, zap.Any(k, v))
 	}
 
-	if len(ev.messages) > 0 {
-		fields = append(fields, zap.Any("messages", ev.messages))
-	}
-
-	if ev.messagesDropped > 0 {
-		fields = append(fields, zap.Int("messages_dropped", ev.messagesDropped))
-	}
-
-	level := ev.level
-	ev.mu.Unlock()
-
-	if level >= slog.LevelError {
-		z.logger.Error(ev.name, fields...)
+	if snap.level >= slog.LevelError {
+		z.logger.Error(snap.name, fields...)
 	} else {
-		z.logger.Info(ev.name, fields...)
+		z.logger.Info(snap.name, fields...)
 	}
 }

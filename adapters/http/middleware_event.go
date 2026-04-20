@@ -28,9 +28,6 @@ func EventLoggingMiddleware() echo.MiddlewareFunc {
 					"peer.ip":     c.RealIP(),
 				}),
 			)
-			// Defers fire LIFO: response attrs are collected first (so they
-			// land on the canonical line even if the handler panics), then
-			// end() flushes the event.
 			defer end()
 			defer func() {
 				resp := c.Response()
@@ -40,13 +37,13 @@ func EventLoggingMiddleware() echo.MiddlewareFunc {
 					"http.bytes_in":  req.ContentLength,
 					"http.route":     c.Path(),
 				}
-				// If a panic is propagating, Echo's outer Recover() hasn't
-				// written the 500 yet — override status to reflect what
-				// the client will receive.
+				// On panic, Echo's outer Recover() hasn't written 500 yet;
+				// override so the canonical line reflects the status the
+				// client will actually receive.
 				if r := recover(); r != nil {
 					attrs["http.status"] = http.StatusInternalServerError
 					drylog.SetAttrs(ctx, attrs)
-					panic(r) // re-panic so end() captures it, then Recover writes 500
+					panic(r)
 				}
 				drylog.SetAttrs(ctx, attrs)
 			}()

@@ -103,11 +103,11 @@ err := drylog.RunCommand(ctx, "backfill", func(ctx context.Context) error {
 
 Emits one line with `msg=cmd.backfill`, `duration_ms`, and any `error`.
 
-## Per-Event Log Calls Inside an Event
+## Legacy `log.Infof` Inside an Event
 
-Legacy call sites like `drylog.Infof("step 1")` inside a request are captured into the canonical line's `messages[]` array (capped at 50; overflow counted as `messages_dropped`). `Errorf` additionally promotes the canonical event to error level.
+`drylog.Infof`, `Errorf`, etc. always emit standalone lines — they're NOT captured into the canonical event's attributes. To attach state to the canonical line, use `drylog.Set(ctx, k, v)` explicitly. If you're migrating a high-volume code path to canonical events, replace `log.Infof("user %s seen", id)` with `log.Set(ctx, "user.id", id)`.
 
-Outside an event scope (startup code, background workers), these calls emit standalone JSON lines as before.
+Outside an event scope (startup code, background workers), `Infof` continues to emit standalone JSON lines as before.
 
 ## Environment Variables
 
@@ -117,14 +117,12 @@ Outside an event scope (startup code, background workers), these calls emit stan
 | `APP_LOG_FORMAT` | `text` \| `json` | `text` for `dev`/`local`/empty env, else `json` | Output format for the stdout sink. |
 | `APP_LOG_FILE` | path | unset | Enable rotating JSON file sink (100MB / 3 backups / 7 days). |
 | `APP_LOG_SKIP_STDOUT_LOGGER` | `true` \| `false` | `false` | Disable stdout sink. |
-| `APP_LOG_CAPTURE_MESSAGES` | `true` \| `false` | `true` | Capture in-event `Infof`/`Errorf` into `messages[]`. When `false`: dev still prints them inline, prod drops them silently. |
 
 ## Lifecycle Rules
 
-- `BeginEvent` and its `EndFunc` must be called on the same goroutine. Dispatching work to another goroutine inside a handler is fine; just make sure the event is ended on the original goroutine.
 - Nested `BeginEvent` is forbidden. A nested call returns the existing context unchanged and marks `nested_begin: true` on the outer event.
 - `EndFunc` is idempotent — calling it a second time is a no-op.
-- `Fatalf` inside an event flushes the canonical line before `os.Exit(1)`.
+- `os.Exit` / `log.Fatalf` inside an event **skips** the deferred flush — the canonical line is lost. Prefer returning an error and exiting from `main`, or call `end()` explicitly before exiting.
 
 ## Choosing Between Classic and Canonical
 

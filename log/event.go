@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -12,11 +11,6 @@ import (
 
 // EndFunc flushes a canonical event. Safe to call multiple times; only
 // the first call emits a record.
-//
-// Must be called from the same goroutine that called BeginEvent — the
-// per-goroutine active-event tracker (used by Infof/Errorf capture)
-// assumes this. If you need to hand a context off to a worker goroutine,
-// emit the event on the original goroutine before dispatch.
 type EndFunc func()
 
 // EventOption configures a new event at BeginEvent time.
@@ -47,17 +41,33 @@ type Event struct {
 	attrs map[string]any
 	level slog.Level
 	ended bool
-
-	// messages captured from per-event Infof/Errorf calls inside the scope.
-	// Bounded; see logCaptureMessagesCap.
-	messages        []capturedMessage
-	messagesDropped int
 }
 
-type capturedMessage struct {
-	Time  time.Time
-	Level string
-	Msg   string
+// eventSnapshot is a lock-free copy of an Event's state, suitable for
+// emission by any canonicalEmitter.
+type eventSnapshot struct {
+	name       string
+	level      slog.Level
+	durationMs float64
+	attrs      map[string]any
+}
+
+// snapshot takes a consistent copy of the event state under a single
+// lock, so emitters can format the record without holding ev.mu across
+// allocation or I/O.
+func (e *Event) snapshot() eventSnapshot {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	attrs := make(map[string]any, len(e.attrs))
+	for k, v := range e.attrs {
+		attrs[k] = v
+	}
+	return eventSnapshot{
+		name:       e.name,
+		level:      e.level,
+		durationMs: float64(time.Since(e.startedAt).Microseconds()) / 1000.0,
+		attrs:      attrs,
+	}
 }
 
 // Name returns the event name, or "" if e is nil.
@@ -89,7 +99,6 @@ func BeginEvent(ctx context.Context, name string, opts ...EventOption) (context.
 		opt(ev)
 	}
 
-	setActiveEvent(ev)
 	newCtx := withContext(ctx, ev)
 	return newCtx, func() {
 		// Recover any panic, attach it, then re-panic AFTER emission.
@@ -114,7 +123,6 @@ func BeginEvent(ctx context.Context, name string, opts ...EventOption) (context.
 		if emitter, ok := globalLogger.(canonicalEmitter); ok {
 			emitter.emitCanonical(ev)
 		}
-		clearActiveEvent()
 		if r != nil {
 			panic(r)
 		}
@@ -202,50 +210,3 @@ func Err(ctx context.Context, err error) {
 	}
 }
 
-// goroutineActiveEvent is set by BeginEvent and cleared by EndFunc. It
-// lets the slog wrapper capture per-event log calls without threading a
-// ctx through the existing Logger interface.
-//
-// Concurrency: one event per goroutine. Nested BeginEvent is already
-// disallowed (Task 6), so this map cannot have stacked entries.
-var goroutineActiveEvent sync.Map // map[uint64]*Event
-
-func setActiveEvent(ev *Event) { goroutineActiveEvent.Store(goroutineID(), ev) }
-func clearActiveEvent()        { goroutineActiveEvent.Delete(goroutineID()) }
-
-func getActiveEvent() *Event {
-	if v, ok := goroutineActiveEvent.Load(goroutineID()); ok {
-		return v.(*Event)
-	}
-	return nil
-}
-
-// goroutineID returns the calling goroutine's ID. Used only for
-// in-process, per-goroutine event lookup.
-func goroutineID() uint64 {
-	var buf [64]byte
-	n := runtime.Stack(buf[:], false)
-	// Format: "goroutine N [status]:\n..."
-	s := buf[:n]
-	i := 10 // after "goroutine "
-	var id uint64
-	for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
-		id = id*10 + uint64(s[i]-'0')
-	}
-	return id
-}
-
-func (e *Event) captureMessage(level, msg string) {
-	if e == nil {
-		return
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if len(e.messages) >= logCaptureMessagesCap {
-		e.messagesDropped++
-		return
-	}
-	e.messages = append(e.messages, capturedMessage{
-		Time: time.Now(), Level: level, Msg: msg,
-	})
-}

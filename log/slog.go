@@ -37,7 +37,7 @@ type slogLoggerConfig struct {
 	name      string
 	env       string
 	level     slog.Level
-	format    string // "", "text", "json"
+	format    string // "", logFormatNameText, logFormatNameJSON
 	logFile   string
 	logStdout bool
 }
@@ -56,7 +56,7 @@ func newSlogLogger(cfg slogLoggerConfig) (Logger, error) {
 			MaxAge:     7,
 		}
 
-		writers = append(writers, slogWriterSpec{w: file, format: "json"})
+		writers = append(writers, slogWriterSpec{w: file, format: logFormatNameJSON})
 	}
 
 	handlers := make([]slog.Handler, 0, len(writers))
@@ -74,20 +74,21 @@ func newSlogLogger(cfg slogLoggerConfig) (Logger, error) {
 	return &slogLoggerWrapper{logger: root}, nil
 }
 
-// resolvedFormat returns "text" or "json", honouring APP_LOG_FORMAT and
-// falling back to "text" for dev-ish envs, "json" otherwise.
+// resolvedFormat returns the effective log format, honouring
+// APP_LOG_FORMAT and falling back to text for dev-ish envs, JSON
+// otherwise.
 func (c slogLoggerConfig) resolvedFormat() string {
 	switch c.format {
-	case "text", "json":
+	case logFormatNameText, logFormatNameJSON:
 		return c.format
 	}
 
 	switch c.env {
 	case "", "dev", "development", "local":
-		return "text"
+		return logFormatNameText
 	}
 
-	return "json"
+	return logFormatNameJSON
 }
 
 type slogWriterSpec struct {
@@ -97,7 +98,7 @@ type slogWriterSpec struct {
 
 func (s slogWriterSpec) build(level slog.Level) slog.Handler {
 	opts := &slog.HandlerOptions{Level: level}
-	if s.format == "text" {
+	if s.format == logFormatNameText {
 		return newDevHandler(s.w, opts)
 	}
 

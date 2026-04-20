@@ -7,6 +7,12 @@ const (
 	logLevelNameError = "error"
 )
 
+// Values for APP_LOG_FORMAT.
+const (
+	logFormatNameText = "text"
+	logFormatNameJSON = "json"
+)
+
 // Logger represents a contract for implementing a logging module
 type Logger interface {
 	Infof(msg string, args ...any)

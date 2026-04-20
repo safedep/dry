@@ -15,12 +15,15 @@ import (
 //	12:34:56.789 INFO  http.request   service=api env=prod http.status=200 duration_ms=3.41
 //
 // It is intended for local development; production uses the JSON handler.
+// Group semantics from slog.Handler.WithGroup are intentionally flattened —
+// grouped attributes are printed with their bare key, without the group
+// prefix. This keeps terminal output short and readable; consumers who
+// need true group namespacing should use the JSON handler.
 type devHandler struct {
 	mu    *sync.Mutex
 	w     io.Writer
 	level slog.Leveler
 	attrs []slog.Attr
-	group string
 }
 
 func newDevHandler(w io.Writer, opts *slog.HandlerOptions) slog.Handler {
@@ -65,10 +68,10 @@ func (h *devHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &nh
 }
 
-func (h *devHandler) WithGroup(name string) slog.Handler {
-	nh := *h
-	nh.group = name
-	return &nh
+// WithGroup is a no-op — dev output intentionally flattens grouped
+// attributes. See the type doc for rationale.
+func (h *devHandler) WithGroup(_ string) slog.Handler {
+	return h
 }
 
 func formatAttr(v slog.Value) string {

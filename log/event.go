@@ -54,8 +54,11 @@ type eventSnapshot struct {
 
 // snapshot takes a consistent copy of the event state under a single
 // lock, so emitters can format the record without holding ev.mu across
-// allocation or I/O.
+// allocation or I/O. Returns a zero snapshot if e is nil.
 func (e *Event) snapshot() eventSnapshot {
+	if e == nil {
+		return eventSnapshot{}
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	attrs := make(map[string]any, len(e.attrs))
@@ -80,8 +83,12 @@ func (e *Event) Name() string {
 
 // BeginEvent starts a canonical event scope bound to the returned
 // context. Call the returned EndFunc (typically via defer) to flush the
-// event as a single log record.
+// event as a single log record. A nil ctx is treated as
+// context.Background().
 func BeginEvent(ctx context.Context, name string, opts ...EventOption) (context.Context, EndFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if existing := fromContext(ctx); existing != nil {
 		existing.mu.Lock()
 		existing.attrs["nested_begin"] = true

@@ -210,6 +210,9 @@ type canonicalEmitter interface {
 }
 
 func (z *slogLoggerWrapper) emitCanonical(ev *Event) {
+	if ev == nil {
+		return
+	}
 	snap := ev.snapshot()
 
 	attrs := make([]slog.Attr, 0, len(snap.attrs)+2)

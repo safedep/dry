@@ -25,8 +25,12 @@ func init() {
 	globalLogger = NewNopLogger()
 }
 
-// SetGlobal sets the global logger instance
+// SetGlobal sets the global logger instance. A nil logger is ignored
+// to avoid leaving the package in a state where every log call panics.
 func SetGlobal(logger Logger) {
+	if logger == nil {
+		return
+	}
 	globalLogger = logger
 }
 

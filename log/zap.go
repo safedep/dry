@@ -138,6 +138,9 @@ func (z *zapLoggerWrapper) With(args map[string]any) Logger {
 // emitCanonical satisfies canonicalEmitter so BeginEvent works for
 // services still on the zap backend.
 func (z *zapLoggerWrapper) emitCanonical(ev *Event) {
+	if ev == nil {
+		return
+	}
 	snap := ev.snapshot()
 
 	fields := make([]zap.Field, 0, len(snap.attrs)+2)

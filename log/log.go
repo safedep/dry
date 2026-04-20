@@ -7,6 +7,12 @@ const (
 	logLevelNameError = "error"
 )
 
+// Values for APP_LOG_FORMAT.
+const (
+	logFormatNameText = "text"
+	logFormatNameJSON = "json"
+)
+
 // Logger represents a contract for implementing a logging module
 type Logger interface {
 	Infof(msg string, args ...any)
@@ -25,8 +31,12 @@ func init() {
 	globalLogger = NewNopLogger()
 }
 
-// SetGlobal sets the global logger instance
+// SetGlobal sets the global logger instance. A nil logger is ignored
+// to avoid leaving the package in a state where every log call panics.
 func SetGlobal(logger Logger) {
+	if logger == nil {
+		return
+	}
 	globalLogger = logger
 }
 
@@ -44,6 +54,7 @@ func (*nopLogger) Errorf(msg string, args ...any)    {}
 func (*nopLogger) Debugf(msg string, args ...any)    {}
 func (*nopLogger) Fatalf(msg string, args ...any)    {}
 func (n *nopLogger) With(args map[string]any) Logger { return n }
+func (*nopLogger) emitCanonical(_ *Event)            {}
 
 // Constants to standardise logger keys
 const (
@@ -54,6 +65,7 @@ const (
 	loggerKeyEnvLogLevel      = "APP_LOG_LEVEL"
 	loggerKeySkipStdoutLogger = "APP_LOG_SKIP_STDOUT_LOGGER"
 	loggerKeyCliStdout        = "APP_LOG_CLI_STDOUT"
+	loggerKeyEnvLogFormat     = "APP_LOG_FORMAT"
 )
 
 // Initialize logger for the given service name

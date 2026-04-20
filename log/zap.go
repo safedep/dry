@@ -1,6 +1,7 @@
 package log
 
 import (
+	"log/slog"
 	"os"
 	"strconv"
 
@@ -131,5 +132,34 @@ func (z *zapLoggerWrapper) With(args map[string]any) Logger {
 	return &zapLoggerWrapper{
 		logger:        logger,
 		sugaredLogger: logger.Sugar(),
+	}
+}
+
+// emitCanonical satisfies canonicalEmitter so BeginEvent works for
+// services still on the zap backend.
+func (z *zapLoggerWrapper) emitCanonical(ev *Event) {
+	if ev == nil {
+		return
+	}
+	snap := ev.snapshot()
+
+	fields := make([]zap.Field, 0, len(snap.attrs)+2)
+	fields = append(fields,
+		zap.String("event", snap.name),
+		zap.Float64("duration_ms", snap.durationMs),
+	)
+	for k, v := range snap.attrs {
+		fields = append(fields, zap.Any(k, v))
+	}
+
+	switch {
+	case snap.level >= slog.LevelError:
+		z.logger.Error(snap.name, fields...)
+	case snap.level >= slog.LevelWarn:
+		z.logger.Warn(snap.name, fields...)
+	case snap.level >= slog.LevelInfo:
+		z.logger.Info(snap.name, fields...)
+	default:
+		z.logger.Debug(snap.name, fields...)
 	}
 }

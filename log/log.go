@@ -44,6 +44,7 @@ func (*nopLogger) Errorf(msg string, args ...any)    {}
 func (*nopLogger) Debugf(msg string, args ...any)    {}
 func (*nopLogger) Fatalf(msg string, args ...any)    {}
 func (n *nopLogger) With(args map[string]any) Logger { return n }
+func (*nopLogger) emitCanonical(_ *Event)            {}
 
 // Constants to standardise logger keys
 const (
@@ -52,8 +53,10 @@ const (
 	loggerKeyLoggerType       = "l"
 	loggerKeyEnvLogFileName   = "APP_LOG_FILE"
 	loggerKeyEnvLogLevel      = "APP_LOG_LEVEL"
-	loggerKeySkipStdoutLogger = "APP_LOG_SKIP_STDOUT_LOGGER"
-	loggerKeyCliStdout        = "APP_LOG_CLI_STDOUT"
+	loggerKeySkipStdoutLogger  = "APP_LOG_SKIP_STDOUT_LOGGER"
+	loggerKeyCliStdout         = "APP_LOG_CLI_STDOUT"
+	loggerKeyEnvLogFormat      = "APP_LOG_FORMAT"
+	loggerKeyEnvCaptureMessages = "APP_LOG_CAPTURE_MESSAGES"
 )
 
 // Initialize logger for the given service name

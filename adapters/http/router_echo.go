@@ -10,7 +10,6 @@ import (
 	echo "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
-	drylog "github.com/safedep/dry/log"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -44,7 +43,8 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 		router.Logger.SetLevel(log.DEBUG)
 	}
 
-	router.Use(middleware.Logger())
+	// middleware.Logger() intentionally omitted: canonical events cover
+	// per-request access logging.
 	router.Use(middleware.Recover())
 	router.Use(middleware.RequestID())
 	router.Use(otelecho.Middleware(config.ServiceName))
@@ -104,18 +104,10 @@ func NewEchoRouter(config EchoRouterConfig) (Router, error) {
 		router.GET(MetricsPath, echoprometheus.NewHandler())
 	}
 
-	// This must be to the end of the middleware chain
-	router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			logger := drylog.With(map[string]interface{}{"request_id": c.Response().Header().Get(echo.HeaderXRequestID)})
-			c.Set("dry_logger", logger)
-
-			// TODO: Figure out a way to pass the logger trasparently
-			// to the business logic layer. We can also switch to a context logger
-			// which flushes the log at the end of the request.
-			return next(c)
-		}
-	})
+	// Canonical event logging: one JSON line per request, accumulating
+	// attributes from handlers via ctx. Must come AFTER Recover() and
+	// RequestID().
+	router.Use(EventLoggingMiddleware())
 
 	return &EchoRouter{
 		config: config,

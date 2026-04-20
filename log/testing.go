@@ -26,6 +26,3 @@ func SwapGlobalForTest(w io.Writer) (restore func()) {
 
 	return func() { globalLogger = prev }
 }
-
-// Global returns the current global logger. Exposed for tests.
-func Global() Logger { return globalLogger }

@@ -78,7 +78,29 @@ func (e *Event) Name() string {
 	if e == nil {
 		return ""
 	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	return e.name
+}
+
+// SetName overrides the canonical event name. No-op if e is nil.
+//
+// Intended for layered middleware: a generic outer layer (e.g. an HTTP
+// router) opens the event with a coarse name like "http.request"; a more
+// specific inner interceptor (e.g. ConnectRPC, knowing the procedure)
+// then renames it to something like
+// "controltower.v1.PingService/Ping" so dashboards can group by the
+// precise unit of work instead of routing through an attribute.
+//
+// Calling SetName after the event has ended has no effect on the
+// already-emitted record.
+func (e *Event) SetName(name string) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.name = name
 }
 
 // BeginEvent starts a canonical event scope bound to the returned
@@ -211,6 +233,15 @@ func Counter(ctx context.Context, key string, delta int64) {
 func Err(ctx context.Context, err error) {
 	if ev := fromContext(ctx); ev != nil {
 		ev.Err(err)
+	}
+}
+
+// SetEventName overrides the canonical event name on the event bound to
+// ctx. No-op if no event is active. See (*Event).SetName for the
+// layered-middleware use case.
+func SetEventName(ctx context.Context, name string) {
+	if ev := fromContext(ctx); ev != nil {
+		ev.SetName(name)
 	}
 }
 

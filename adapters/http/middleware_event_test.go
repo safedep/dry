@@ -116,3 +116,56 @@ func TestEventLoggingMiddleware_DerivesStatusFromGenericError(t *testing.T) {
 	assert.Equal(t, float64(http.StatusInternalServerError), got["http.status"],
 		"non-HTTPError should default to 500")
 }
+
+func TestEventLoggingMiddleware_SkipsHealthAndMetricsByDefault(t *testing.T) {
+	cases := []string{HealthPath, MetricsPath}
+	for _, path := range cases {
+		t.Run(path, func(t *testing.T) {
+			var buf bytes.Buffer
+			defer drylog.SwapGlobalForTest(&buf)()
+
+			e := echo.New()
+			e.Use(EventLoggingMiddleware())
+			e.GET(path, func(c echo.Context) error {
+				return c.String(http.StatusOK, "ok")
+			})
+
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Empty(t, bytes.TrimSpace(buf.Bytes()),
+				"no canonical line should be emitted for %s", path)
+		})
+	}
+}
+
+func TestEventLoggingMiddleware_CustomSkipperOverridesDefault(t *testing.T) {
+	var buf bytes.Buffer
+	defer drylog.SwapGlobalForTest(&buf)()
+
+	// Skipper that drops everything except /important.
+	skipper := func(c echo.Context) bool {
+		return c.Path() != "/important"
+	}
+
+	e := echo.New()
+	e.Use(EventLoggingMiddlewareWithConfig(EventLoggingMiddlewareConfig{Skipper: skipper}))
+	e.GET("/noisy", func(c echo.Context) error { return c.String(http.StatusOK, "noisy") })
+	e.GET("/important", func(c echo.Context) error { return c.String(http.StatusOK, "important") })
+
+	for _, path := range []string{"/noisy", "/important"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	}
+
+	lines := bytes.Split(bytes.TrimSpace(buf.Bytes()), []byte("\n"))
+	assert.Len(t, lines, 1, "exactly one canonical line for /important")
+
+	var got map[string]any
+	_ = json.Unmarshal(lines[0], &got)
+	assert.Equal(t, "/important", got["http.path"])
+}

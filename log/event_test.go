@@ -235,6 +235,38 @@ func TestSetGlobal_IgnoresNil(t *testing.T) {
 	assert.NotPanics(t, func() { Infof("still works") })
 }
 
+func TestSetEventName_OverridesCanonicalLine(t *testing.T) {
+	var buf bytes.Buffer
+	prev := globalLogger
+	defer func() { globalLogger = prev }()
+	globalLogger = newSlogTestLogger(t, &buf)
+
+	ctx, end := BeginEvent(context.Background(), "http.request")
+	SetEventName(ctx, "controltower.v1.PingService/Ping")
+	end()
+
+	var got map[string]any
+	_ = json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
+	assert.Equal(t, "controltower.v1.PingService/Ping", got["msg"])
+	assert.Equal(t, "controltower.v1.PingService/Ping", got["event"])
+}
+
+func TestEvent_SetName_OnInstance(t *testing.T) {
+	ctx, end := BeginEvent(context.Background(), "old")
+	defer end()
+
+	FromContext(ctx).SetName("new")
+	assert.Equal(t, "new", FromContext(ctx).Name())
+}
+
+func TestEvent_SetName_NilSafe(t *testing.T) {
+	var ev *Event
+	assert.NotPanics(t, func() { ev.SetName("x") })
+
+	// Top-level helper with no active event is also a no-op.
+	assert.NotPanics(t, func() { SetEventName(context.Background(), "x") })
+}
+
 func TestEmitCanonical_NilEventIsSafe(t *testing.T) {
 	// Both slog and zap wrappers implement canonicalEmitter; a defensive
 	// check lives in each. Verify via the nopLogger path and both real

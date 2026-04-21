@@ -145,16 +145,13 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 			},
 		},
 		{
-			name: "anthropic with response schema returns error",
+			name: "anthropic with response schema works",
 			envVars: map[string]string{
 				"AISERVICES_LLM_PROVIDER":      "anthropic",
 				"AISERVICES_ANTHROPIC_API_KEY": "test-api-key",
 			},
 			opts:        []LLMProviderBuilderOption{WithResponseSchema(&openapi3.Schema{Type: "object"})},
-			expectError: true,
-			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
-			},
+			expectError: false,
 		},
 		// Unknown / empty provider — both fall back to Vertex AI; error comes from missing Vertex AI env vars.
 		{
@@ -324,15 +321,12 @@ func TestCreateAnthropicProvider(t *testing.T) {
 		},
 		// Shared
 		{
-			name: "response schema not supported",
+			name: "response schema supported",
 			envVars: map[string]string{
 				"AISERVICES_ANTHROPIC_API_KEY": "test-key",
 			},
 			opts:        []LLMProviderBuilderOption{WithResponseSchema(&openapi3.Schema{Type: "object"})},
-			expectError: true,
-			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
-			},
+			expectError: false,
 		},
 		// Optional tuning env vars
 		{
@@ -439,6 +433,13 @@ func TestBuilderOptionsFromOpts(t *testing.T) {
 				WithResponseSchema(&openapi3.Schema{Type: "object"}),
 			},
 			expected: &llmProviderBuilderOptions{responseSchema: &openapi3.Schema{Type: "object"}},
+		},
+		{
+			name: "thinking enabled",
+			opts: []LLMProviderBuilderOption{
+				WithThinkingEnabled(),
+			},
+			expected: &llmProviderBuilderOptions{thinkingEnabled: true},
 		},
 	}
 

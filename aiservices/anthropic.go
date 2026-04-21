@@ -2,11 +2,13 @@ package aiservices
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	claudemodel "github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 )
 
@@ -56,9 +58,19 @@ type AnthropicModelConfig struct {
 
 	// MaxTokens caps the response length. Defaults to anthropicDefaultMaxTokens when nil.
 	MaxTokens *int
+
+	// Enable thinking, defaults to false
+	// Requirements:
+	//   - Temperature must be set to 1
+	ThinkingEnabled bool
+
 	// ThinkingBudgetTokens sets the thinking token budget for reasoning models.
 	// Defaults to anthropicThinkingBudgetTokens when nil.
 	ThinkingBudgetTokens *int
+
+	// ResponseSchema constrains Claude's response to a JSON schema via output_config.format.
+	// When set, the model will return structured JSON conforming to this schema.
+	ResponseSchema *openapi3.Schema
 }
 
 type anthropicModel struct {
@@ -70,7 +82,7 @@ var _ LLM = &anthropicModel{}
 var _ Model = &anthropicModel{}
 
 // Docs: https://github.com/cloudwego/eino-ext/tree/main/components/model/claude#readme
-func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableThinking bool) (LLM, error) {
+func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, error) {
 	maxTokens := anthropicDefaultMaxTokens
 	if config.MaxTokens != nil {
 		maxTokens = *config.MaxTokens
@@ -107,15 +119,35 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableTh
 		claudeConfig.BaseURL = config.BaseURL
 	}
 
-	// Enable thinking for reasoning models
-	if enableThinking {
-		thinkingBudget := anthropicThinkingBudgetTokens
-		if config.ThinkingBudgetTokens != nil {
-			thinkingBudget = *config.ThinkingBudgetTokens
+	// Enable thinking
+	// Requirements:
+	//   - Temperature must be set to 1
+	thinkingBudget := anthropicThinkingBudgetTokens
+	if config.ThinkingBudgetTokens != nil {
+		thinkingBudget = *config.ThinkingBudgetTokens
+	}
+	claudeConfig.Thinking = &claudemodel.Thinking{
+		Enable:       config.ThinkingEnabled, // from config
+		BudgetTokens: thinkingBudget,
+	}
+
+	// Wire response schema into anthropic's sdk-go's output_config.format via eino's AdditionalRequestFields.
+	// The eino Claude wrapper doesn't expose output_config natively, but it passes
+	// AdditionalRequestFields through option.WithJSONSet (sjson dot-path format).
+	if config.ResponseSchema != nil {
+		schemaBytes, err := json.Marshal(config.ResponseSchema)
+		if err != nil {
+			return nil, NewInvalidConfigError(Anthropic, "failed to marshal response schema: "+err.Error())
 		}
-		claudeConfig.Thinking = &claudemodel.Thinking{
-			Enable:       enableThinking,
-			BudgetTokens: thinkingBudget,
+		var schemaMap map[string]any
+		if err := json.Unmarshal(schemaBytes, &schemaMap); err != nil {
+			return nil, NewInvalidConfigError(Anthropic, "failed to convert response schema: "+err.Error())
+		}
+		claudeConfig.AdditionalRequestFields = map[string]any{
+			"output_config.format": map[string]any{
+				"type":   "json_schema",
+				"schema": schemaMap,
+			},
 		}
 	}
 
@@ -177,11 +209,17 @@ func (m *anthropicModel) GenerateSingle(ctx context.Context, req LLMGenerationRe
 			"model":    m.GetId(),
 		}).Inc()
 
-		if strings.Contains(strings.ToLower(err.Error()), "exceeds the maximum number of tokens allowed") {
+		lowercaseErrorMessage := strings.ToLower(err.Error())
+
+		if strings.Contains(lowercaseErrorMessage, "prompt is too long") {
 			return "", NewTokenLimitError(Anthropic, m.GetId(), err.Error())
 		}
 
-		err = errors.Wrap(err, "error generating response from Anthropic LLM")
+		if strings.Contains(lowercaseErrorMessage, "rate limit") {
+			return "", NewRateLimitError(Anthropic, m.GetId(), err.Error())
+		}
+
+		err = errors.Wrap(err, "failed to generate llm response")
 		return "", NewModelUnavailableError(Anthropic, m.GetId(), err.Error())
 	}
 

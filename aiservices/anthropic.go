@@ -209,11 +209,15 @@ func (m *anthropicModel) GenerateSingle(ctx context.Context, req LLMGenerationRe
 			"model":    m.GetId(),
 		}).Inc()
 
-		if strings.Contains(strings.ToLower(err.Error()), "exceeds the maximum number of tokens allowed") {
+		if strings.Contains(strings.ToLower(err.Error()), "prompt is too long") {
 			return "", NewTokenLimitError(Anthropic, m.GetId(), err.Error())
 		}
 
-		err = errors.Wrap(err, "error generating response from Anthropic LLM")
+		if strings.Contains(strings.ToLower(err.Error()), "too many requests") {
+			return "", NewRateLimitError(Anthropic, m.GetId(), err.Error())
+		}
+
+		err = errors.Wrap(err, "failed to generate llm response")
 		return "", NewModelUnavailableError(Anthropic, m.GetId(), err.Error())
 	}
 

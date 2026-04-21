@@ -209,11 +209,13 @@ func (m *anthropicModel) GenerateSingle(ctx context.Context, req LLMGenerationRe
 			"model":    m.GetId(),
 		}).Inc()
 
-		if strings.Contains(strings.ToLower(err.Error()), "prompt is too long") {
+		lowercaseErrorMessage := strings.ToLower(err.Error())
+
+		if strings.Contains(lowercaseErrorMessage, "prompt is too long") {
 			return "", NewTokenLimitError(Anthropic, m.GetId(), err.Error())
 		}
 
-		if strings.Contains(strings.ToLower(err.Error()), "rate limit") {
+		if strings.Contains(lowercaseErrorMessage, "rate limit") {
 			return "", NewRateLimitError(Anthropic, m.GetId(), err.Error())
 		}
 

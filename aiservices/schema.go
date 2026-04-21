@@ -9,7 +9,7 @@ import (
 )
 
 // GenerateOpenAPISchemaForLLMResponse converts a Go struct into an OpenAPI Schema.
-// Since its open standard, we are not providing it for clients, they need to handle it.
+// Since its open standard
 //
 // "additionalProperties: false", is a JSON schema keyword that restricts objects to only allow properties defined in the schema.
 // This is set on every object schema during generation to ensure strict validation.

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,18 +79,19 @@ func TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema(t *testing.T) {
 	t.Setenv("AISERVICES_ANTHROPIC_API_KEY", apiKey)
 	t.Setenv("AISERVICES_ANTHROPIC_MAX_TOKENS", "1025")
 
-	schema := openapi3.NewObjectSchema().
-		WithProperty("city", openapi3.NewStringSchema()).
-		WithProperty("country", openapi3.NewStringSchema()).
-		WithoutAdditionalProperties()
+	type capitalResponse struct {
+		City    string `json:"city"`
+		Country string `json:"country"`
+	}
 
-	schema.Required = []string{"city", "country"}
+	schema, err := GenerateOpenapiSchemaForLLMResponse(&capitalResponse{})
+	require.NoError(t, err)
 
 	provider, err := CreateLLMProviderFromEnv(WithResponseSchema(schema))
 	require.NoError(t, err)
 	require.NotNil(t, provider)
 
-	model, err := provider.GetFastModel() // also tested with reasoning model locally
+	model, err := provider.GetFastModel()
 	require.NoError(t, err)
 
 	response, err := model.GenerateSingle(context.Background(), LLMGenerationRequest{

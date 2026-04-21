@@ -151,10 +151,7 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 				"AISERVICES_ANTHROPIC_API_KEY": "test-api-key",
 			},
 			opts:        []LLMProviderBuilderOption{WithResponseSchema(&openapi3.Schema{Type: "object"})},
-			expectError: true,
-			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
-			},
+			expectError: false,
 		},
 		// Unknown / empty provider — both fall back to Vertex AI; error comes from missing Vertex AI env vars.
 		{
@@ -329,10 +326,7 @@ func TestCreateAnthropicProvider(t *testing.T) {
 				"AISERVICES_ANTHROPIC_API_KEY": "test-key",
 			},
 			opts:        []LLMProviderBuilderOption{WithResponseSchema(&openapi3.Schema{Type: "object"})},
-			expectError: true,
-			errorCheck: func(t *testing.T, err error) {
-				assert.Contains(t, err.Error(), "WithResponseSchema is not supported for the Anthropic provider")
-			},
+			expectError: false,
 		},
 		// Optional tuning env vars
 		{

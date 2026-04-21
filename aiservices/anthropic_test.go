@@ -91,16 +91,16 @@ func TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, provider)
 
-	model, err := provider.GetFastModel()
+	model, err := provider.GetFastModel() // also tested with reasoning model locally
 	require.NoError(t, err)
 
 	response, err := model.GenerateSingle(context.Background(), LLMGenerationRequest{
-		SystemPrompt: "You are a helpful assistant. Return structured data as instructed.",
+		SystemPrompt: "You are a helpful assistant",
 		UserPrompt:   "What is the capital city of France? Return the city and country.",
 	})
 
 	require.NoError(t, err)
 	require.NotEmpty(t, response)
 
-	assert.Equal(t, response, `{"city": "Paris", "country": "France"}`)
+	assert.Equal(t, `{"city": "Paris", "country": "France"}`, response)
 }

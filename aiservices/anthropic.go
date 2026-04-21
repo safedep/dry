@@ -59,9 +59,6 @@ type AnthropicModelConfig struct {
 	// MaxTokens caps the response length. Defaults to anthropicDefaultMaxTokens when nil.
 	MaxTokens *int
 
-	// Temperature for the model. Defaults to 1.0 when nil.
-	Temperature *float64
-
 	// Enable thinking, defaults to false
 	// Requirements:
 	//   - Temperature must be set to 1
@@ -122,7 +119,7 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, er
 		claudeConfig.BaseURL = config.BaseURL
 	}
 
-	// Enable thinking for reasoning models
+	// Enable thinking
 	// Requirements:
 	//   - Temperature must be set to 1
 	thinkingBudget := anthropicThinkingBudgetTokens

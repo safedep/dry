@@ -434,6 +434,13 @@ func TestBuilderOptionsFromOpts(t *testing.T) {
 			},
 			expected: &llmProviderBuilderOptions{responseSchema: &openapi3.Schema{Type: "object"}},
 		},
+		{
+			name: "thinking enabled",
+			opts: []LLMProviderBuilderOption{
+				WithThinkingEnabled(),
+			},
+			expected: &llmProviderBuilderOptions{thinkingEnabled: true},
+		},
 	}
 
 	for _, tt := range tests {

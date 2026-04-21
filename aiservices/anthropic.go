@@ -58,6 +58,15 @@ type AnthropicModelConfig struct {
 
 	// MaxTokens caps the response length. Defaults to anthropicDefaultMaxTokens when nil.
 	MaxTokens *int
+
+	// Temperature for the model. Defaults to 1.0 when nil.
+	Temperature *float64
+
+	// Enable thinking, defaults to false
+	// Requirements:
+	//   - Temperature must be set to 1
+	ThinkingEnabled bool
+
 	// ThinkingBudgetTokens sets the thinking token budget for reasoning models.
 	// Defaults to anthropicThinkingBudgetTokens when nil.
 	ThinkingBudgetTokens *int
@@ -76,7 +85,7 @@ var _ LLM = &anthropicModel{}
 var _ Model = &anthropicModel{}
 
 // Docs: https://github.com/cloudwego/eino-ext/tree/main/components/model/claude#readme
-func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableThinking bool) (LLM, error) {
+func newAnthropicChatModel(modelId string, config AnthropicModelConfig) (LLM, error) {
 	maxTokens := anthropicDefaultMaxTokens
 	if config.MaxTokens != nil {
 		maxTokens = *config.MaxTokens
@@ -114,15 +123,15 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableTh
 	}
 
 	// Enable thinking for reasoning models
-	if enableThinking {
-		thinkingBudget := anthropicThinkingBudgetTokens
-		if config.ThinkingBudgetTokens != nil {
-			thinkingBudget = *config.ThinkingBudgetTokens
-		}
-		claudeConfig.Thinking = &claudemodel.Thinking{
-			Enable:       enableThinking,
-			BudgetTokens: thinkingBudget,
-		}
+	// Requirements:
+	//   - Temperature must be set to 1
+	thinkingBudget := anthropicThinkingBudgetTokens
+	if config.ThinkingBudgetTokens != nil {
+		thinkingBudget = *config.ThinkingBudgetTokens
+	}
+	claudeConfig.Thinking = &claudemodel.Thinking{
+		Enable:       config.ThinkingEnabled, // from config
+		BudgetTokens: thinkingBudget,
 	}
 
 	// Wire response schema into anthropic's sdk-go's output_config.format via eino's AdditionalRequestFields.

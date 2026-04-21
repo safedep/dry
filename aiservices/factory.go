@@ -19,6 +19,8 @@ const (
 type llmProviderBuilderOptions struct {
 	// Some models support a response schema
 	responseSchema *openapi3.Schema
+	// Enable thinking for anthropic models
+	thinkingEnabled bool
 }
 
 type LLMProviderBuilderOption func(*llmProviderBuilderOptions)
@@ -27,6 +29,13 @@ type LLMProviderBuilderOption func(*llmProviderBuilderOptions)
 func WithResponseSchema(schema *openapi3.Schema) LLMProviderBuilderOption {
 	return func(opts *llmProviderBuilderOptions) {
 		opts.responseSchema = schema
+	}
+}
+
+// WithThinkingEnabled enables thinking for anthropic models.
+func WithThinkingEnabled() LLMProviderBuilderOption {
+	return func(opts *llmProviderBuilderOptions) {
+		opts.thinkingEnabled = true
 	}
 }
 
@@ -105,8 +114,9 @@ func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvid
 	opts := builderOptionsFromOpts(builderOpts...)
 
 	config := AnthropicModelConfig{
-		ResponseSchema: opts.responseSchema,
-		UseBedrock:     strings.EqualFold(os.Getenv("AISERVICES_ANTHROPIC_USE_BEDROCK"), "true"),
+		ResponseSchema:  opts.responseSchema,
+		UseBedrock:      strings.EqualFold(os.Getenv("AISERVICES_ANTHROPIC_USE_BEDROCK"), "true"),
+		ThinkingEnabled: opts.thinkingEnabled,
 	}
 
 	if config.UseBedrock {

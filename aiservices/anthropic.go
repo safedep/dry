@@ -213,7 +213,7 @@ func (m *anthropicModel) GenerateSingle(ctx context.Context, req LLMGenerationRe
 			return "", NewTokenLimitError(Anthropic, m.GetId(), err.Error())
 		}
 
-		if strings.Contains(strings.ToLower(err.Error()), "too many requests") {
+		if strings.Contains(strings.ToLower(err.Error()), "rate limit") {
 			return "", NewRateLimitError(Anthropic, m.GetId(), err.Error())
 		}
 

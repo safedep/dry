@@ -103,12 +103,10 @@ func createVertexAIProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvide
 
 func createAnthropicProvider(builderOpts ...LLMProviderBuilderOption) (LLMProvider, error) {
 	opts := builderOptionsFromOpts(builderOpts...)
-	if opts.responseSchema != nil {
-		return nil, fmt.Errorf("WithResponseSchema is not supported for the Anthropic provider")
-	}
 
 	config := AnthropicModelConfig{
-		UseBedrock: strings.EqualFold(os.Getenv("AISERVICES_ANTHROPIC_USE_BEDROCK"), "true"),
+		ResponseSchema: opts.responseSchema,
+		UseBedrock:     strings.EqualFold(os.Getenv("AISERVICES_ANTHROPIC_USE_BEDROCK"), "true"),
 	}
 
 	if config.UseBedrock {

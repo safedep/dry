@@ -2,11 +2,13 @@ package aiservices
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	claudemodel "github.com/cloudwego/eino-ext/components/model/claude"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/pkg/errors"
 )
 
@@ -59,6 +61,10 @@ type AnthropicModelConfig struct {
 	// ThinkingBudgetTokens sets the thinking token budget for reasoning models.
 	// Defaults to anthropicThinkingBudgetTokens when nil.
 	ThinkingBudgetTokens *int
+
+	// ResponseSchema constrains Claude's response to a JSON schema via output_config.format.
+	// When set, the model will return structured JSON conforming to this schema.
+	ResponseSchema *openapi3.Schema
 }
 
 type anthropicModel struct {
@@ -116,6 +122,26 @@ func newAnthropicChatModel(modelId string, config AnthropicModelConfig, enableTh
 		claudeConfig.Thinking = &claudemodel.Thinking{
 			Enable:       enableThinking,
 			BudgetTokens: thinkingBudget,
+		}
+	}
+
+	// Wire response schema into anthropic's sdk-go's output_config.format via eino's AdditionalRequestFields.
+	// The eino Claude wrapper doesn't expose output_config natively, but it passes
+	// AdditionalRequestFields through option.WithJSONSet (sjson dot-path format).
+	if config.ResponseSchema != nil {
+		schemaBytes, err := json.Marshal(config.ResponseSchema)
+		if err != nil {
+			return nil, NewInvalidConfigError(Anthropic, "failed to marshal response schema: "+err.Error())
+		}
+		var schemaMap map[string]any
+		if err := json.Unmarshal(schemaBytes, &schemaMap); err != nil {
+			return nil, NewInvalidConfigError(Anthropic, "failed to convert response schema: "+err.Error())
+		}
+		claudeConfig.AdditionalRequestFields = map[string]any{
+			"output_config.format": map[string]any{
+				"type":   "json_schema",
+				"schema": schemaMap,
+			},
 		}
 	}
 

@@ -15,6 +15,10 @@ import (
 // This is set on every object schema during generation to ensure strict validation.
 // This is required by Anthropic's structured output API and is harmless for other providers.
 func GenerateOpenAPISchemaForLLMResponse(T any) (*openapi3.Schema, error) {
+	if T == nil {
+		return nil, errors.New("T must not be nil")
+	}
+
 	schemas := make(openapi3.Schemas)
 
 	schemaRef, err := openapi3gen.NewSchemaRefForValue(T, schemas,

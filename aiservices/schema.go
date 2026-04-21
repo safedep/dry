@@ -8,13 +8,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// GenerateOpenapiSchemaForLLMResponse converts a Go struct into an OpenAPI Schema.
+// GenerateOpenAPISchemaForLLMResponse converts a Go struct into an OpenAPI Schema.
 // Since its open standard, we are not providing it for clients, they need to handle it.
 //
 // "additionalProperties: false", is a JSON schema keyword that restricts objects to only allow properties defined in the schema.
 // This is set on every object schema during generation to ensure strict validation.
 // This is required by Anthropic's structured output API and is harmless for other providers.
-func GenerateOpenapiSchemaForLLMResponse(T any) (*openapi3.Schema, error) {
+func GenerateOpenAPISchemaForLLMResponse(T any) (*openapi3.Schema, error) {
 	schemas := make(openapi3.Schemas)
 
 	schemaRef, err := openapi3gen.NewSchemaRefForValue(T, schemas,

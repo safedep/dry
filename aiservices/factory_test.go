@@ -145,7 +145,7 @@ func TestCreateLLMProviderFromEnv(t *testing.T) {
 			},
 		},
 		{
-			name: "anthropic with response schema returns error",
+			name: "anthropic with response schema works",
 			envVars: map[string]string{
 				"AISERVICES_LLM_PROVIDER":      "anthropic",
 				"AISERVICES_ANTHROPIC_API_KEY": "test-api-key",
@@ -321,7 +321,7 @@ func TestCreateAnthropicProvider(t *testing.T) {
 		},
 		// Shared
 		{
-			name: "response schema not supported",
+			name: "response schema supported",
 			envVars: map[string]string{
 				"AISERVICES_ANTHROPIC_API_KEY": "test-key",
 			},

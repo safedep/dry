@@ -72,7 +72,7 @@ func TestVertexAI_CustomResponseSchema(t *testing.T) {
 		Error  string `json:"error"`
 	}
 
-	schema, err := GenerateOpenapiSchemaForLLMResponse(&testCustomResponseSchema{})
+	schema, err := GenerateOpenAPISchemaForLLMResponse(&testCustomResponseSchema{})
 	assert.NoError(t, err)
 
 	config := VertexAIModelConfig{

@@ -84,7 +84,7 @@ func TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema(t *testing.T) {
 		Country string `json:"country"`
 	}
 
-	schema, err := GenerateOpenapiSchemaForLLMResponse(&capitalResponse{})
+	schema, err := GenerateOpenAPISchemaForLLMResponse(&capitalResponse{})
 	require.NoError(t, err)
 
 	provider, err := CreateLLMProviderFromEnv(WithResponseSchema(schema))

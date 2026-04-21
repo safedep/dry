@@ -13,10 +13,9 @@ import (
 const (
 	// Bedrock model IDs include the anthropic. prefix and -v1:0 version suffix
 	// required by the Bedrock model catalog. These differ from the direct API IDs.
-	// Docs: https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html
-	// https://models.dev/?search=anthropic
-	bedrockFastModelId      = "anthropic.claude-haiku-4-5-20251001-v1:0"
-	bedrockReasoningModelId = "anthropic.claude-sonnet-4-6"
+	// https://docs.aws.amazon.com/bedrock/latest/userguide/inference-profiles-support.html
+	bedrockFastModelId      = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
+	bedrockReasoningModelId = "global.anthropic.claude-sonnet-4-6"
 
 	// Direct Anthropic API model IDs.
 	// https://models.dev/?search=anthropic

@@ -22,7 +22,6 @@ type Progress struct {
 	mode output.Mode
 	pw   gp.Writer
 	done chan struct{}
-	mu   sync.Mutex
 }
 
 // Tracker is a single progress item within a Progress manager.
@@ -71,9 +70,9 @@ func (p *Progress) Track(label string, total int64) *Tracker {
 		tr.gpTr = &gp.Tracker{Message: label, Total: total, Units: gp.UnitsDefault}
 		p.pw.AppendTracker(tr.gpTr)
 	case output.Plain:
-		fmt.Fprintf(output.Stderr(), "%s: 0/%d (0%%)\n", label, total)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s: 0/%d (0%%)\n", label, total)
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "progress: %s 0/%d (0%%)\n", label, total)
+		_, _ = fmt.Fprintf(output.Stderr(), "progress: %s 0/%d (0%%)\n", label, total)
 	}
 	return tr
 }
@@ -95,9 +94,9 @@ func (tr *Tracker) Increment(n int64) {
 	}
 	switch tr.progress.mode {
 	case output.Plain:
-		fmt.Fprintf(output.Stderr(), "%s: %d/%d (%d%%)\n", tr.label, cur, total, pct)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s: %d/%d (%d%%)\n", tr.label, cur, total, pct)
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "progress: %s %d/%d (%d%%)\n", tr.label, cur, total, pct)
+		_, _ = fmt.Fprintf(output.Stderr(), "progress: %s %d/%d (%d%%)\n", tr.label, cur, total, pct)
 	}
 }
 
@@ -109,9 +108,9 @@ func (tr *Tracker) Done() {
 	}
 	switch tr.progress.mode {
 	case output.Plain:
-		fmt.Fprintf(output.Stderr(), "%s: done\n", tr.label)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s: done\n", tr.label)
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "progress: %s done\n", tr.label)
+		_, _ = fmt.Fprintf(output.Stderr(), "progress: %s done\n", tr.label)
 	}
 }
 

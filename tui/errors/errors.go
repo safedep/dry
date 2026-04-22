@@ -29,10 +29,10 @@ func ErrorExitWithCode(err error, code int) {
 
 func printError(err error) {
 	line := style.Error(err.Error())
-	fmt.Fprintln(output.Stderr(), line)
+	_, _ = fmt.Fprintln(output.Stderr(), line)
 	if output.CurrentVerbosity() >= output.Verbose {
 		walkCauses(err, func(cause error) {
-			fmt.Fprintln(output.Stderr(), style.Faint("  caused by: "+cause.Error()))
+			_, _ = fmt.Fprintln(output.Stderr(), style.Faint("  caused by: "+cause.Error()))
 		})
 	}
 }

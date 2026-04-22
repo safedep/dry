@@ -53,7 +53,7 @@ func Select(label string, choices []string) (string, error) {
 // --- test-friendly core implementations ---
 
 func promptFromReader(r io.Reader, label string) (string, error) {
-	fmt.Fprintf(output.Stderr(), "%s: ", label)
+	_, _ = fmt.Fprintf(output.Stderr(), "%s: ", label)
 	line, err := readLine(r)
 	if err != nil {
 		return "", err
@@ -68,7 +68,7 @@ func confirmFromReader(r io.Reader, label string, defaultYes bool) (bool, error)
 		suffix = "[Y/n]"
 	}
 	for {
-		fmt.Fprintf(output.Stderr(), "%s %s: ", label, suffix)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s %s: ", label, suffix)
 
 		line, err := readLineFromBuf(br)
 		if err != nil {
@@ -83,7 +83,7 @@ func confirmFromReader(r io.Reader, label string, defaultYes bool) (bool, error)
 		case "n", "no":
 			return false, nil
 		default:
-			fmt.Fprintln(output.Stderr(), "invalid choice; please answer y or n")
+			_, _ = fmt.Fprintln(output.Stderr(), "invalid choice; please answer y or n")
 		}
 	}
 }
@@ -91,11 +91,11 @@ func confirmFromReader(r io.Reader, label string, defaultYes bool) (bool, error)
 func selectFromReader(r io.Reader, label string, choices []string) (string, error) {
 	br := bufio.NewReader(r)
 	for {
-		fmt.Fprintf(output.Stderr(), "%s\n", label)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s\n", label)
 		for i, c := range choices {
-			fmt.Fprintf(output.Stderr(), "  %d) %s\n", i+1, c)
+			_, _ = fmt.Fprintf(output.Stderr(), "  %d) %s\n", i+1, c)
 		}
-		fmt.Fprint(output.Stderr(), "> ")
+		_, _ = fmt.Fprint(output.Stderr(), "> ")
 
 		line, err := readLineFromBuf(br)
 		if err != nil {
@@ -104,7 +104,7 @@ func selectFromReader(r io.Reader, label string, choices []string) (string, erro
 		line = strings.TrimSpace(line)
 		idx, err := strconv.Atoi(line)
 		if err != nil || idx < 1 || idx > len(choices) {
-			fmt.Fprintln(output.Stderr(), "invalid choice; please enter a number from the list")
+			_, _ = fmt.Fprintln(output.Stderr(), "invalid choice; please enter a number from the list")
 			continue
 		}
 		return choices[idx-1], nil

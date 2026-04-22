@@ -59,9 +59,9 @@ func (s *Spinner) Start() {
 		s.mu.Unlock()
 		go s.animate()
 	case output.Plain:
-		fmt.Fprintf(output.Stderr(), "%s...\n", s.label)
+		_, _ = fmt.Fprintf(output.Stderr(), "%s...\n", s.label)
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "[%s] start\n", s.label)
+		_, _ = fmt.Fprintf(output.Stderr(), "[%s] start\n", s.label)
 	}
 }
 
@@ -75,9 +75,9 @@ func (s *Spinner) Status(label string) {
 
 	switch mode {
 	case output.Plain:
-		fmt.Fprintf(output.Stderr(), "  %s...\n", label)
+		_, _ = fmt.Fprintf(output.Stderr(), "  %s...\n", label)
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "[%s] status\n", label)
+		_, _ = fmt.Fprintf(output.Stderr(), "[%s] status\n", label)
 	}
 }
 
@@ -123,11 +123,11 @@ func (s *Spinner) stop(richLine func() string, plainLine func() string, agentSta
 	switch mode {
 	case output.Rich:
 		clearCurrentLine()
-		fmt.Fprintln(output.Stderr(), richLine())
+		_, _ = fmt.Fprintln(output.Stderr(), richLine())
 	case output.Plain:
-		fmt.Fprintln(output.Stderr(), plainLine())
+		_, _ = fmt.Fprintln(output.Stderr(), plainLine())
 	case output.Agent:
-		fmt.Fprintf(output.Stderr(), "[%s] %s\n", label, agentStatus)
+		_, _ = fmt.Fprintf(output.Stderr(), "[%s] %s\n", label, agentStatus)
 	}
 }
 
@@ -167,7 +167,7 @@ func clearCurrentLine() {
 	// ok-raw-ansi: CR + ED (erase-to-end-of-line). Cursor control is the
 	// spinner's job; no lipgloss equivalent exists. Justified exemption from
 	// the no-raw-ANSI discipline check.
-	fmt.Fprint(output.Stderr(), "\r\033[K")
+	_, _ = fmt.Fprint(output.Stderr(), "\r\033[K")
 }
 
 func (s *Spinner) installSignalHandler() {

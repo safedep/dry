@@ -34,7 +34,7 @@ func (b Banner) Print() {
 
 // PrintTo writes the banner to the given writer.
 func (b Banner) PrintTo(w io.Writer) {
-	fmt.Fprintln(w, b.Render())
+	_, _ = fmt.Fprintln(w, b.Render())
 }
 
 // Render returns the banner as a string, respecting the active output.Mode.

@@ -69,7 +69,7 @@ func (c *Console) Error(format string, a ...any) {
 }
 
 func (c *Console) writeln(s string) {
-	fmt.Fprintln(c.writer, s)
+	_, _ = fmt.Fprintln(c.writer, s)
 }
 
 // lineRole identifies the semantic role of a Console output line.

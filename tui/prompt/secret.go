@@ -53,7 +53,7 @@ func Secret(label string, opts ...SecretOption) (string, error) {
 // readSecretMasked is the test-friendly core. r must be a byte-oriented reader;
 // in production it is os.Stdin in raw mode.
 func readSecretMasked(r io.Reader, w io.Writer, label string, mask bool) (string, error) {
-	fmt.Fprintf(w, "%s: ", label)
+	_, _ = fmt.Fprintf(w, "%s: ", label)
 
 	var buf []byte
 	one := make([]byte, 1)
@@ -61,7 +61,7 @@ func readSecretMasked(r io.Reader, w io.Writer, label string, mask bool) (string
 		n, err := r.Read(one)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Fprintln(w)
+				_, _ = fmt.Fprintln(w)
 				return "", ErrCancelled
 			}
 			return "", err
@@ -72,10 +72,10 @@ func readSecretMasked(r io.Reader, w io.Writer, label string, mask bool) (string
 		b := one[0]
 		switch b {
 		case '\r', '\n':
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 			return string(buf), nil
 		case 0x03: // Ctrl-C
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 			return "", ErrCancelled
 		case '\b', 0x7f: // backspace / DEL
 			if len(buf) == 0 {
@@ -84,7 +84,7 @@ func readSecretMasked(r io.Reader, w io.Writer, label string, mask bool) (string
 			buf = buf[:len(buf)-1]
 			if mask {
 				// erase one masked char visually: \b space \b
-				fmt.Fprint(w, "\b \b")
+				_, _ = fmt.Fprint(w, "\b \b")
 			}
 		default:
 			if b < 0x20 { // ignore other control chars
@@ -92,7 +92,7 @@ func readSecretMasked(r io.Reader, w io.Writer, label string, mask bool) (string
 			}
 			buf = append(buf, b)
 			if mask {
-				fmt.Fprint(w, "*")
+				_, _ = fmt.Fprint(w, "*")
 			}
 		}
 	}

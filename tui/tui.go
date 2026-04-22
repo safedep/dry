@@ -19,7 +19,7 @@ func Info(format string, a ...any) {
 	if output.CurrentVerbosity() <= output.Silent {
 		return
 	}
-	fmt.Fprintln(output.Stderr(), style.Info(fmt.Sprintf(format, a...)))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Info(fmt.Sprintf(format, a...)))
 }
 
 // Success prints a formatted success-level line to stderr. Suppressed when
@@ -28,18 +28,18 @@ func Success(format string, a ...any) {
 	if output.CurrentVerbosity() <= output.Silent {
 		return
 	}
-	fmt.Fprintln(output.Stderr(), style.Success(fmt.Sprintf(format, a...)))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Success(fmt.Sprintf(format, a...)))
 }
 
 // Warning prints a formatted warning-level line to stderr. Always shown,
 // regardless of verbosity (warnings must not be hidden by --silent).
 func Warning(format string, a ...any) {
-	fmt.Fprintln(output.Stderr(), style.Warning(fmt.Sprintf(format, a...)))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Warning(fmt.Sprintf(format, a...)))
 }
 
 // Error prints a formatted error-level line to stderr. Always shown.
 func Error(format string, a ...any) {
-	fmt.Fprintln(output.Stderr(), style.Error(fmt.Sprintf(format, a...)))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Error(fmt.Sprintf(format, a...)))
 }
 
 // Faint prints a muted line to stderr. Only shown when verbosity is Verbose.
@@ -47,12 +47,12 @@ func Faint(format string, a ...any) {
 	if output.CurrentVerbosity() < output.Verbose {
 		return
 	}
-	fmt.Fprintln(output.Stderr(), style.Faint(fmt.Sprintf(format, a...)))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Faint(fmt.Sprintf(format, a...)))
 }
 
 // Heading prints a bold accent line to stderr.
 func Heading(text string) {
-	fmt.Fprintln(output.Stderr(), style.Heading(text))
+	_, _ = fmt.Fprintln(output.Stderr(), style.Heading(text))
 }
 
 // Badge returns a pre-styled inline badge for embedding in cells or messages.
@@ -64,5 +64,5 @@ func Badge(role theme.Role, text string) string {
 // Print writes a Renderable to stderr using the current theme and mode.
 // Convenience dispatch for callers who implement Renderable on their types.
 func Print(r Renderable) {
-	fmt.Fprintln(output.Stderr(), r.Render(theme.Default(), output.CurrentMode()))
+	_, _ = fmt.Fprintln(output.Stderr(), r.Render(theme.Default(), output.CurrentMode()))
 }

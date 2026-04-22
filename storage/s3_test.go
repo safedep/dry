@@ -177,7 +177,7 @@ func TestS3StorageDriver_Integration(t *testing.T) {
 
 			reader, err := driver.Get(key)
 			require.NoError(t, err)
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 
 			got, err := io.ReadAll(reader)
 			require.NoError(t, err)
@@ -202,7 +202,7 @@ func TestS3StorageDriver_Integration(t *testing.T) {
 
 		reader, err := driver.Get(key)
 		require.NoError(t, err)
-		defer reader.Close()
+		defer func() { _ = reader.Close() }()
 
 		got, err := io.ReadAll(reader)
 		require.NoError(t, err)

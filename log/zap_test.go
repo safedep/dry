@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
@@ -31,13 +32,13 @@ func TestProductionLoggerToFile(t *testing.T) {
 		assert.NoError(t, err)
 
 		path := tmpFile.Name()
-		tmpFile.Close()
+		require.NoError(t, tmpFile.Close())
 
 		// Remove the file created by os.CreateTemp
-		os.Remove(path)
+		require.NoError(t, os.Remove(path))
 
 		// Make sure the file created by the test is removed
-		defer os.Remove(path)
+		defer func() { _ = os.Remove(path) }()
 
 		t.Setenv(loggerKeyEnvLogFileName, path)
 		t.Setenv(loggerKeyEnvLogLevel, logLevelNameDebug)
@@ -54,7 +55,7 @@ func TestProductionLoggerToFile(t *testing.T) {
 		z, ok := l.(*zapLoggerWrapper)
 		assert.True(t, ok)
 
-		z.logger.Sync()
+		_ = z.logger.Sync()
 
 		assert.FileExists(t, path)
 

@@ -3,9 +3,6 @@ package aiservices
 import (
 	"testing"
 
-	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/getkin/kin-openapi/openapi3gen"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -75,7 +72,7 @@ func TestVertexAI_CustomResponseSchema(t *testing.T) {
 		Error  string `json:"error"`
 	}
 
-	schema, err := generateOpenapiSchema(&testCustomResponseSchema{})
+	schema, err := GenerateOpenAPISchemaForLLMResponse(&testCustomResponseSchema{})
 	assert.NoError(t, err)
 
 	config := VertexAIModelConfig{
@@ -89,17 +86,4 @@ func TestVertexAI_CustomResponseSchema(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.NotNil(t, model)
-}
-
-// generateOpenapiSchema helper function to convert Go struct into OpenAPI Schema
-// Since its open standard, we are not providing it for clients, they need to handle it.
-func generateOpenapiSchema(T any) (*openapi3.Schema, error) {
-	schemas := make(openapi3.Schemas)
-
-	schemaRef, err := openapi3gen.NewSchemaRefForValue(T, schemas)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create schema ref")
-	}
-
-	return schemaRef.Value, nil
 }

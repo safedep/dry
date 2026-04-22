@@ -43,7 +43,7 @@ func (d *filesystemStorageDriver) Put(key string, reader io.Reader) error {
 		return fmt.Errorf("fs storage adapter: failed to create file: %w", err)
 	}
 
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	_, err = io.Copy(file, reader)
 	if err != nil {

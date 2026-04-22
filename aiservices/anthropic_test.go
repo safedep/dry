@@ -61,3 +61,46 @@ func TestAnthropicDirectAPI_GenerateSingle(t *testing.T) {
 	assert.True(t, strings.Contains(response, "4"),
 		"expected response to contain '4', got: %q", response)
 }
+
+// TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema verifies that passing a
+// ResponseSchema causes Claude to return valid JSON conforming to the schema.
+//
+// Run with:
+//
+//	AISERVICES_ANTHROPIC_API_KEY=sk-ant-... go test ./aiservices/... -run TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema -v
+func TestAnthropicDirectAPI_GenerateSingle_WithResponseSchema(t *testing.T) {
+	apiKey := os.Getenv("AISERVICES_ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		t.Skip("skipping integration test: AISERVICES_ANTHROPIC_API_KEY is not set")
+	}
+
+	t.Setenv("AISERVICES_LLM_PROVIDER", "anthropic")
+	t.Setenv("AISERVICES_ANTHROPIC_USE_BEDROCK", "false")
+	t.Setenv("AISERVICES_ANTHROPIC_API_KEY", apiKey)
+	t.Setenv("AISERVICES_ANTHROPIC_MAX_TOKENS", "1025")
+
+	type capitalResponse struct {
+		City    string `json:"city"`
+		Country string `json:"country"`
+	}
+
+	schema, err := GenerateOpenAPISchemaForLLMResponse(&capitalResponse{})
+	require.NoError(t, err)
+
+	provider, err := CreateLLMProviderFromEnv(WithResponseSchema(schema))
+	require.NoError(t, err)
+	require.NotNil(t, provider)
+
+	model, err := provider.GetFastModel()
+	require.NoError(t, err)
+
+	response, err := model.GenerateSingle(context.Background(), LLMGenerationRequest{
+		SystemPrompt: "You are a helpful assistant",
+		UserPrompt:   "What is the capital city of France? Return the city and country.",
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, response)
+
+	assert.Equal(t, `{"city": "Paris", "country": "France"}`, response)
+}

@@ -160,7 +160,7 @@ func writeCurrentFrame(frame, label string) {
 	// ok-raw-ansi: CR + ED (erase-to-end-of-line) are required for Rich-mode
 	// spinner redraws so a shorter Status() label doesn't leave trailing bytes
 	// from the previous frame on screen.
-	fmt.Fprintf(output.Stderr(), "\r\033[K%s %s", frame, label)
+	_, _ = fmt.Fprintf(output.Stderr(), "\r\033[K%s %s", frame, label)
 }
 
 func clearCurrentLine() {

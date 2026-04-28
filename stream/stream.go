@@ -6,6 +6,7 @@ package stream
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -13,6 +14,62 @@ import (
 var (
 	ErrMissingTenantID = errors.New("missing tenant ID for multi-tenant stream")
 )
+
+const (
+	// StreamAccessMinExpiry is the minimum allowed expiry for a scoped access token.
+	StreamAccessMinExpiry = 1 * time.Minute
+
+	// StreamAccessMaxExpiry is the maximum allowed expiry for a scoped access token.
+	// Caps worst-case blast radius of a leaked token.
+	StreamAccessMaxExpiry = 24 * time.Hour
+
+	// StreamAccessDefaultExpiry is applied when StreamAccessRequest.Expiry is zero.
+	StreamAccessDefaultExpiry = 1 * time.Hour
+)
+
+var (
+	ErrExpiryTooShort    = errors.New("stream access expiry below minimum")
+	ErrExpiryTooLong     = errors.New("stream access expiry above maximum")
+	ErrInvalidAccessRole = errors.New("invalid or missing stream access role")
+	ErrInvalidScope      = errors.New("invalid stream scope")
+	ErrInvalidAccessID   = errors.New("invalid or missing access ID")
+)
+
+// normalizeExpiry enforces library-wide expiry bounds. Zero-valued input
+// receives StreamAccessDefaultExpiry; out-of-range input is rejected (not
+// silently clamped) so callers notice when they ask for something they
+// cannot have.
+func normalizeExpiry(d time.Duration) (time.Duration, error) {
+	if d == 0 {
+		return StreamAccessDefaultExpiry, nil
+	}
+	if d < StreamAccessMinExpiry {
+		return 0, ErrExpiryTooShort
+	}
+	if d > StreamAccessMaxExpiry {
+		return 0, ErrExpiryTooLong
+	}
+	return d, nil
+}
+
+// StreamScope describes a set of streams by prefix. When non-nil on a
+// StreamAccessRequest, the issued token covers all streams matched by
+// this scope instead of a single Stream. At least one field must be
+// non-empty; an all-empty scope matches every stream in the basin and
+// is rejected by Validate.
+type StreamScope struct {
+	TenantID   string // optional
+	Namespace  string // optional
+	NamePrefix string // optional; matches streams whose Name starts with this prefix
+}
+
+// Validate checks that at least one scoping field is populated.
+func (s StreamScope) Validate() error {
+	if s.TenantID == "" && s.Namespace == "" && s.NamePrefix == "" {
+		return ErrInvalidScope
+	}
+	return nil
+}
 
 // Stream is a minimal description of a stream as a first class citizen.
 // Implementations can use this to create a stream, read from it, write to it,
@@ -76,31 +133,104 @@ const (
 	StreamAccessReadWrite
 )
 
+func (r StreamAccessRole) String() string {
+	switch r {
+	case StreamAccessNone:
+		return "none"
+	case StreamAccessRead:
+		return "read"
+	case StreamAccessWrite:
+		return "write"
+	case StreamAccessReadWrite:
+		return "readwrite"
+	default:
+		return "unknown"
+	}
+}
+
+// StreamAccessRequest describes a scoped, time-limited access token to mint.
+// Exactly one of Stream (nil Scope) or Scope is the target of the token.
 type StreamAccessRequest struct {
+	// Stream is used when Scope is nil: the token is bound to this single
+	// stream's fully-qualified ID.
 	Stream Stream
+
+	// Scope, when non-nil, overrides Stream. The token is bound to every
+	// stream whose name matches the scope's prefix.
+	Scope *StreamScope
+
+	// Access is the coarse role granted. Providers map this to their native
+	// per-operation permissions.
 	Access StreamAccessRole
+
+	// Expiry is the lifetime of the minted token. Zero applies
+	// StreamAccessDefaultExpiry. Out-of-range values are rejected.
 	Expiry time.Duration
 
 	// Other metadata such as TenantID, userID etc. goes here
 }
 
+// Validate runs provider-agnostic checks. Providers should call this at the
+// top of CreateStreamAccess before any remote call.
+func (r StreamAccessRequest) Validate() error {
+	switch r.Access {
+	case StreamAccessRead, StreamAccessWrite, StreamAccessReadWrite:
+		// ok
+	default:
+		return ErrInvalidAccessRole
+	}
+	if _, err := normalizeExpiry(r.Expiry); err != nil {
+		return err
+	}
+	if r.Scope != nil {
+		if err := r.Scope.Validate(); err != nil {
+			return err
+		}
+		return nil
+	}
+	if _, err := r.Stream.ID(); err != nil {
+		return fmt.Errorf("invalid stream in access request: %w", err)
+	}
+	return nil
+}
+
+// StreamAccess is the result of minting a scoped access token.
 type StreamAccess struct {
+	// AccessID is the provider-assigned identifier used to later revoke
+	// the token.
 	AccessID string
-	Token    string
+
+	// Token is the bearer credential to pass to the data-plane client.
+	Token string
+
+	// ExpiresAt is the absolute expiry time echoed back by the provider.
+	ExpiresAt time.Time
 
 	// Other information for stream access goes here.
 }
 
-// StreamControlPlane is the contract for providing administrative control
-// over the underlying stream processing infrastructure.
-type StreamControlPlane interface {
-	// Stream management. Should be idempotent.
+// StreamLifecycle manages stream existence in the provider.
+// Implementations should be idempotent.
+type StreamLifecycle interface {
 	CreateStream(ctx context.Context, stream Stream) error
 	DeleteStream(ctx context.Context, stream Stream) error
+}
 
-	// Access control management operations.
+// StreamAccessIssuer mints and revokes scoped, time-limited access tokens.
+// The credential used to construct an issuer must have provider-level
+// token-issuance privilege and is intentionally distinct from data-plane
+// credentials used by writers/readers.
+type StreamAccessIssuer interface {
 	CreateStreamAccess(ctx context.Context, request StreamAccessRequest) (*StreamAccess, error)
 	DeleteStreamAccess(ctx context.Context, accessID string) error
+}
+
+// StreamControlPlane is the composition of lifecycle and access-issuer
+// for providers that support both. Callers that only need one half
+// should depend on the narrower interface.
+type StreamControlPlane interface {
+	StreamLifecycle
+	StreamAccessIssuer
 }
 
 // StreamSerializer is the contract for serializing and deserializing records

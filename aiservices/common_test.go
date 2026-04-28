@@ -10,7 +10,7 @@ import (
 func TestFlattenResponseMessage(t *testing.T) {
 	responseMessage := &schema.Message{
 		Content: "A",
-		MultiContent: []schema.ChatMessagePart{
+		AssistantGenMultiContent: []schema.MessageOutputPart{
 			{
 				Text: "B",
 			},

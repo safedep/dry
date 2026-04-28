@@ -16,7 +16,7 @@ func TestFilesystemStorageDriver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	config := FilesystemStorageDriverConfig{
 		Root: tmpDir,
@@ -52,7 +52,7 @@ func TestFilesystemStorageDriver(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, "Hello, World!", string(content))
-		reader.Close()
+		_ = reader.Close()
 	})
 
 	t.Run("Writer", func(t *testing.T) {
@@ -62,7 +62,7 @@ func TestFilesystemStorageDriver(t *testing.T) {
 
 		_, err = writer.Write([]byte("Hello, World!"))
 		assert.NoError(t, err)
-		writer.Close()
+		_ = writer.Close()
 
 		fileShouldExist := filepath.Join(tmpDir, "file2.txt")
 		_, err = os.Stat(fileShouldExist)
@@ -76,6 +76,6 @@ func TestFilesystemStorageDriver(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, "Hello, World!", string(content))
-		reader.Close()
+		_ = reader.Close()
 	})
 }

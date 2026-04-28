@@ -5,13 +5,12 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// flattenResponseMessage takes an eino's []*schema.Message and concatenates its Content and MultiContent
-// fields into a single string. This is useful for extracting the full text of a response
+// flattenResponseMessage concatenates a message's Content and multi-part fields into a single string.
 func flattenResponseMessage(response *schema.Message) string {
 	result := response.Content
 
-	for _, message := range response.MultiContent {
-		result += message.Text
+	for _, part := range response.AssistantGenMultiContent {
+		result += part.Text
 	}
 
 	return result

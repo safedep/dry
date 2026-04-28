@@ -60,13 +60,20 @@ func normalizeExpiry(d time.Duration) (time.Duration, error) {
 type StreamScope struct {
 	TenantID   string // optional
 	Namespace  string // optional
-	NamePrefix string // optional; matches streams whose Name starts with this prefix
+	NamePrefix string // optional; partial stream-name match. Requires Namespace to be set, otherwise the resulting prefix would match the namespace segment of stream IDs rather than stream names.
 }
 
-// Validate checks that at least one scoping field is populated.
+// Validate checks that at least one scoping field is populated and that
+// NamePrefix is only used together with Namespace. Stream IDs are
+// colon-delimited (e.g. "tenant:namespace:name"), so a bare NamePrefix
+// without a Namespace anchor would match the wrong segment and could
+// silently grant access to unintended streams.
 func (s StreamScope) Validate() error {
 	if s.TenantID == "" && s.Namespace == "" && s.NamePrefix == "" {
 		return ErrInvalidScope
+	}
+	if s.NamePrefix != "" && s.Namespace == "" {
+		return fmt.Errorf("%w: NamePrefix requires Namespace", ErrInvalidScope)
 	}
 	return nil
 }
@@ -149,14 +156,17 @@ func (r StreamAccessRole) String() string {
 }
 
 // StreamAccessRequest describes a scoped, time-limited access token to mint.
-// Exactly one of Stream (nil Scope) or Scope is the target of the token.
+// Exactly one of Stream or Scope must be the target of the token. Setting
+// both is rejected by Validate to avoid silent precedence behavior.
 type StreamAccessRequest struct {
-	// Stream is used when Scope is nil: the token is bound to this single
-	// stream's fully-qualified ID.
+	// Stream is the single-stream target. Mutually exclusive with Scope.
+	// Used when Scope is nil and the token should bind to one stream's
+	// fully-qualified ID.
 	Stream Stream
 
-	// Scope, when non-nil, overrides Stream. The token is bound to every
-	// stream whose name matches the scope's prefix.
+	// Scope is the multi-stream target. Mutually exclusive with Stream.
+	// When non-nil, the token is bound to every stream matched by the
+	// scope's prefix.
 	Scope *StreamScope
 
 	// Access is the coarse role granted. Providers map this to their native
@@ -182,11 +192,12 @@ func (r StreamAccessRequest) Validate() error {
 	if _, err := normalizeExpiry(r.Expiry); err != nil {
 		return err
 	}
+	streamSet := r.Stream != (Stream{})
+	if r.Scope != nil && streamSet {
+		return fmt.Errorf("%w: set exactly one of Stream or Scope, not both", ErrInvalidScope)
+	}
 	if r.Scope != nil {
-		if err := r.Scope.Validate(); err != nil {
-			return err
-		}
-		return nil
+		return r.Scope.Validate()
 	}
 	if _, err := r.Stream.ID(); err != nil {
 		return fmt.Errorf("invalid stream in access request: %w", err)
@@ -196,14 +207,18 @@ func (r StreamAccessRequest) Validate() error {
 
 // StreamAccess is the result of minting a scoped access token.
 type StreamAccess struct {
-	// AccessID is the provider-assigned identifier used to later revoke
-	// the token.
+	// AccessID is the opaque identifier used to later revoke this token.
+	// Depending on the provider it may be client-generated (e.g. S2 accepts
+	// a caller-supplied ID) or provider-assigned. Treat it as opaque.
 	AccessID string
 
 	// Token is the bearer credential to pass to the data-plane client.
 	Token string
 
-	// ExpiresAt is the absolute expiry time echoed back by the provider.
+	// ExpiresAt is the absolute expiry time of the token. When the provider
+	// echoes the expiry in its mint response, that value is used; otherwise
+	// it is the value the library asked the provider to set (after expiry
+	// normalization).
 	ExpiresAt time.Time
 
 	// Other information for stream access goes here.

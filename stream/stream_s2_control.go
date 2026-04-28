@@ -100,8 +100,10 @@ type s2IssueInput struct {
 	AutoPrefixStreams bool
 }
 
-// s2IssueOutput captures just the fields we forward to callers. ExpiresAt
-// is what the provider returned, which may be normalized.
+// s2IssueOutput captures just the fields we forward to callers. The S2
+// IssueAccessToken response only echoes the bearer token; ExpiresAt is the
+// value the wrapper sent in the request (after expiry normalization), not
+// a server-echoed timestamp.
 type s2IssueOutput struct {
 	Token     string
 	ExpiresAt time.Time

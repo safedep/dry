@@ -48,7 +48,9 @@ func TestStreamScopeValidate(t *testing.T) {
 	}{
 		{"tenant only", StreamScope{TenantID: "t1"}, nil},
 		{"namespace only", StreamScope{Namespace: "ns1"}, nil},
-		{"name-prefix only", StreamScope{NamePrefix: "foo"}, nil},
+		{"name-prefix without namespace rejected", StreamScope{NamePrefix: "foo"}, ErrInvalidScope},
+		{"name-prefix with namespace", StreamScope{Namespace: "ns1", NamePrefix: "foo"}, nil},
+		{"name-prefix with tenant only rejected", StreamScope{TenantID: "t1", NamePrefix: "foo"}, ErrInvalidScope},
 		{"tenant + namespace", StreamScope{TenantID: "t1", Namespace: "ns1"}, nil},
 		{"all three set", StreamScope{TenantID: "t1", Namespace: "ns1", NamePrefix: "foo"}, nil},
 		{"all empty rejected", StreamScope{}, ErrInvalidScope},
@@ -116,6 +118,11 @@ func TestStreamAccessRequestValidate(t *testing.T) {
 		{
 			name:    "empty scope rejected",
 			req:     StreamAccessRequest{Scope: &StreamScope{}, Access: StreamAccessRead, Expiry: time.Hour},
+			wantErr: ErrInvalidScope,
+		},
+		{
+			name:    "both stream and scope set rejected",
+			req:     StreamAccessRequest{Stream: validStream, Scope: validScope, Access: StreamAccessRead, Expiry: time.Hour},
 			wantErr: ErrInvalidScope,
 		},
 		{

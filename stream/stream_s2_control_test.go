@@ -68,11 +68,11 @@ func TestS2StreamMatcher(t *testing.T) {
 			want: &s2.ResourceSet{Prefix: s2.Ptr("ns1:")},
 		},
 		{
-			name: "scope name-prefix only",
+			name: "scope namespace + name prefix",
 			req: StreamAccessRequest{
-				Scope: &StreamScope{NamePrefix: "foo"},
+				Scope: &StreamScope{Namespace: "ns1", NamePrefix: "foo"},
 			},
-			want: &s2.ResourceSet{Prefix: s2.Ptr("foo")},
+			want: &s2.ResourceSet{Prefix: s2.Ptr("ns1:foo")},
 		},
 	}
 	for _, tt := range tests {

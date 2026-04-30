@@ -46,7 +46,7 @@ func Render(oldText, newText string) string {
 			continue
 		}
 		if hasOld {
-			b.WriteString(styleLine("-"+oldLine, theme.RoleError))
+			b.WriteString(styleLine("-"+oldLine, theme.RoleDiffRemove))
 			b.WriteString("\n")
 		}
 		if hasNew {

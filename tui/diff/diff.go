@@ -50,7 +50,7 @@ func Render(oldText, newText string) string {
 			b.WriteString("\n")
 		}
 		if hasNew {
-			b.WriteString(styleLine("+"+newLine, theme.RoleSuccess))
+			b.WriteString(styleLine("+"+newLine, theme.RoleDiffAdd))
 			b.WriteString("\n")
 		}
 	}

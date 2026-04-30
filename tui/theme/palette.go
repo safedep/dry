@@ -17,6 +17,9 @@ type Palette struct {
 	Heading lipgloss.AdaptiveColor
 	Path    lipgloss.AdaptiveColor
 
+	// Diff
+	DiffAdd lipgloss.AdaptiveColor // added lines (+); separate from Success so Success can be uncolored
+
 	// Severity
 	Critical lipgloss.AdaptiveColor
 	High     lipgloss.AdaptiveColor
@@ -53,6 +56,7 @@ const (
 	RoleText
 	RoleHeading
 	RolePath
+	RoleDiffAdd
 	RoleCritical
 	RoleHigh
 	RoleMedium
@@ -87,6 +91,8 @@ func (p Palette) ColorByRole(r Role) (lipgloss.AdaptiveColor, bool) {
 		return p.Heading, true
 	case RolePath:
 		return p.Path, true
+	case RoleDiffAdd:
+		return p.DiffAdd, true
 	case RoleCritical:
 		return p.Critical, true
 	case RoleHigh:
@@ -137,6 +143,8 @@ func (p Palette) WithColorByRole(r Role, c lipgloss.AdaptiveColor) Palette {
 		out.Heading = c
 	case RolePath:
 		out.Path = c
+	case RoleDiffAdd:
+		out.DiffAdd = c
 	case RoleCritical:
 		out.Critical = c
 	case RoleHigh:
@@ -184,6 +192,9 @@ func safeDepPalette() Palette {
 		Text:    lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"}, // gray-800 / gray-200
 		Heading: lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F3F4F6"}, // gray-900 / gray-100
 		Path:    lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#93C5FD"}, // blue-700 / blue-300
+
+		// Diff — green for additions (functional color, not decorative).
+		DiffAdd: lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#86EFAC"}, // green-700 / green-300
 
 		// Severity — deeper tones on light, brighter on dark.
 		Critical: lipgloss.AdaptiveColor{Light: "#991B1B", Dark: "#F87171"}, // red-800 / red-400

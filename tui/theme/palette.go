@@ -173,9 +173,11 @@ func (p Palette) WithColorByRole(r Role, c lipgloss.AdaptiveColor) Palette {
 // color literals. A CI grep check enforces this.
 func safeDepPalette() Palette {
 	return Palette{
-		// Semantic — cyan/green/amber/red with readable contrast on both light and dark.
-		Info:    lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#67E8F9"}, // cyan-700 / cyan-300
-		Success: lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#86EFAC"}, // green-700 / green-300
+		// Semantic — only warnings and errors carry color; info and success use the
+		// terminal's default foreground so routine messages don't compete visually
+		// with actionable ones.
+		Info:    lipgloss.AdaptiveColor{Light: "", Dark: ""},
+		Success: lipgloss.AdaptiveColor{Light: "", Dark: ""},
 		Warning: lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"}, // amber-700 / amber-300
 		Error:   lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#FCA5A5"}, // red-700 / red-300
 		Muted:   lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}, // slate-500 / slate-400

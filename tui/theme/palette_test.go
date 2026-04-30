@@ -9,11 +9,12 @@ import (
 
 func TestSafeDepPaletteNonEmpty(t *testing.T) {
 	p := safeDepPalette()
-	// Spot-check that all required fields are populated. We assert on the
-	// Dark half of each AdaptiveColor; Light is exercised by integration
-	// tests that force --light mode.
-	assert.NotEmpty(t, p.Info.Dark)
-	assert.NotEmpty(t, p.Success.Dark)
+	// Info and Success intentionally have no color — they use the terminal's
+	// default foreground so routine messages don't compete with actionable ones.
+	assert.Empty(t, p.Info.Dark)
+	assert.Empty(t, p.Success.Dark)
+
+	// Actionable roles must always carry color.
 	assert.NotEmpty(t, p.Warning.Dark)
 	assert.NotEmpty(t, p.Error.Dark)
 	assert.NotEmpty(t, p.Muted.Dark)

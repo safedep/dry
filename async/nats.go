@@ -38,6 +38,22 @@ type NatsMessagingConfig struct {
 	// Maximum number of deliveries for the stream when
 	// callback is not acknowledged
 	StreamMaxDeliveries int
+
+	// StreamSubjects is the full list of subjects to bind to the stream.
+	// When set, the stream is created (or updated) with this subject set
+	// instead of the single topic passed to QueueSubscribe. Required when
+	// multiple consumers share a stream so all expected subjects stay
+	// bound. If empty, falls back to []string{topic} for backward
+	// compatibility with single-subject callers.
+	StreamSubjects []string
+
+	// FilterSubject is the per-consumer subject filter. When set, the
+	// JetStream durable consumer only receives messages whose subject
+	// matches this filter. Required when multiple consumers share a
+	// stream with multiple subjects so each consumer only sees its own
+	// messages. If empty, the consumer receives all messages on the
+	// stream (today's behavior).
+	FilterSubject string
 }
 
 const (
@@ -207,9 +223,14 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 
 	// We will set limits to ensure we do not end up using unbounded
 	// storage for the stream
+	desiredSubjects := n.config.StreamSubjects
+	if len(desiredSubjects) == 0 {
+		desiredSubjects = []string{topic}
+	}
+
 	config := jetstream.StreamConfig{
 		Name:           n.config.StreamName,
-		Subjects:       []string{topic},
+		Subjects:       desiredSubjects,
 		Storage:        jetstream.FileStorage,
 		Retention:      jetstream.LimitsPolicy,
 		ConsumerLimits: jetstream.StreamConsumerLimits{},
@@ -227,6 +248,21 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 			if err != nil {
 				return fmt.Errorf("error loading JetStream stream: %v", err)
 			}
+
+			// Merge desiredSubjects into the existing stream so multi-consumer
+			// streams end up with the union of every caller's subjects bound.
+			info, infoErr := stream.Info(ctx)
+			if infoErr != nil {
+				return fmt.Errorf("error loading JetStream stream info: %v", infoErr)
+			}
+			merged := mergeSubjects(info.Config.Subjects, desiredSubjects)
+			if !sameSubjects(info.Config.Subjects, merged) {
+				updatedConfig := info.Config
+				updatedConfig.Subjects = merged
+				if _, updErr := js.UpdateStream(ctx, updatedConfig); updErr != nil {
+					return fmt.Errorf("error updating JetStream stream subjects: %v", updErr)
+				}
+			}
 		} else {
 			return fmt.Errorf("error creating JetStream stream: %v", err)
 		}
@@ -237,12 +273,17 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 		ackWait = natsJetStreamAckWait
 	}
 
-	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+	consumerCfg := jetstream.ConsumerConfig{
 		Name:       n.config.StreamListenerName,
 		Durable:    n.config.StreamListenerName,
 		AckWait:    ackWait,
 		MaxDeliver: max(natsJetStreamMaxDeliveries, n.config.StreamMaxDeliveries),
-	})
+	}
+	if n.config.FilterSubject != "" {
+		consumerCfg.FilterSubject = n.config.FilterSubject
+	}
+
+	consumer, err := stream.CreateOrUpdateConsumer(ctx, consumerCfg)
 	if err != nil {
 		return fmt.Errorf("error creating JetStream consumer: %v", err)
 	}
@@ -304,4 +345,45 @@ func (n *natsMessaging) queueSubscribeJetStream(ctx context.Context, topic strin
 			}
 		}
 	}
+}
+
+// mergeSubjects returns a deduplicated union of two subject slices,
+// preserving the order of `existing` followed by any new subjects from
+// `desired` not already present.
+func mergeSubjects(existing, desired []string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(desired))
+	out := make([]string, 0, len(existing)+len(desired))
+	for _, s := range existing {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	for _, s := range desired {
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// sameSubjects reports whether two subject slices have the same set of
+// values regardless of order.
+func sameSubjects(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	set := make(map[string]struct{}, len(a))
+	for _, s := range a {
+		set[s] = struct{}{}
+	}
+	for _, s := range b {
+		if _, ok := set[s]; !ok {
+			return false
+		}
+	}
+	return true
 }

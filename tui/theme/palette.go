@@ -17,6 +17,11 @@ type Palette struct {
 	Heading lipgloss.AdaptiveColor
 	Path    lipgloss.AdaptiveColor
 
+	// Diff — functional colors for unified diff output; kept separate from
+	// semantic roles so Success/Error can evolve independently.
+	DiffAdd    lipgloss.AdaptiveColor // added lines (+)
+	DiffRemove lipgloss.AdaptiveColor // removed lines (-)
+
 	// Severity
 	Critical lipgloss.AdaptiveColor
 	High     lipgloss.AdaptiveColor
@@ -53,6 +58,8 @@ const (
 	RoleText
 	RoleHeading
 	RolePath
+	RoleDiffAdd
+	RoleDiffRemove
 	RoleCritical
 	RoleHigh
 	RoleMedium
@@ -87,6 +94,10 @@ func (p Palette) ColorByRole(r Role) (lipgloss.AdaptiveColor, bool) {
 		return p.Heading, true
 	case RolePath:
 		return p.Path, true
+	case RoleDiffAdd:
+		return p.DiffAdd, true
+	case RoleDiffRemove:
+		return p.DiffRemove, true
 	case RoleCritical:
 		return p.Critical, true
 	case RoleHigh:
@@ -137,6 +148,10 @@ func (p Palette) WithColorByRole(r Role, c lipgloss.AdaptiveColor) Palette {
 		out.Heading = c
 	case RolePath:
 		out.Path = c
+	case RoleDiffAdd:
+		out.DiffAdd = c
+	case RoleDiffRemove:
+		out.DiffRemove = c
 	case RoleCritical:
 		out.Critical = c
 	case RoleHigh:
@@ -173,15 +188,21 @@ func (p Palette) WithColorByRole(r Role, c lipgloss.AdaptiveColor) Palette {
 // color literals. A CI grep check enforces this.
 func safeDepPalette() Palette {
 	return Palette{
-		// Semantic — cyan/green/amber/red with readable contrast on both light and dark.
-		Info:    lipgloss.AdaptiveColor{Light: "#0E7490", Dark: "#67E8F9"}, // cyan-700 / cyan-300
-		Success: lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#86EFAC"}, // green-700 / green-300
+		// Semantic — only warnings and errors carry color; info and success use the
+		// terminal's default foreground so routine messages don't compete visually
+		// with actionable ones.
+		Info:    lipgloss.AdaptiveColor{Light: "", Dark: ""},
+		Success: lipgloss.AdaptiveColor{Light: "", Dark: ""},
 		Warning: lipgloss.AdaptiveColor{Light: "#B45309", Dark: "#FCD34D"}, // amber-700 / amber-300
 		Error:   lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#FCA5A5"}, // red-700 / red-300
 		Muted:   lipgloss.AdaptiveColor{Light: "#64748B", Dark: "#94A3B8"}, // slate-500 / slate-400
 		Text:    lipgloss.AdaptiveColor{Light: "#1F2937", Dark: "#E5E7EB"}, // gray-800 / gray-200
 		Heading: lipgloss.AdaptiveColor{Light: "#111827", Dark: "#F3F4F6"}, // gray-900 / gray-100
 		Path:    lipgloss.AdaptiveColor{Light: "#1D4ED8", Dark: "#93C5FD"}, // blue-700 / blue-300
+
+		// Diff — functional red/green for unified diff output.
+		DiffAdd:    lipgloss.AdaptiveColor{Light: "#15803D", Dark: "#86EFAC"}, // green-700 / green-300
+		DiffRemove: lipgloss.AdaptiveColor{Light: "#B91C1C", Dark: "#FCA5A5"}, // red-700 / red-300
 
 		// Severity — deeper tones on light, brighter on dark.
 		Critical: lipgloss.AdaptiveColor{Light: "#991B1B", Dark: "#F87171"}, // red-800 / red-400

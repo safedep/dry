@@ -1,6 +1,6 @@
 module github.com/safedep/dry
 
-go 1.26.2
+go 1.25.1
 
 require (
 	buf.build/gen/go/safedep/api/grpc/go v1.6.1-20260408122114-8e64604042b0.1

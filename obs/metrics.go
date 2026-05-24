@@ -12,6 +12,11 @@ type CounterVec interface {
 	WithLabels(map[string]string) Counter
 }
 
+// GaugeVec is a gauge metric parameterized by labels.
+type GaugeVec interface {
+	WithLabels(map[string]string) Gauge
+}
+
 // Gauge is a metric that represents a single numerical value that can
 // arbitrarily go up and down.
 type Gauge interface {
@@ -37,6 +42,7 @@ type Provider interface {
 	NewGauge(name, desc string) Gauge
 	NewHistogram(name, desc string, opts ...ProviderSpecificOptsEditor) Histogram
 	NewCounterVec(name, desc string, labels []string) CounterVec
+	NewGaugeVec(name, desc string, labels []string) GaugeVec
 }
 
 type dummyReceiver struct{}
@@ -47,6 +53,13 @@ func (d *dummyReceiver) Add(float64)                          {}
 func (d *dummyReceiver) Sub(float64)                          {}
 func (d *dummyReceiver) Observe(float64)                      {}
 func (d *dummyReceiver) WithLabels(map[string]string) Counter { return d }
+
+// dummyGaugeVecReceiver exists separately from dummyReceiver because a
+// type cannot have two WithLabels methods with different return types
+// (dummyReceiver.WithLabels returns Counter for CounterVec).
+type dummyGaugeVecReceiver struct{}
+
+func (d *dummyGaugeVecReceiver) WithLabels(map[string]string) Gauge { return &dummyReceiver{} }
 
 type dummyProvider struct{}
 
@@ -70,6 +83,11 @@ func (d *dummyProvider) NewCounterVec(_, _ string, _ []string) CounterVec {
 	return &dummyReceiver{}
 }
 
+// NewGaugeVec creates a new GaugeVec.
+func (d *dummyProvider) NewGaugeVec(_, _ string, _ []string) GaugeVec {
+	return &dummyGaugeVecReceiver{}
+}
+
 var (
 	__provider Provider = &dummyProvider{}
 )
@@ -84,6 +102,10 @@ func NewCounterVec(name, desc string, labels []string) CounterVec {
 
 func NewGauge(name, desc string) Gauge {
 	return __provider.NewGauge(name, desc)
+}
+
+func NewGaugeVec(name, desc string, labels []string) GaugeVec {
+	return __provider.NewGaugeVec(name, desc, labels)
 }
 
 func NewHistogram(name, desc string) Histogram {

@@ -25,3 +25,12 @@ func TestPrometheusCounterVec(t *testing.T) {
 	c.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Inc()
 	c.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Add(1)
 }
+
+func TestPrometheusGaugeVec(t *testing.T) {
+	p := NewPrometheusMetricsProvider("test", "test")
+	g := p.NewGaugeVec("test_gauge_vec_1", "test", []string{"label1", "label2"})
+
+	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Set(1)
+	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Add(1)
+	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Sub(1)
+}

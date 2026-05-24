@@ -44,6 +44,16 @@ func (r *promGaugeReceiver) Sub(delta float64) {
 	r.gauge.Sub(delta)
 }
 
+type promGaugeVecReceiver struct {
+	gauge *prometheus.GaugeVec
+}
+
+func (r *promGaugeVecReceiver) WithLabels(labels map[string]string) Gauge {
+	return &promGaugeReceiver{
+		gauge: r.gauge.With(labels),
+	}
+}
+
 type prometheusMetricsProvider struct {
 	namespace string
 	subsystem string
@@ -99,6 +109,24 @@ func (p *prometheusMetricsProvider) NewCounterVec(name, desc string, labels []st
 	prometheus.MustRegister(c)
 	return &promCounterVecReceiver{
 		counter: c,
+	}
+}
+
+func (p *prometheusMetricsProvider) NewGaugeVec(name, desc string, labels []string) GaugeVec {
+	g := prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: p.namespace,
+		Subsystem: p.subsystem,
+		Name:      name,
+		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
+	}, labels)
+
+	prometheus.MustRegister(g)
+	return &promGaugeVecReceiver{
+		gauge: g,
 	}
 }
 

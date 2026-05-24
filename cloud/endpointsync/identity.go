@@ -32,6 +32,11 @@ type EndpointIdentityOption func(*defaultEndpointIdentityResolver)
 // environments such as CI/CD runners where the system machine ID changes
 // every run.
 //
+// The provided ID must be unique per logical endpoint unless sharing the
+// same backend identity is intentional. If two different hosts or runners
+// are configured with the same endpoint ID, they will produce the same
+// MachineId and be treated as the same endpoint by the backend.
+//
 // If not set or empty, the resolver falls back to hostname for the
 // Identifier and uses the host's machine ID for MachineId.
 func WithEndpointID(id string) EndpointIdentityOption {

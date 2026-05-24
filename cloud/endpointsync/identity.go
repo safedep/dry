@@ -1,6 +1,9 @@
 package endpointsync
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"runtime"
@@ -9,6 +12,8 @@ import (
 	"github.com/denisbrodbeck/machineid"
 	"github.com/safedep/dry/log"
 )
+
+const endpointIdentityHMACKey = "safedep"
 
 // EndpointIdentityResolver resolves the endpoint identity for sync.
 type EndpointIdentityResolver interface {
@@ -19,7 +24,21 @@ type EndpointIdentityResolver interface {
 type EndpointIdentityOption func(*defaultEndpointIdentityResolver)
 
 // WithEndpointID sets an operator-provided endpoint identifier.
-// If not set or empty, the resolver falls back to hostname.
+//
+// When set, this value becomes the source of truth for endpoint identity:
+// it is used as the human-readable Identifier and the MachineId is derived
+// from it via HMAC-SHA256 instead of being read from the host. This yields
+// a stable identity across machines, which is required for ephemeral
+// environments such as CI/CD runners where the system machine ID changes
+// every run.
+//
+// The provided ID must be unique per logical endpoint unless sharing the
+// same backend identity is intentional. If two different hosts or runners
+// are configured with the same endpoint ID, they will produce the same
+// MachineId and be treated as the same endpoint by the backend.
+//
+// If not set or empty, the resolver falls back to hostname for the
+// Identifier and uses the host's machine ID for MachineId.
 func WithEndpointID(id string) EndpointIdentityOption {
 	return func(r *defaultEndpointIdentityResolver) {
 		r.configuredID = id
@@ -40,35 +59,47 @@ type defaultEndpointIdentityResolver struct {
 }
 
 func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIdentity, error) {
-	identifier := r.configuredID
-
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
 
-	if identifier == "" {
-		identifier = hostname
+	var identifier, machineID string
+	if r.configuredID != "" {
+		// Operator has taken explicit ownership of identity. Derive a stable
+		// MachineId from the configured ID so ephemeral environments (e.g.
+		// CI/CD runners) don't churn endpoint records on every run.
+		identifier = r.configuredID
+		machineID = hmacEndpointID(r.configuredID)
+	} else {
 		log.Debugf("No endpoint ID configured, using hostname %q", hostname)
-	}
+		identifier = hostname
 
-	// ProtectedID returns an HMAC-SHA256 hash of the raw machine ID using
-	// "safedep" as the app key. This is stable, unique per machine, and
-	// does not expose the raw system UUID.
-	mid, err := machineid.ProtectedID("safedep")
-	if err != nil {
-		return nil, fmt.Errorf("failed to read machine ID: %w", err)
+		// ProtectedID returns an HMAC-SHA256 hash of the raw machine ID using
+		// "safedep" as the app key. Stable per machine, does not expose the
+		// raw system UUID.
+		mid, err := machineid.ProtectedID(endpointIdentityHMACKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read machine ID: %w", err)
+		}
+		machineID = mid
 	}
 
 	return &controltowerv1.EndpointIdentity{
 		Identifier: identifier,
-		MachineId:  mid,
+		MachineId:  machineID,
 		Metadata: &controltowerv1.EndpointMetadata{
 			Hostname: hostname,
 			Os:       detectOS(),
 			Arch:     detectArch(),
 		},
 	}, nil
+}
+
+func hmacEndpointID(id string) string {
+	mac := hmac.New(sha256.New, []byte(endpointIdentityHMACKey))
+	mac.Write([]byte(id))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func detectOS() controltowerv1.EndpointOS {

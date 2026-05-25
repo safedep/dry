@@ -15,12 +15,6 @@ type UpdateCheckResult struct {
 	// IsLatest is true if the current version is the latest release.
 	IsLatest bool
 
-	// CurrentVersion is the parsed current version.
-	CurrentVersion string
-
-	// LatestVersion is the latest release version from GitHub.
-	LatestVersion string
-
 	// UpdateMessage is a human-readable message suggesting an update
 	// when the current version is not the latest. Empty if already latest.
 	UpdateMessage string
@@ -95,15 +89,10 @@ func CheckUpdate(ctx context.Context, githubURL, currentVersion string) (*Update
 		return nil, fmt.Errorf("latest release tag %q is not a valid semver: %w", latestTag, err)
 	}
 
-	repoURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
-
-	result := &UpdateCheckResult{
-		CurrentVersion: current.Original(),
-		LatestVersion:  latest.Original(),
-	}
+	result := &UpdateCheckResult{}
 
 	if current.LessThan(latest) {
-		result.IsLatest = false
+		repoURL := fmt.Sprintf("https://github.com/%s/%s", owner, repo)
 		result.UpdateMessage = fmt.Sprintf("Update available: %s -> %s. Visit %s/releases/latest to update.",
 			current.Original(), latest.Original(), repoURL)
 	} else {

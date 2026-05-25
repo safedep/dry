@@ -23,6 +23,12 @@ type Config struct {
 
 	// Repo is the GitHub repository name (e.g., "vet").
 	Repo string
+
+	// Timeout for the HTTP request. Defaults to 5 seconds if zero.
+	Timeout time.Duration
+
+	// BaseURL is the GitHub API base URL. Defaults to https://api.github.com if empty.
+	BaseURL string
 }
 
 // UpdateResult contains the result of a version update check.
@@ -33,49 +39,25 @@ type UpdateResult struct {
 	ReleaseURL      string `json:"release_url"`
 }
 
-// Option configures the Checker.
-type Option func(*Checker)
-
 // Checker checks for newer versions of a project using GitHub releases.
 type Checker struct {
-	config  Config
-	timeout time.Duration
-	baseURL string
-	client  *http.Client
-}
-
-func WithHTTPClient(client *http.Client) Option {
-	return func(c *Checker) {
-		c.client = client
-	}
-}
-
-func WithBaseURL(baseURL string) Option {
-	return func(c *Checker) {
-		c.baseURL = baseURL
-	}
-}
-
-func WithTimeout(timeout time.Duration) Option {
-	return func(c *Checker) {
-		c.timeout = timeout
-	}
+	config Config
+	client *http.Client
 }
 
 // NewChecker creates a new update checker for the given project config.
-func NewChecker(config Config, opts ...Option) *Checker {
-	c := &Checker{
-		config:  config,
-		timeout: defaultTimeout,
-		baseURL: defaultBaseURL,
+func NewChecker(config Config) *Checker {
+	if config.Timeout == 0 {
+		config.Timeout = defaultTimeout
 	}
-	for _, opt := range opts {
-		opt(c)
+	if config.BaseURL == "" {
+		config.BaseURL = defaultBaseURL
 	}
-	if c.client == nil {
-		c.client = &http.Client{Timeout: c.timeout}
+
+	return &Checker{
+		config: config,
+		client: &http.Client{Timeout: config.Timeout},
 	}
-	return c
 }
 
 type githubRelease struct {
@@ -86,7 +68,7 @@ type githubRelease struct {
 // Check synchronously checks if a newer version is available.
 func (c *Checker) Check(ctx context.Context, currentVersion string) (*UpdateResult, error) {
 	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest",
-		strings.TrimRight(c.baseURL, "/"), c.config.Owner, c.config.Repo)
+		strings.TrimRight(c.config.BaseURL, "/"), c.config.Owner, c.config.Repo)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

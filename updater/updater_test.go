@@ -31,11 +31,12 @@ func TestCheck_UpdateAvailable(t *testing.T) {
 	server := newTestServer(t, "v2.0.0", "https://github.com/safedep/vet/releases/tag/v2.0.0", http.StatusOK)
 	defer server.Close()
 
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		BaseURL: server.URL,
 	})
+	require.NoError(t, err)
 
 	result, err := checker.Check(context.Background(), "v1.0.0")
 	require.NoError(t, err)
@@ -49,11 +50,12 @@ func TestCheck_AlreadyLatest(t *testing.T) {
 	server := newTestServer(t, "v1.0.0", "https://github.com/safedep/vet/releases/tag/v1.0.0", http.StatusOK)
 	defer server.Close()
 
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		BaseURL: server.URL,
 	})
+	require.NoError(t, err)
 
 	result, err := checker.Check(context.Background(), "v1.0.0")
 	require.NoError(t, err)
@@ -65,11 +67,12 @@ func TestCheck_APIError(t *testing.T) {
 	server := newTestServer(t, "", "", http.StatusInternalServerError)
 	defer server.Close()
 
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		BaseURL: server.URL,
 	})
+	require.NoError(t, err)
 
 	result, err := checker.Check(context.Background(), "v1.0.0")
 	assert.Error(t, err)
@@ -81,11 +84,12 @@ func TestCheckAsync_UpdateAvailable(t *testing.T) {
 	server := newTestServer(t, "v2.0.0", "https://github.com/safedep/vet/releases/tag/v2.0.0", http.StatusOK)
 	defer server.Close()
 
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		BaseURL: server.URL,
 	})
+	require.NoError(t, err)
 
 	ch := checker.CheckAsync(context.Background(), "v1.0.0")
 	result := <-ch
@@ -98,11 +102,12 @@ func TestCheckAsync_ErrorReturnsNil(t *testing.T) {
 	server := newTestServer(t, "", "", http.StatusInternalServerError)
 	defer server.Close()
 
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		BaseURL: server.URL,
 	})
+	require.NoError(t, err)
 
 	ch := checker.CheckAsync(context.Background(), "v1.0.0")
 	result := <-ch
@@ -110,20 +115,34 @@ func TestCheckAsync_ErrorReturnsNil(t *testing.T) {
 }
 
 func TestNewChecker_Defaults(t *testing.T) {
-	checker := NewChecker(Config{Owner: "safedep", Repo: "vet"})
+	checker, err := NewChecker(Config{Owner: "safedep", Repo: "vet"})
+	require.NoError(t, err)
 	assert.Equal(t, defaultBaseURL, checker.config.BaseURL)
 	assert.Equal(t, defaultTimeout, checker.config.Timeout)
 }
 
 func TestNewChecker_CustomConfig(t *testing.T) {
-	checker := NewChecker(Config{
+	checker, err := NewChecker(Config{
 		Owner:   "safedep",
 		Repo:    "vet",
 		Timeout: 10 * time.Second,
 		BaseURL: "https://custom.api.com",
 	})
+	require.NoError(t, err)
 	assert.Equal(t, "https://custom.api.com", checker.config.BaseURL)
 	assert.Equal(t, 10*time.Second, checker.config.Timeout)
+}
+
+func TestNewChecker_MissingOwner(t *testing.T) {
+	_, err := NewChecker(Config{Repo: "vet"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "owner is required")
+}
+
+func TestNewChecker_MissingRepo(t *testing.T) {
+	_, err := NewChecker(Config{Owner: "safedep"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "repo is required")
 }
 
 func TestIsNewer(t *testing.T) {

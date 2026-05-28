@@ -46,7 +46,15 @@ type Checker struct {
 }
 
 // NewChecker creates a new update checker for the given project config.
-func NewChecker(config Config) *Checker {
+// Returns an error if required fields (Owner, Repo) are missing.
+func NewChecker(config Config) (*Checker, error) {
+	if config.Owner == "" {
+		return nil, fmt.Errorf("owner is required")
+	}
+	if config.Repo == "" {
+		return nil, fmt.Errorf("repo is required")
+	}
+
 	if config.Timeout == 0 {
 		config.Timeout = defaultTimeout
 	}
@@ -57,7 +65,7 @@ func NewChecker(config Config) *Checker {
 	return &Checker{
 		config: config,
 		client: &http.Client{Timeout: config.Timeout},
-	}
+	}, nil
 }
 
 type githubRelease struct {

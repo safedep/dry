@@ -357,9 +357,11 @@ func TestHuggingFaceHubClient_GetModel_E2E(t *testing.T) {
 				assert.NotEmpty(t, model.CreatedAt)
 				assert.NotEmpty(t, model.LastModified)
 
-				// Validate complex fields
+				// Validate complex fields. transformersInfo is optional and its
+				// individual keys (e.g. pipeline_tag) vary per model over time, so
+				// only assert that it is populated when present.
 				if model.TransformersInfo != nil {
-					assert.NotEmpty(t, model.TransformersInfo["pipeline_tag"])
+					assert.NotEmpty(t, model.TransformersInfo)
 				}
 			},
 		},

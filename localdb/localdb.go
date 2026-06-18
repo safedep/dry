@@ -16,51 +16,30 @@ import (
 
 	"github.com/safedep/dry/log"
 
-	// modernc.org/sqlite is a pure-Go SQLite driver (no CGO). It is registered
-	// under the "sqlite" driver name (via the package init). Already a dry
-	// dependency. Imported non-blank so SQLITE_BUSY can be detected from its
-	// typed *sqlite.Error without string matching.
+	// Registers the "sqlite" driver via init. Imported non-blank so SQLITE_BUSY
+	// can be detected from its typed *sqlite.Error without string matching.
 	sqlite "modernc.org/sqlite"
 )
 
 const (
-	// driverName is the database/sql driver name registered by
-	// modernc.org/sqlite.
-	driverName = "sqlite"
-
-	// defaultFileName is the DB file name used when Config.FileName is empty.
+	driverName      = "sqlite"
 	defaultFileName = "local.db"
+	dirPerm         = 0o700
+	trackerTable    = "_localdb_schema_migrations"
 
-	// dirPerm is the permission used when creating Config.Dir.
-	dirPerm = 0o700
-
-	// pragmaQuery holds the fixed framework pragma invariants, applied per
-	// connection via the modernc.org/sqlite _pragma DSN parameters. These are
-	// not consumer-tunable (see the package design). modernc applies them on
-	// every connection it opens (busy_timeout is pushed first by the driver).
+	// pragmaQuery holds the fixed framework pragma invariants. modernc applies
+	// them on every connection it opens via the _pragma DSN parameters
+	// (busy_timeout is pushed first by the driver).
 	pragmaQuery = "_pragma=busy_timeout(5000)" +
 		"&_pragma=journal_mode(WAL)" +
 		"&_pragma=synchronous(NORMAL)" +
 		"&_pragma=foreign_keys(ON)"
 
-	// trackerTable is the framework-owned migration tracker table. It is the
-	// sole exception to "modules own their tables".
-	trackerTable = "_localdb_schema_migrations"
-
-	// sqliteBusyPrimaryCode is the SQLite primary result code SQLITE_BUSY (5).
-	// Extended busy codes (e.g. SQLITE_BUSY_SNAPSHOT) share this low byte, so
-	// matching against (code & 0xff) catches every busy variant.
+	// sqliteBusyPrimaryCode is SQLITE_BUSY (5). Extended busy codes share this
+	// low byte, so matching against (code & 0xff) catches every busy variant.
 	sqliteBusyPrimaryCode = 5
 
-	// openMaxRetries bounds the cold-start open retry on SQLITE_BUSY. The
-	// contention window (switching a fresh file into WAL mode) is sub-
-	// millisecond, so a handful of short retries resolves it; the bound stops a
-	// pathological peer from looping forever (busy_timeout still caps the wait
-	// for the transactional lock contention separately).
-	openMaxRetries = 10
-
-	// openBackoffBase and openBackoffMax bound the exponential backoff between
-	// cold-start open retries.
+	openMaxRetries  = 10
 	openBackoffBase = time.Millisecond
 	openBackoffMax  = 50 * time.Millisecond
 )
@@ -160,7 +139,6 @@ func New(cfg Config) Manager {
 	}
 }
 
-// Store implements Manager.
 func (m *manager) Store(ctx context.Context, d Descriptor) (*Store, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -223,7 +201,7 @@ func (m *manager) Store(ctx context.Context, d Descriptor) (*Store, error) {
 	return store, nil
 }
 
-// Close implements Manager. It is idempotent and a durability barrier: it runs
+// Close is idempotent and a durability barrier: it runs
 // PRAGMA wal_checkpoint(TRUNCATE) to flush committed WAL frames into the main
 // database file and fsync them before closing the pool. Under
 // synchronous=NORMAL commits are not fsync'd per commit, so this checkpoint is
@@ -238,7 +216,6 @@ func (m *manager) Close() error {
 	m.closed = true
 
 	if m.db == nil {
-		// Never opened: nothing to checkpoint or close.
 		return nil
 	}
 
@@ -278,8 +255,12 @@ func (m *manager) ensureOpen(ctx context.Context) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(m.cfg.Dir, dirPerm); err != nil {
-		return newError(ErrCodeOpenFailure, "create directory", err)
+	// An empty Dir means the current working directory (filepath.Join drops it),
+	// so there is no directory to create — os.MkdirAll("") would otherwise fail.
+	if m.cfg.Dir != "" {
+		if err := os.MkdirAll(m.cfg.Dir, dirPerm); err != nil {
+			return newError(ErrCodeOpenFailure, "create directory", err)
+		}
 	}
 
 	db, err := sql.Open(driverName, m.dsn())
@@ -323,9 +304,6 @@ func (m *manager) ensureOpen(ctx context.Context) error {
 	}
 }
 
-// bootstrapOnce acquires a single connection (which surfaces a malformed DSN /
-// unreadable path or a cold-start SQLITE_BUSY) and runs the framework
-// migrations on it.
 func bootstrapOnce(ctx context.Context, db *sql.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -341,8 +319,6 @@ func bootstrapOnce(ctx context.Context, db *sql.DB) error {
 	return runFrameworkMigrations(ctx, conn)
 }
 
-// isSQLiteBusy reports whether err (or any error it wraps) is a SQLite
-// SQLITE_BUSY result, including its extended variants.
 func isSQLiteBusy(err error) bool {
 	var serr *sqlite.Error
 	if errors.As(err, &serr) {
@@ -352,8 +328,6 @@ func isSQLiteBusy(err error) bool {
 	return false
 }
 
-// sleepBackoff waits an exponentially increasing, capped duration between
-// cold-start open retries, returning early if ctx is cancelled.
 func sleepBackoff(ctx context.Context, attempt int) error {
 	d := openBackoffBase << attempt
 	if d > openBackoffMax || d <= 0 {
@@ -379,12 +353,10 @@ func (m *manager) dsn() string {
 	return "file:" + escaped + "?" + pragmaQuery
 }
 
-// dbPath is the absolute-or-relative path to the DB file.
 func (m *manager) dbPath() string {
 	return filepath.Join(m.cfg.Dir, m.fileName())
 }
 
-// fileName returns the configured file name or the default.
 func (m *manager) fileName() string {
 	if m.cfg.FileName != "" {
 		return m.cfg.FileName
@@ -393,7 +365,6 @@ func (m *manager) fileName() string {
 	return defaultFileName
 }
 
-// validateFileName rejects a FileName containing a path separator.
 func (m *manager) validateFileName() error {
 	fn := m.cfg.FileName
 	if fn == "" {
@@ -408,7 +379,6 @@ func (m *manager) validateFileName() error {
 	return nil
 }
 
-// validateDescriptor checks the module Name.
 func validateDescriptor(d Descriptor) error {
 	if !moduleNameRe.MatchString(d.Name) {
 		return newError(ErrCodeInvalidDescriptor,
@@ -427,6 +397,14 @@ func runFrameworkMigrations(ctx context.Context, conn *sql.Conn) error {
 	uv, err := readUserVersion(ctx, conn)
 	if err != nil {
 		return newError(ErrCodeMigrationFailure, "read user_version", err)
+	}
+
+	// A user_version ahead of our known framework migrations means the file was
+	// written by a newer binary; fail fast rather than silently no-op.
+	if uv > len(frameworkMigrations) {
+		return newError(ErrCodeIncompatibleSchema,
+			fmt.Sprintf("framework schema version %d is newer than this binary supports (%d)",
+				uv, len(frameworkMigrations)), nil)
 	}
 
 	for i := uv; i < len(frameworkMigrations); i++ {
@@ -469,6 +447,15 @@ func runModuleMigrations(ctx context.Context, conn *sql.Conn, d Descriptor) erro
 		return newError(ErrCodeMigrationFailure, "read module version", err)
 	}
 
+	// A tracked version ahead of the descriptor's migrations means the module's
+	// schema was advanced by a newer binary (or the list was truncated); fail
+	// fast rather than silently operating against an unknown newer schema.
+	if version > len(d.Migrations) {
+		return newError(ErrCodeIncompatibleSchema,
+			fmt.Sprintf("module %q schema version %d is newer than this descriptor supports (%d)",
+				d.Name, version, len(d.Migrations)), nil)
+	}
+
 	for i := version; i < len(d.Migrations); i++ {
 		err := withImmediateTx(ctx, conn, func() error {
 			// Re-read inside the write lock: a peer process may have applied
@@ -504,7 +491,6 @@ func runModuleMigrations(ctx context.Context, conn *sql.Conn, d Descriptor) erro
 	return nil
 }
 
-// readUserVersion reads PRAGMA user_version (0 on a new file).
 func readUserVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	var v int
 	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v); err != nil {
@@ -514,7 +500,6 @@ func readUserVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	return v, nil
 }
 
-// readModuleVersion reads a module's last-applied migration count (0 if absent).
 func readModuleVersion(ctx context.Context, conn *sql.Conn, name string) (int, error) {
 	var v int
 	err := conn.QueryRowContext(ctx,
@@ -564,7 +549,6 @@ func withImmediateTx(ctx context.Context, conn *sql.Conn, fn func() error) (err 
 	return nil
 }
 
-// closeQuietly closes db, logging any error.
 func closeQuietly(db *sql.DB) {
 	if err := db.Close(); err != nil {
 		log.Warnf("localdb: failed to close db: %v", err)

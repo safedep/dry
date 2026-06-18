@@ -198,6 +198,44 @@ func TestUpgradePath(t *testing.T) {
 		"appended migration must add the new column")
 }
 
+// TestDowngradeRejected: a stored module version ahead of the descriptor's
+// migrations (e.g. an older binary or a truncated list) must fail fast with the
+// incompatible-schema code, not silently succeed against an unknown schema.
+func TestDowngradeRejected(t *testing.T) {
+	dir := t.TempDir()
+	ctx := context.Background()
+
+	m1 := `CREATE TABLE beta_items (id INTEGER PRIMARY KEY)`
+	m2 := `ALTER TABLE beta_items ADD COLUMN label TEXT`
+
+	mgrA := New(Config{Dir: dir})
+	_, err := mgrA.Store(ctx, Descriptor{Name: "beta", Migrations: []string{m1, m2}})
+	require.NoError(t, err)
+	require.NoError(t, mgrA.Close())
+
+	// Reopen with a truncated migration list (version 2 on disk > len 1).
+	mgrB := New(Config{Dir: dir})
+	defer func() { _ = mgrB.Close() }()
+	_, err = mgrB.Store(ctx, Descriptor{Name: "beta", Migrations: []string{m1}})
+	assertErrCode(t, err, ErrCodeIncompatibleSchema)
+}
+
+// TestEmptyDir: an empty Config.Dir means the current working directory and
+// must not fail at os.MkdirAll.
+func TestEmptyDir(t *testing.T) {
+	t.Chdir(t.TempDir()) // isolate the CWD-relative DB file to a temp dir
+
+	mgr := New(Config{Dir: "", FileName: "empty_dir_test.db"})
+	defer func() { _ = mgr.Close() }()
+
+	store, err := mgr.Store(context.Background(), Descriptor{Name: "alpha"})
+	require.NoError(t, err)
+	require.NotNil(t, store)
+
+	_, err = os.Stat("empty_dir_test.db")
+	require.NoError(t, err, "DB file should be created in the working directory")
+}
+
 func TestCrossProcessSimulation(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()

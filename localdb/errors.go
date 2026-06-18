@@ -6,31 +6,28 @@ import "github.com/safedep/dry/usefulerror"
 // classify failures without string matching via usefulerror.AsUsefulError and
 // inspecting Code().
 const (
-	// ErrCodeInvalidDescriptor indicates a Descriptor (or the configured
-	// FileName) failed validation: a malformed module Name, a FileName
-	// containing a path separator, or a Name reused with a different
-	// Migrations slice.
+	// Validation failure: a bad module Name, a FileName with a path separator,
+	// or a Name reused with a different Migrations slice.
 	ErrCodeInvalidDescriptor = "localdb_invalid_descriptor"
 
-	// ErrCodeOpenFailure indicates the database directory or file could not be
-	// created or opened.
+	// The database directory or file could not be created or opened.
 	ErrCodeOpenFailure = "localdb_open_failure"
 
-	// ErrCodeMigrationFailure indicates a framework or module migration failed
-	// to apply.
+	// A framework or module migration failed to apply.
 	ErrCodeMigrationFailure = "localdb_migration_failure"
 
-	// ErrCodeManagerClosed indicates Store was called after Close.
+	// Store was called after Close.
 	ErrCodeManagerClosed = "localdb_manager_closed"
 
-	// ErrCodeCheckpointFailure indicates the durability-barrier WAL checkpoint
-	// in Close failed (an actual SQL/exec error, not a non-truncating
-	// busy result).
+	// The Close WAL checkpoint failed with an actual SQL/exec error.
 	ErrCodeCheckpointFailure = "localdb_checkpoint_failure"
 
-	// ErrCodeCloseFailure indicates the connection pool failed to close in
-	// Close (after the checkpoint succeeded).
+	// The connection pool failed to close (after a successful checkpoint).
 	ErrCodeCloseFailure = "localdb_close_failure"
+
+	// The stored schema version is ahead of what this binary/descriptor knows
+	// (a downgrade or truncated migration list). Not retryable.
+	ErrCodeIncompatibleSchema = "localdb_incompatible_schema"
 )
 
 // newError builds a usefulerror with the given code and message, optionally

@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	buf.build/gen/go/safedep/api/grpc/go v1.6.1-20260408122114-8e64604042b0.1
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260408122114-8e64604042b0.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260620084912-77c7bb923ddb.1
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3
 	cloud.google.com/go/storage v1.55.0
@@ -78,7 +78,9 @@ require (
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20240508200655-46a4cf4ba109.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1 // indirect
+	buf.build/gen/go/safedep/api/connectrpc/go v1.20.0-20260620084912-77c7bb923ddb.1 // indirect
+	buf.build/go/protovalidate v1.2.0 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go v0.121.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -94,6 +96,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.26.0 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.21 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.21 // indirect
@@ -152,6 +155,7 @@ require (
 	github.com/goark/errs v1.3.2 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/google/cel-go v0.28.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/pprof v0.0.0-20250602020802-c6617b811d0e // indirect

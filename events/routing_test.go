@@ -67,6 +67,16 @@ func TestRoutingMethods(t *testing.T) {
 	assert.False(t, Routing{Exposure: ExposurePrivate}.IsPublic())
 }
 
+func TestRoutingFullName(t *testing.T) {
+	// FQN is returned verbatim when set (the RoutingForFullName path).
+	set := Routing{FQN: "safedep.events.public.threatintel.v1.VerdictsEvent"}
+	assert.Equal(t, "safedep.events.public.threatintel.v1.VerdictsEvent", set.FullName())
+
+	// A literal Routing without FQN recomputes the fully-qualified name from parts.
+	literal := Routing{Exposure: ExposurePublic, Domain: "threatintel", Major: 1, Message: "VerdictsEvent"}
+	assert.Equal(t, "safedep.events.public.threatintel.v1.VerdictsEvent", literal.FullName())
+}
+
 func TestRoutingFor_Message(t *testing.T) {
 	// A real generated message that is NOT a SafeDep event must error (the
 	// enforcement seam), exercising the descriptor extraction path.

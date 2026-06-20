@@ -34,7 +34,7 @@ const (
 
 // Routing is the transport-neutral identity of an event feed.
 type Routing struct {
-	Exposure Exposure // internal | public
+	Exposure Exposure // private | public
 	Domain   string   // e.g. "packageregistry"
 	Major    uint32   // e.g. 1
 	Message  string   // e.g. "PackageVersionObservationEvent"
@@ -48,6 +48,18 @@ func (r Routing) IsPublic() bool { return r.Exposure == ExposurePublic }
 // It is the S2 stream Name (the namespace carries the exposure).
 func (r Routing) Name() string {
 	return fmt.Sprintf("%s.v%d.%s", r.Domain, r.Major, r.Message)
+}
+
+// FullName is the fully-qualified protobuf message name. It returns FQN when set
+// (the RoutingFor/RoutingForFullName path) and otherwise recomputes it from the
+// parts — mirroring Name — so a Routing built as a literal still renders a valid
+// name instead of an empty string.
+func (r Routing) FullName() string {
+	if r.FQN != "" {
+		return r.FQN
+	}
+
+	return eventsRoot + string(r.Exposure) + "." + r.Name()
 }
 
 const (

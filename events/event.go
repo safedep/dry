@@ -93,6 +93,13 @@ func NewMeta(opts ...Option) *commonv1.EventMeta {
 func New[T proto.Message](msg T, opts ...Option) (T, error) {
 	refl := msg.ProtoReflect()
 
+	// Enforce the events convention on the message name itself, so New only
+	// accepts what RoutingFor can route — a message with EventMeta at field 1 but
+	// a non-conforming name would otherwise stamp+publish to an unroutable feed.
+	if _, err := RoutingForFullName(string(refl.Descriptor().FullName())); err != nil {
+		return msg, err
+	}
+
 	fd := refl.Descriptor().Fields().ByNumber(1)
 	if fd == nil || fd.Message() == nil || fd.Message().FullName() != eventMetaFullName {
 		return msg, fmt.Errorf("events: %s is not a SafeDep event (no %s at field 1)",

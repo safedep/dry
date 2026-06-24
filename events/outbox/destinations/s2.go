@@ -1,0 +1,97 @@
+package destinations
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/safedep/dry/events"
+	"github.com/safedep/dry/events/outbox"
+	"github.com/safedep/dry/stream"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+// S2Destination publishes events to S2 streams. The stream is derived from the
+// routing (and the envelope tenant for per-tenant feeds) via stream.StreamFor;
+// one StreamWriter is created and cached per stream id. The record bytes are
+// appended verbatim (a passthrough serializer over BytesValue).
+type S2Destination struct {
+	config        stream.S2StreamProviderConfig
+	basinResolver stream.S2BasinResolver
+
+	mu      sync.Mutex
+	writers map[string]stream.StreamWriter[*wrapperspb.BytesValue]
+}
+
+var _ outbox.Destination = (*S2Destination)(nil)
+
+// NewS2 builds an S2 destination. A zero AppendBatchSize defaults to 100.
+func NewS2(config stream.S2StreamProviderConfig, basinResolver stream.S2BasinResolver) *S2Destination {
+	if config.AppendBatchSize == 0 {
+		config.AppendBatchSize = 100
+	}
+	if basinResolver == nil {
+		basinResolver = stream.NewDefaultS2BasinResolver()
+	}
+
+	return &S2Destination{
+		config:        config,
+		basinResolver: basinResolver,
+		writers:       make(map[string]stream.StreamWriter[*wrapperspb.BytesValue]),
+	}
+}
+
+func (d *S2Destination) Name() string { return "s2" }
+
+func (d *S2Destination) Publish(ctx context.Context, routing events.Routing, tenant string, record []byte) error {
+	target := stream.StreamFor(routing)
+	if tenant != "" {
+		target = stream.StreamForWithTenant(routing, tenant)
+	}
+
+	id, err := target.ID()
+	if err != nil {
+		return fmt.Errorf("s2 destination: stream id: %w", err)
+	}
+
+	writer, err := d.writerFor(id, target)
+	if err != nil {
+		return err
+	}
+
+	return writer.AppendOne(ctx, &stream.StreamEntity[*wrapperspb.BytesValue]{
+		Record:  wrapperspb.Bytes(record),
+		Headers: map[string]string{"event_id": routing.FQN},
+	})
+}
+
+func (d *S2Destination) writerFor(id string, target stream.Stream) (stream.StreamWriter[*wrapperspb.BytesValue], error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if w, ok := d.writers[id]; ok {
+		return w, nil
+	}
+
+	w, err := stream.NewS2StreamWriter[*wrapperspb.BytesValue](
+		d.config, d.basinResolver, target, bytesSerializer{})
+	if err != nil {
+		return nil, fmt.Errorf("s2 destination: new writer for %s: %w", id, err)
+	}
+
+	d.writers[id] = w
+	return w, nil
+}
+
+// bytesSerializer appends already-serialized record bytes verbatim. The outbox
+// stores the binary-proto <Feed>Event; the S2 record body is exactly those bytes.
+type bytesSerializer struct{}
+
+func (bytesSerializer) Serialize(record *wrapperspb.BytesValue) ([]byte, error) {
+	return record.GetValue(), nil
+}
+
+func (bytesSerializer) Deserialize(data []byte, record *wrapperspb.BytesValue) error {
+	record.Value = data
+	return nil
+}

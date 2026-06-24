@@ -115,3 +115,26 @@ func New[T proto.Message](msg T, opts ...Option) (T, error) {
 
 	return msg, nil
 }
+
+// MetaOf extracts the EventMeta envelope from a feed message's field 1. It is the
+// read-side dual of New: a message that is not a SafeDep event (no EventMeta at
+// field 1) is an error. When the envelope is unset, it returns a zero EventMeta.
+func MetaOf(m proto.Message) (*commonv1.EventMeta, error) {
+	if m == nil {
+		return nil, fmt.Errorf("events: nil message")
+	}
+
+	refl := m.ProtoReflect()
+	fd := refl.Descriptor().Fields().ByNumber(1)
+	if fd == nil || fd.Message() == nil || fd.Message().FullName() != eventMetaFullName {
+		return nil, fmt.Errorf("events: %s has no %s at field 1",
+			refl.Descriptor().FullName(), eventMetaFullName)
+	}
+
+	meta, ok := refl.Get(fd).Message().Interface().(*commonv1.EventMeta)
+	if !ok {
+		return nil, fmt.Errorf("events: field 1 of %s is not an EventMeta", refl.Descriptor().FullName())
+	}
+
+	return meta, nil
+}

@@ -5,6 +5,7 @@ go 1.25.1
 require (
 	buf.build/gen/go/safedep/api/grpc/go v1.6.1-20260408122114-8e64604042b0.1
 	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260620084912-77c7bb923ddb.1
+	buf.build/go/protovalidate v1.2.0
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3
 	cloud.google.com/go/storage v1.55.0
@@ -69,6 +70,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/postgres v1.6.0
+	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.30.0
 	gorm.io/plugin/opentelemetry v0.1.14
 	gorm.io/plugin/prometheus v0.1.0
@@ -79,8 +81,6 @@ require (
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1 // indirect
-	buf.build/gen/go/safedep/api/connectrpc/go v1.20.0-20260620084912-77c7bb923ddb.1 // indirect
-	buf.build/go/protovalidate v1.2.0 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go v0.121.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -192,6 +192,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect

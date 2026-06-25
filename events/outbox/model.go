@@ -33,7 +33,7 @@ type Delivery struct {
 	ID uint64 `gorm:"primaryKey;autoIncrement"`
 
 	// (outbox_id, destination) is unique: one delivery per destination per record.
-	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:2"`
+	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:3"`
 	Destination string `gorm:"column:destination;uniqueIndex:idx_event_outbox_delivery_unique,priority:1;index:idx_event_outbox_delivery_pending,priority:1"`
 
 	// Subject is denormalized from the Record so the drain can exclude blocked
@@ -41,7 +41,10 @@ type Delivery struct {
 	// starve others.
 	Subject string `gorm:"column:subject"`
 
-	PublishedAt *time.Time `gorm:"column:published_at"` // this destination acked
+	// published_at sits between destination and outbox_id in idx_..._pending so the
+	// drain's "published_at IS NULL" scan seeks past already-published rows instead
+	// of walking them.
+	PublishedAt *time.Time `gorm:"column:published_at;index:idx_event_outbox_delivery_pending,priority:2"` // this destination acked
 	Attempts    int        `gorm:"column:attempts"`
 
 	// StuckSince flags a delivery that has exceeded maxAttempts, for alerting. It

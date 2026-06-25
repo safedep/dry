@@ -153,47 +153,72 @@ func (o *Outbox) Send(ctx context.Context, msg proto.Message) error {
 	})
 }
 
-// prepare resolves the routing, envelope ids, and serialized bytes of a typed
-// event message, and enforces the outbox's contract: RoutingFor rejects a
-// non-event message, and a missing event_id is rejected before anything is
-// written or published — an empty event_id would break the consumer dedupe path.
-func (o *Outbox) prepare(msg proto.Message) (routing events.Routing, eventID, tenant string, payload []byte, err error) {
-	routing, err = events.RoutingFor(msg)
+// prepared holds the resolved routing, envelope fields, and serialized bytes of
+// an event, ready to persist or publish.
+type prepared struct {
+	routing events.Routing
+	eventID string
+	subject string
+	tenant  string
+	payload []byte
+}
+
+// prepare resolves an event and enforces the outbox's contract: RoutingFor
+// rejects a non-event message, and a missing event_id is rejected before
+// anything is written or published — an empty event_id would break the consumer
+// dedupe path.
+func (o *Outbox) prepare(msg proto.Message) (prepared, error) {
+	routing, err := events.RoutingFor(msg)
 	if err != nil {
-		return events.Routing{}, "", "", nil, err
+		return prepared{}, err
 	}
 
 	meta, err := events.MetaOf(msg)
 	if err != nil {
-		return events.Routing{}, "", "", nil, err
+		return prepared{}, err
 	}
 
-	eventID = meta.GetEventId()
-	if eventID == "" {
-		return events.Routing{}, "", "", nil,
-			errors.New("outbox: event has no event_id envelope (stamp it with events.New before sending)")
+	if meta.GetEventId() == "" {
+		return prepared{}, errors.New("outbox: event has no event_id envelope (stamp it with events.New before sending)")
 	}
 
-	payload, err = proto.Marshal(msg)
+	payload, err := proto.Marshal(msg)
 	if err != nil {
-		return events.Routing{}, "", "", nil, fmt.Errorf("outbox: marshal event: %w", err)
+		return prepared{}, fmt.Errorf("outbox: marshal event: %w", err)
 	}
 
-	return routing, eventID, meta.GetTenant().GetTenantId(), payload, nil
+	return prepared{
+		routing: routing,
+		eventID: meta.GetEventId(),
+		subject: meta.GetSubject(),
+		tenant:  meta.GetTenant().GetTenantId(),
+		payload: payload,
+	}, nil
+}
+
+func (p prepared) request() PublishRequest {
+	return PublishRequest{
+		Routing: p.routing,
+		Tenant:  p.tenant,
+		EventID: p.eventID,
+		Subject: p.subject,
+		Record:  p.payload,
+	}
 }
 
 // buildRecord derives the durable row from a typed event message.
 func (o *Outbox) buildRecord(msg proto.Message) (*Record, error) {
-	routing, eventID, tenant, payload, err := o.prepare(msg)
+	p, err := o.prepare(msg)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Record{
-		EventID: eventID,
-		FQN:     routing.FQN,
-		Tenant:  tenant,
-		Payload: payload,
+		EventID: p.eventID,
+		FQN:     p.routing.FQN,
+		Subject: p.subject,
+		Tenant:  p.tenant,
+		Payload: p.payload,
 	}, nil
 }
 
@@ -218,12 +243,12 @@ func (o *Outbox) insert(tx *gorm.DB, rec *Record) error {
 // Best-effort — partial delivery is possible and an in-flight event is lost on
 // crash. Errors from all destinations are joined.
 func (o *Outbox) publishDirect(ctx context.Context, msg proto.Message) error {
-	routing, eventID, tenant, payload, err := o.prepare(msg)
+	p, err := o.prepare(msg)
 	if err != nil {
 		return err
 	}
 
-	req := PublishRequest{Routing: routing, Tenant: tenant, EventID: eventID, Record: payload}
+	req := p.request()
 
 	var errs []error
 	for _, d := range o.dests {

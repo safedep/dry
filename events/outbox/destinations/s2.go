@@ -58,10 +58,15 @@ func (d *S2Destination) Publish(ctx context.Context, req outbox.PublishRequest) 
 		return err
 	}
 
+	// Mirror the ids into headers so consumers can filter without decoding.
+	headers := map[string]string{"event_id": req.EventID, "fqn": req.Routing.FQN}
+	if req.Subject != "" {
+		headers["subject"] = req.Subject
+	}
+
 	return writer.AppendOne(ctx, &stream.StreamEntity[*wrapperspb.BytesValue]{
-		Record: wrapperspb.Bytes(req.Record),
-		// Mirror the ids into headers so consumers can filter without decoding.
-		Headers: map[string]string{"event_id": req.EventID, "fqn": req.Routing.FQN},
+		Record:  wrapperspb.Bytes(req.Record),
+		Headers: headers,
 	})
 }
 

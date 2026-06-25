@@ -22,6 +22,10 @@ type PublishRequest struct {
 	// dedup/correlation). Distinct from Routing.FQN, which is the feed name.
 	EventID string
 
+	// Subject is the envelope's per-subject ordering domain (empty if none), for
+	// transport headers and consumer-side ordering.
+	Subject string
+
 	// Record is the binary-proto <Feed>Event (envelope + payload).
 	Record []byte
 }

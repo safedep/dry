@@ -13,21 +13,22 @@ type Record struct {
 	ID      uint64 `gorm:"primaryKey;autoIncrement"`
 	EventID string `gorm:"column:event_id;index"` // ULID from the envelope; dedup / header
 	FQN     string `gorm:"column:fqn"`            // events.Routing.FQN; address derived from it
+	Subject string `gorm:"column:subject"`        // envelope subject; the per-subject ordering domain
 	Tenant  string `gorm:"column:tenant"`         // envelope tenant; empty for global feeds
 	Payload []byte `gorm:"column:payload"`        // binary-proto <Feed>Event (envelope + payload)
 
-	// DeliveredAt is set once every Delivery for this record is resolved
-	// (published or poisoned). Nil while any delivery is still pending.
+	// DeliveredAt is set once every Delivery for this record has been published.
+	// Nil while any delivery is still outstanding (including stuck ones).
 	DeliveredAt *time.Time `gorm:"column:delivered_at"`
 	CreatedAt   time.Time
 }
 
 func (Record) TableName() string { return "event_outbox" }
 
-// Delivery is the per-destination delivery state for a Record. The drain retries
-// only un-acked, non-poisoned deliveries, so a healthy destination is never
-// re-sent because a sibling failed, and a persistently-failing destination is
-// isolated rather than blocking the others.
+// Delivery is the per-destination delivery state for a Record. The drain
+// preserves per-subject order: a delivery that keeps failing blocks only its own
+// subject (other subjects and destinations keep flowing) and is retried — never
+// skipped — so downstream state never advances past a gap.
 type Delivery struct {
 	ID          uint64 `gorm:"primaryKey;autoIncrement"`
 	OutboxID    uint64 `gorm:"column:outbox_id;index:idx_delivery_pending,priority:2"`
@@ -35,8 +36,12 @@ type Delivery struct {
 
 	PublishedAt *time.Time `gorm:"column:published_at"` // this destination acked
 	Attempts    int        `gorm:"column:attempts"`
-	FailedAt    *time.Time `gorm:"column:failed_at"` // poisoned after maxAttempts (isolated)
-	LastError   string     `gorm:"column:last_error"`
+
+	// StuckSince flags a delivery that has exceeded maxAttempts, for alerting. It
+	// is NOT terminal — the delivery is still retried (and blocks its subject)
+	// until it succeeds or an operator intervenes.
+	StuckSince *time.Time `gorm:"column:stuck_since"`
+	LastError  string     `gorm:"column:last_error"`
 }
 
 func (Delivery) TableName() string { return "event_outbox_delivery" }

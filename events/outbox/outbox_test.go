@@ -45,13 +45,15 @@ func newStore(t *testing.T) testAdapter {
 }
 
 type fakeDest struct {
-	name       string
-	mu         sync.Mutex
-	delivered  [][]byte
-	eventIDs   []string
-	calls      int
-	failFirst  int
-	failAlways bool
+	name         string
+	mu           sync.Mutex
+	delivered    [][]byte
+	deliveredIDs []string
+	attemptedIDs []string
+	calls        int
+	failFirst    int
+	failAlways   bool
+	failSubject  string // fail Publish when req.Subject == failSubject
 }
 
 func (f *fakeDest) Name() string { return f.name }
@@ -60,27 +62,49 @@ func (f *fakeDest) Publish(_ context.Context, req PublishRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	if f.failAlways || f.calls <= f.failFirst {
+	f.attemptedIDs = append(f.attemptedIDs, req.EventID)
+	if f.failAlways || f.calls <= f.failFirst || (f.failSubject != "" && req.Subject == f.failSubject) {
 		return errors.New("boom")
 	}
 	f.delivered = append(f.delivered, req.Record)
-	f.eventIDs = append(f.eventIDs, req.EventID)
+	f.deliveredIDs = append(f.deliveredIDs, req.EventID)
 	return nil
+}
+
+func (f *fakeDest) deliveredCount() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.delivered) }
+func (f *fakeDest) callCount() int      { f.mu.Lock(); defer f.mu.Unlock(); return f.calls }
+func (f *fakeDest) setFailSubject(s string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failSubject = s
 }
 
 func (f *fakeDest) lastEventID() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if len(f.eventIDs) == 0 {
+	if len(f.deliveredIDs) == 0 {
 		return ""
 	}
-	return f.eventIDs[len(f.eventIDs)-1]
+	return f.deliveredIDs[len(f.deliveredIDs)-1]
 }
 
-func (f *fakeDest) deliveredCount() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.delivered) }
-func (f *fakeDest) callCount() int      { f.mu.Lock(); defer f.mu.Unlock(); return f.calls }
+func (f *fakeDest) attempted(id string) bool   { return f.has(&f.attemptedIDs, id) }
+func (f *fakeDest) deliveredID(id string) bool { return f.has(&f.deliveredIDs, id) }
 
-func newEvent(t *testing.T) proto.Message {
+func (f *fakeDest) has(s *[]string, id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, x := range *s {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+func newEvent(t *testing.T) proto.Message { return newEventSubject(t, "pkg:npm/x") }
+
+func newEventSubject(t *testing.T, subject string) proto.Message {
 	t.Helper()
 	obs := pkgregv1.PackageVersionObservationEvent_builder{
 		PackageVersion: packagev1.PackageVersion_builder{
@@ -89,9 +113,18 @@ func newEvent(t *testing.T) proto.Message {
 		}.Build(),
 		Kind: pkgregv1.PackageVersionObservationEvent_KIND_PUBLISHED,
 	}.Build()
-	out, err := events.New(obs, events.WithSubject("pkg:npm/x"))
+	out, err := events.New(obs, events.WithSubject(subject))
 	require.NoError(t, err)
 	return out
+}
+
+func sendSubject(t *testing.T, o *Outbox, subject string) string {
+	t.Helper()
+	evt := newEventSubject(t, subject)
+	require.NoError(t, o.Send(context.Background(), evt))
+	m, err := events.MetaOf(evt)
+	require.NoError(t, err)
+	return m.GetEventId()
 }
 
 // --- construction ---------------------------------------------------------
@@ -236,9 +269,9 @@ func TestRun_NoOpWithoutStore(t *testing.T) {
 	require.NoError(t, o.Run(context.Background())) // returns immediately, no store
 }
 
-// --- per-destination poison & isolation (§8) ------------------------------
+// --- stuck-destination isolation ------------------------------------------
 
-func TestDrain_PerDestinationPoisonAndIsolation(t *testing.T) {
+func TestDrain_StuckDestinationIsolation(t *testing.T) {
 	store := newStore(t)
 	healthy := &fakeDest{name: "s2"}
 	broken := &fakeDest{name: "nats", failAlways: true}
@@ -247,26 +280,28 @@ func TestDrain_PerDestinationPoisonAndIsolation(t *testing.T) {
 
 	require.NoError(t, o.Send(context.Background(), newEvent(t)))
 
-	// Drain enough times to exhaust the broken destination's attempts.
 	for i := 0; i < 3; i++ {
 		_, err := o.drainOnce(context.Background())
 		require.NoError(t, err)
 	}
 
-	// Healthy delivered exactly once and was NOT re-sent on later polls.
+	// Healthy delivered exactly once and was NOT re-sent while the sibling fails.
 	assert.Equal(t, 1, healthy.deliveredCount())
 	assert.Equal(t, 1, healthy.callCount(), "a healthy destination is not re-sent when a sibling fails")
 
-	// Broken never delivered and is poisoned (failed_at set), isolated.
+	// Broken never delivered, is flagged stuck (for alerting) but stays pending.
 	assert.Equal(t, 0, broken.deliveredCount())
-	var poisoned int64
-	store.gdb.Model(&Delivery{}).Where("destination = ? AND failed_at IS NOT NULL", "nats").Count(&poisoned)
-	assert.Equal(t, int64(1), poisoned)
+	var stuck, pending int64
+	store.gdb.Model(&Delivery{}).Where("destination = ? AND stuck_since IS NOT NULL", "nats").Count(&stuck)
+	store.gdb.Model(&Delivery{}).Where("destination = ? AND published_at IS NULL", "nats").Count(&pending)
+	assert.Equal(t, int64(1), stuck)
+	assert.Equal(t, int64(1), pending, "a stuck delivery is retried, not skipped")
 
-	// Record is resolved (healthy published, broken poisoned) → delivered_at set.
+	// The record is NOT delivered — the stuck delivery keeps it outstanding (no
+	// silent advance past the gap).
 	var delivered int64
 	store.gdb.Model(&Record{}).Where("delivered_at IS NOT NULL").Count(&delivered)
-	assert.Equal(t, int64(1), delivered)
+	assert.Equal(t, int64(0), delivered)
 }
 
 func TestDrain_TransientRetryThenSucceeds(t *testing.T) {
@@ -277,14 +312,59 @@ func TestDrain_TransientRetryThenSucceeds(t *testing.T) {
 
 	require.NoError(t, o.Send(context.Background(), newEvent(t)))
 
-	// First two drains fail transiently (no poison), third succeeds.
 	for i := 0; i < 3; i++ {
 		_, err := o.drainOnce(context.Background())
 		require.NoError(t, err)
 	}
 
 	assert.Equal(t, 1, flaky.deliveredCount())
-	var poisoned int64
-	store.gdb.Model(&Delivery{}).Where("failed_at IS NOT NULL").Count(&poisoned)
-	assert.Equal(t, int64(0), poisoned, "transient failures below maxAttempts must not poison")
+	var stuck int64
+	store.gdb.Model(&Delivery{}).Where("stuck_since IS NOT NULL").Count(&stuck)
+	assert.Equal(t, int64(0), stuck, "transient failures below maxAttempts must not flag stuck")
+}
+
+// --- per-subject head-of-line ---------------------------------------------
+
+func TestDrain_PerSubjectHeadOfLine(t *testing.T) {
+	store := newStore(t)
+	d := &fakeDest{name: "s2", failSubject: "s1"} // s1 fails, s2 succeeds
+	o, err := New([]Destination{d}, WithStore(store), WithMaxAttempts(2))
+	require.NoError(t, err)
+
+	idA := sendSubject(t, o, "s1") // head of s1 — fails
+	idB := sendSubject(t, o, "s2") // different subject — succeeds
+	idC := sendSubject(t, o, "s1") // same subject as A — must be held back
+
+	_, err = o.drainOnce(context.Background())
+	require.NoError(t, err)
+
+	// Different subject flows; A is attempted (and fails); C is held back behind
+	// A — never even attempted, so it can't be delivered out of order.
+	assert.True(t, d.deliveredID(idB), "a different subject is not blocked")
+	assert.True(t, d.attempted(idA), "the subject head is attempted")
+	assert.False(t, d.attempted(idC), "a later same-subject event is held behind its unresolved head")
+	assert.False(t, d.deliveredID(idA))
+	assert.False(t, d.deliveredID(idC))
+
+	// Unblock s1: A then C deliver, in order.
+	d.setFailSubject("")
+	for i := 0; i < 3; i++ {
+		_, err := o.drainOnce(context.Background())
+		require.NoError(t, err)
+	}
+
+	assert.True(t, d.deliveredID(idA))
+	assert.True(t, d.deliveredID(idC))
+	assert.Less(t, indexOf(d, idA), indexOf(d, idC), "A is delivered before C (per-subject order)")
+}
+
+func indexOf(d *fakeDest, id string) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for i, x := range d.deliveredIDs {
+		if x == id {
+			return i
+		}
+	}
+	return -1
 }

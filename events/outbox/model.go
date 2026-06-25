@@ -34,6 +34,11 @@ type Delivery struct {
 	OutboxID    uint64 `gorm:"column:outbox_id;index:idx_delivery_pending,priority:2"`
 	Destination string `gorm:"column:destination;index:idx_delivery_pending,priority:1"`
 
+	// Subject is denormalized from the Record so the drain can exclude blocked
+	// subjects in the query — a blocked subject must not monopolize a batch and
+	// starve others.
+	Subject string `gorm:"column:subject"`
+
 	PublishedAt *time.Time `gorm:"column:published_at"` // this destination acked
 	Attempts    int        `gorm:"column:attempts"`
 

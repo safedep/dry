@@ -32,69 +32,94 @@ func (o *Outbox) drainOnce(ctx context.Context) (int, error) {
 	return published, nil
 }
 
+// drainDestination publishes up to batchSize deliverable deliveries for a
+// destination, in outbox-id order, holding back later deliveries of any subject
+// whose head failed this pass. It pages forward (cursor) and excludes blocked
+// subjects from later windows so a blocked subject's backlog cannot fill the
+// batch and starve other subjects.
 func (o *Outbox) drainDestination(ctx context.Context, gdb *gorm.DB, dest Destination) (int, error) {
-	var pending []Delivery
-	err := gdb.
-		Where("destination = ? AND published_at IS NULL", dest.Name()).
-		Order("outbox_id ASC, id ASC").
-		Limit(o.batchSize).
-		Find(&pending).Error
-	if err != nil {
-		return 0, fmt.Errorf("outbox: load pending for %s: %w", dest.Name(), err)
-	}
-
-	records, err := loadRecords(gdb, pending)
-	if err != nil {
-		return 0, err
-	}
-
-	// Subjects whose head delivery is unresolved this pass: later deliveries for
-	// them are held back to preserve per-subject order.
+	// Subjects whose head delivery is unresolved this pass.
 	blocked := make(map[string]struct{})
 	published := 0
-	for i := range pending {
-		del := &pending[i]
+	attempts := 0
+	var cursor uint64
 
-		rec, ok := records[del.OutboxID]
-		if !ok {
-			return published, fmt.Errorf("outbox: record %d missing for delivery %d", del.OutboxID, del.ID)
+	for attempts < o.batchSize {
+		q := gdb.Where("destination = ? AND published_at IS NULL AND outbox_id > ?", dest.Name(), cursor)
+		if len(blocked) > 0 {
+			q = q.Where("subject NOT IN ?", blockedSubjects(blocked))
 		}
 
-		if rec.Subject != "" {
-			if _, held := blocked[rec.Subject]; held {
+		var window []Delivery
+		if err := q.Order("outbox_id ASC, id ASC").Limit(o.batchSize).Find(&window).Error; err != nil {
+			return published, fmt.Errorf("outbox: load pending for %s: %w", dest.Name(), err)
+		}
+		if len(window) == 0 {
+			break
+		}
+
+		records, err := loadRecords(gdb, window)
+		if err != nil {
+			return published, err
+		}
+
+		for i := range window {
+			if attempts >= o.batchSize {
+				break
+			}
+
+			del := &window[i]
+			cursor = del.OutboxID
+
+			// A subject blocked earlier in this same window (NOT IN excludes ones
+			// blocked in earlier windows, not within the current one).
+			if del.Subject != "" {
+				if _, held := blocked[del.Subject]; held {
+					continue
+				}
+			}
+
+			rec, ok := records[del.OutboxID]
+			if !ok {
+				return published, fmt.Errorf("outbox: record %d missing for delivery %d", del.OutboxID, del.ID)
+			}
+
+			attempts++
+
+			routing, err := events.RoutingForFullName(rec.FQN)
+			if err != nil {
+				// Unroutable row (should never happen — FQN was validated on
+				// write): mark it stuck for alerting and hold its subject.
+				if ferr := o.recordFailure(gdb, del, fmt.Sprintf("unroutable fqn: %v", err), true); ferr != nil {
+					return published, ferr
+				}
+				block(blocked, del.Subject)
 				continue
 			}
-		}
 
-		routing, err := events.RoutingForFullName(rec.FQN)
-		if err != nil {
-			// Unroutable row (should never happen — FQN was validated on write):
-			// mark it stuck for alerting and hold its subject.
-			if ferr := o.recordFailure(gdb, del, fmt.Sprintf("unroutable fqn: %v", err), true); ferr != nil {
-				return published, ferr
+			req := PublishRequest{Routing: routing, Tenant: rec.Tenant, EventID: rec.EventID, Subject: del.Subject, Record: rec.Payload}
+			if perr := dest.Publish(ctx, req); perr != nil {
+				if ferr := o.recordFailure(gdb, del, perr.Error(), false); ferr != nil {
+					return published, ferr
+				}
+				block(blocked, del.Subject)
+				continue
 			}
-			block(blocked, rec.Subject)
-			continue
-		}
 
-		req := PublishRequest{Routing: routing, Tenant: rec.Tenant, EventID: rec.EventID, Subject: rec.Subject, Record: rec.Payload}
-		if perr := dest.Publish(ctx, req); perr != nil {
-			if ferr := o.recordFailure(gdb, del, perr.Error(), false); ferr != nil {
-				return published, ferr
+			now := o.now()
+			del.PublishedAt = &now
+			if err := gdb.Save(del).Error; err != nil {
+				return published, err
 			}
-			block(blocked, rec.Subject)
-			continue
+			if err := o.maybeMarkDelivered(gdb, del.OutboxID); err != nil {
+				return published, err
+			}
+			published++
 		}
 
-		now := o.now()
-		del.PublishedAt = &now
-		if err := gdb.Save(del).Error; err != nil {
-			return published, err
+		if len(window) < o.batchSize {
+			break // reached the end of pending rows
 		}
-		if err := o.maybeMarkDelivered(gdb, del.OutboxID); err != nil {
-			return published, err
-		}
-		published++
 	}
 
 	return published, nil
@@ -106,6 +131,14 @@ func block(blocked map[string]struct{}, subject string) {
 	if subject != "" {
 		blocked[subject] = struct{}{}
 	}
+}
+
+func blockedSubjects(blocked map[string]struct{}) []string {
+	out := make([]string, 0, len(blocked))
+	for s := range blocked {
+		out = append(out, s)
+	}
+	return out
 }
 
 // recordFailure increments the attempt count, records the error, and flags the

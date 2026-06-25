@@ -261,7 +261,7 @@ func (o *Outbox) insert(tx *gorm.DB, rec *Record) error {
 	}
 
 	for _, d := range o.dests {
-		del := &Delivery{OutboxID: rec.ID, Destination: d.Name()}
+		del := &Delivery{OutboxID: rec.ID, Destination: d.Name(), Subject: rec.Subject}
 		if err := tx.Create(del).Error; err != nil {
 			return fmt.Errorf("outbox: insert delivery for %s: %w", d.Name(), err)
 		}

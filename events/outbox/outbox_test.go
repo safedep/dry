@@ -432,6 +432,28 @@ func TestCleanup_PurgesDeliveredPastRetention(t *testing.T) {
 	assert.Equal(t, int64(2), deliveries, "the purged record's deliveries are gone; the outstanding record's remain")
 }
 
+func TestDrain_BlockedSubjectDoesNotStarveOthers(t *testing.T) {
+	store := newStore(t)
+	d := &fakeDest{name: "s2dest", failSubject: "s1"}
+	o, err := New([]Destination{d}, WithStore(store), WithMaxAttempts(5))
+	require.NoError(t, err)
+	o.batchSize = 2 // small batch so the stuck subject's backlog can fill it
+
+	// Subject "s1" is stuck and has more pending deliveries than the batch size,
+	// and they are the oldest rows.
+	sendSubject(t, o, "s1")
+	sendSubject(t, o, "s1")
+	sendSubject(t, o, "s1")
+	// A younger subject must still be delivered, not starved behind s1's backlog.
+	idS2 := sendSubject(t, o, "s2")
+
+	_, err = o.drainOnce(context.Background())
+	require.NoError(t, err)
+
+	assert.True(t, d.deliveredID(idS2),
+		"a younger subject must not be starved behind a full blocked-subject batch")
+}
+
 func indexOf(d *fakeDest, id string) int {
 	d.mu.Lock()
 	defer d.mu.Unlock()

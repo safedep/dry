@@ -129,6 +129,9 @@ func New(dests []Destination, opts ...Option) (*Outbox, error) {
 	}
 
 	for _, d := range dests {
+		if d == nil {
+			return nil, errors.New("outbox: destination is nil")
+		}
 		name := d.Name()
 		if name == "" {
 			return nil, errors.New("outbox: destination has an empty name")

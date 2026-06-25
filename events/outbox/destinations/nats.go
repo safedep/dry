@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/safedep/dry/async"
+	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/outbox"
 )
 
@@ -32,6 +33,11 @@ func NewNATS(pub NatsPublisher) *NatsDestination {
 }
 
 func (d *NatsDestination) Name() string { return "nats" }
+
+// Accepts rejects public feeds: NATS is intra-platform only.
+func (d *NatsDestination) Accepts(routing events.Routing) bool {
+	return !routing.IsPublic()
+}
 
 func (d *NatsDestination) Publish(ctx context.Context, req outbox.PublishRequest) error {
 	if req.Routing.IsPublic() {

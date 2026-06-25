@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/outbox"
 	"github.com/safedep/dry/stream"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -41,6 +42,9 @@ func NewS2(config stream.S2StreamProviderConfig, basinResolver stream.S2BasinRes
 }
 
 func (d *S2Destination) Name() string { return "s2" }
+
+// Accepts allows all feeds: S2 is eligible for both private and public.
+func (d *S2Destination) Accepts(_ events.Routing) bool { return true }
 
 func (d *S2Destination) Publish(ctx context.Context, req outbox.PublishRequest) error {
 	target := stream.StreamFor(req.Routing)

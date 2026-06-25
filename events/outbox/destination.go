@@ -40,6 +40,11 @@ type Destination interface {
 	// Name identifies the destination in delivery state (e.g. "s2", "nats").
 	Name() string
 
+	// Accepts reports whether this destination is eligible for the event. The
+	// outbox creates no delivery (and does not publish directly) for a
+	// destination that does not accept an event — e.g. NATS rejects public feeds.
+	Accepts(routing events.Routing) bool
+
 	// Publish delivers one record to this transport.
 	Publish(ctx context.Context, req PublishRequest) error
 }

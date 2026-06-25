@@ -153,12 +153,12 @@ func (o *Outbox) Emit(ctx context.Context, tx *gorm.DB, msg proto.Message) error
 		return errors.New("outbox: Emit requires a non-nil transaction")
 	}
 
-	rec, err := o.buildRecord(msg)
+	rec, dests, err := o.buildRecord(msg)
 	if err != nil {
 		return err
 	}
 
-	return o.insert(tx.WithContext(ctx), rec)
+	return o.insert(tx.WithContext(ctx), rec, dests)
 }
 
 // Send delivers the event fire-and-forget. With a store it is buffered durably
@@ -169,7 +169,7 @@ func (o *Outbox) Send(ctx context.Context, msg proto.Message) error {
 		return o.publishDirect(ctx, msg)
 	}
 
-	rec, err := o.buildRecord(msg)
+	rec, dests, err := o.buildRecord(msg)
 	if err != nil {
 		return err
 	}
@@ -180,7 +180,7 @@ func (o *Outbox) Send(ctx context.Context, msg proto.Message) error {
 	}
 
 	return gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return o.insert(tx, rec)
+		return o.insert(tx, rec, dests)
 	})
 }
 
@@ -237,30 +237,52 @@ func (p prepared) request() PublishRequest {
 	}
 }
 
-// buildRecord derives the durable row from a typed event message.
-func (o *Outbox) buildRecord(msg proto.Message) (*Record, error) {
+// buildRecord derives the durable row and the destinations eligible for the
+// event. It errors if no destination accepts the event — that is a routing
+// misconfiguration (e.g. a public event with only a NATS destination), not a
+// record to silently mark delivered.
+func (o *Outbox) buildRecord(msg proto.Message) (*Record, []Destination, error) {
 	p, err := o.prepare(msg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &Record{
+	dests := o.eligibleDestinations(p.routing)
+	if len(dests) == 0 {
+		return nil, nil, fmt.Errorf("outbox: no eligible destination for event %s", p.routing.FQN)
+	}
+
+	rec := &Record{
 		EventID: p.eventID,
 		FQN:     p.routing.FQN,
 		Subject: p.subject,
 		Tenant:  p.tenant,
 		Payload: p.payload,
-	}, nil
+	}
+
+	return rec, dests, nil
 }
 
-// insert writes the record and one pending Delivery per destination. Used by
-// Emit (caller's tx) and Send (own tx); the caller supplies the transaction.
-func (o *Outbox) insert(tx *gorm.DB, rec *Record) error {
+// eligibleDestinations returns the destinations that accept the event.
+func (o *Outbox) eligibleDestinations(routing events.Routing) []Destination {
+	out := make([]Destination, 0, len(o.dests))
+	for _, d := range o.dests {
+		if d.Accepts(routing) {
+			out = append(out, d)
+		}
+	}
+
+	return out
+}
+
+// insert writes the record and one pending Delivery per eligible destination.
+// Used by Emit (caller's tx) and Send (own tx); the caller supplies the tx.
+func (o *Outbox) insert(tx *gorm.DB, rec *Record, dests []Destination) error {
 	if err := tx.Create(rec).Error; err != nil {
 		return fmt.Errorf("outbox: insert record: %w", err)
 	}
 
-	for _, d := range o.dests {
+	for _, d := range dests {
 		del := &Delivery{OutboxID: rec.ID, Destination: d.Name(), Subject: rec.Subject}
 		if err := tx.Create(del).Error; err != nil {
 			return fmt.Errorf("outbox: insert delivery for %s: %w", d.Name(), err)
@@ -279,10 +301,15 @@ func (o *Outbox) publishDirect(ctx context.Context, msg proto.Message) error {
 		return err
 	}
 
+	dests := o.eligibleDestinations(p.routing)
+	if len(dests) == 0 {
+		return fmt.Errorf("outbox: no eligible destination for event %s", p.routing.FQN)
+	}
+
 	req := p.request()
 
 	var errs []error
-	for _, d := range o.dests {
+	for _, d := range dests {
 		if err := d.Publish(ctx, req); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", d.Name(), err))
 		}

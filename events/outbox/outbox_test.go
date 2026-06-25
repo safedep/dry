@@ -55,9 +55,11 @@ type fakeDest struct {
 	failFirst    int
 	failAlways   bool
 	failSubject  string // fail Publish when req.Subject == failSubject
+	rejects      bool   // Accepts returns false (ineligible)
 }
 
-func (f *fakeDest) Name() string { return f.name }
+func (f *fakeDest) Name() string                  { return f.name }
+func (f *fakeDest) Accepts(_ events.Routing) bool { return !f.rejects }
 
 func (f *fakeDest) Publish(_ context.Context, req PublishRequest) error {
 	f.mu.Lock()
@@ -202,6 +204,41 @@ func TestSend_DirectPartialError(t *testing.T) {
 }
 
 // --- Emit (transactional) -------------------------------------------------
+
+func TestEmit_FiltersIneligibleDestinations(t *testing.T) {
+	store := newStore(t)
+	eligible := &fakeDest{name: "s2"}
+	ineligible := &fakeDest{name: "nats", rejects: true}
+	o, err := New([]Destination{eligible, ineligible}, WithStore(store))
+	require.NoError(t, err)
+
+	err = store.gdb.Transaction(func(tx *gorm.DB) error {
+		return o.Emit(context.Background(), tx, newEvent(t))
+	})
+	require.NoError(t, err)
+
+	// Only the eligible destination gets a delivery — no doomed row for the
+	// ineligible one to retry forever and block cleanup.
+	var s2count, natscount int64
+	store.gdb.Model(&Delivery{}).Where("destination = ?", "s2").Count(&s2count)
+	store.gdb.Model(&Delivery{}).Where("destination = ?", "nats").Count(&natscount)
+	assert.Equal(t, int64(1), s2count)
+	assert.Equal(t, int64(0), natscount)
+}
+
+func TestSend_NoEligibleDestinationErrors(t *testing.T) {
+	store := newStore(t)
+	o, err := New([]Destination{&fakeDest{name: "nats", rejects: true}}, WithStore(store))
+	require.NoError(t, err)
+
+	err = o.Send(context.Background(), newEvent(t))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "eligible")
+
+	var rows int64
+	store.gdb.Model(&Record{}).Count(&rows)
+	assert.Equal(t, int64(0), rows, "no record is persisted when no destination is eligible")
+}
 
 func TestEmit_RequiresStore(t *testing.T) {
 	o, err := New([]Destination{&fakeDest{name: "a"}})

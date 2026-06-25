@@ -109,6 +109,35 @@ go func() {
 }()
 ```
 
+### Retention
+
+`Run` periodically purges fully-delivered records past the retention window
+(`WithRetention`, default 24h). The transport (e.g. S2) remains the durable replay
+source beyond that window; the outbox table is only a delivery buffer.
+
+## Concurrency (multiple replicas)
+
+- **`Emit` and `Send` are safe on every replica** — produce events from all of them.
+- **The drain (`Run`) is single-writer** — it preserves per-subject ordering, so it
+  must not run concurrently.
+
+For multi-replica deployments, enable `WithLeaderElection()` and call `Run` on every
+replica: only the holder of a Postgres advisory lock drains, and a standby takes over
+automatically if the leader dies (the lock is released when its connection drops — no
+TTL or lease renewal). It requires a PostgreSQL store; `Run` errors otherwise.
+
+```go
+ob, err := outbox.New(dests,
+    outbox.WithStore(adapter),
+    outbox.WithLeaderElection(),
+)
+// ... on every replica:
+go ob.Run(ctx)
+```
+
+Without `WithLeaderElection`, run `Run` on exactly one instance (a single-replica
+worker). Cleanup rides inside `Run`, so it runs on the leader only.
+
 ## Delivery guarantees
 
 - **At-least-once per destination** for the durable paths (`Emit`, buffered

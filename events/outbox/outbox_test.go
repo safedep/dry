@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -279,6 +280,16 @@ func TestRun_NoOpWithoutStore(t *testing.T) {
 	require.NoError(t, o.Run(context.Background())) // returns immediately, no store
 }
 
+func TestRun_LeaderElectionRequiresPostgres(t *testing.T) {
+	store := newStore(t) // sqlite
+	o, err := New([]Destination{&fakeDest{name: "s2"}}, WithStore(store), WithLeaderElection())
+	require.NoError(t, err)
+
+	err = o.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "PostgreSQL")
+}
+
 // --- stuck-destination isolation ------------------------------------------
 
 func TestDrain_StuckDestinationIsolation(t *testing.T) {
@@ -366,6 +377,59 @@ func TestDrain_PerSubjectHeadOfLine(t *testing.T) {
 	assert.True(t, d.deliveredID(idA))
 	assert.True(t, d.deliveredID(idC))
 	assert.Less(t, indexOf(d, idA), indexOf(d, idC), "A is delivered before C (per-subject order)")
+}
+
+// --- cleanup --------------------------------------------------------------
+
+func TestCleanup_PurgesDeliveredPastRetention(t *testing.T) {
+	store := newStore(t)
+	delivered := &fakeDest{name: "s2"}
+	stuck := &fakeDest{name: "nats", failAlways: true}
+	o, err := New([]Destination{delivered, stuck}, WithStore(store), WithRetention(time.Hour))
+	require.NoError(t, err)
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	o.now = func() time.Time { return base }
+
+	// One fully-delivered record (drained to a single healthy destination) and one
+	// that stays outstanding because a destination is stuck.
+	oOK, err := New([]Destination{delivered}, WithStore(store), WithRetention(time.Hour))
+	require.NoError(t, err)
+	oOK.now = func() time.Time { return base }
+	require.NoError(t, oOK.Send(context.Background(), newEvent(t)))
+	_, err = oOK.drainOnce(context.Background())
+	require.NoError(t, err)
+
+	require.NoError(t, o.Send(context.Background(), newEvent(t))) // 2 deliveries; nats stuck
+	for i := 0; i < 2; i++ {
+		_, err := o.drainOnce(context.Background())
+		require.NoError(t, err)
+	}
+
+	var deliveredRows, outstandingRows int64
+	store.gdb.Model(&Record{}).Where("delivered_at IS NOT NULL").Count(&deliveredRows)
+	store.gdb.Model(&Record{}).Where("delivered_at IS NULL").Count(&outstandingRows)
+	require.Equal(t, int64(1), deliveredRows)
+	require.Equal(t, int64(1), outstandingRows)
+
+	// Before the window elapses, nothing is purged.
+	oOK.now = func() time.Time { return base.Add(30 * time.Minute) }
+	n, err := oOK.Cleanup(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 0, n)
+
+	// Past the window, the delivered record (and its deliveries) is purged; the
+	// outstanding one is untouched.
+	oOK.now = func() time.Time { return base.Add(2 * time.Hour) }
+	n, err = oOK.Cleanup(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	var records, deliveries int64
+	store.gdb.Model(&Record{}).Count(&records)
+	store.gdb.Model(&Delivery{}).Count(&deliveries)
+	assert.Equal(t, int64(1), records, "only the outstanding record remains")
+	assert.Equal(t, int64(2), deliveries, "the purged record's deliveries are gone; the outstanding record's remain")
 }
 
 func indexOf(d *fakeDest, id string) int {

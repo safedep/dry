@@ -18,7 +18,6 @@ import (
 
 	"github.com/safedep/dry/db"
 	"github.com/safedep/dry/events"
-	"github.com/safedep/dry/log"
 	"google.golang.org/protobuf/proto"
 	"gorm.io/gorm"
 )
@@ -28,9 +27,12 @@ import (
 var ErrNoStore = errors.New("outbox: Emit requires a store (WithStore)")
 
 const (
-	defaultMaxAttempts  = 5
-	defaultPollInterval = time.Second
-	defaultBatchSize    = 100
+	defaultMaxAttempts      = 5
+	defaultPollInterval     = time.Second
+	defaultBatchSize        = 100
+	defaultRetention        = 24 * time.Hour
+	defaultCleanupInterval  = time.Hour
+	defaultCleanupBatchSize = 1000
 )
 
 // Outbox delivers events to its destinations. Construct with New.
@@ -43,7 +45,15 @@ type Outbox struct {
 	maxAttempts  int
 	pollInterval time.Duration
 	batchSize    int
-	now          func() time.Time
+
+	retention        time.Duration
+	cleanupInterval  time.Duration
+	cleanupBatchSize int
+
+	leaderElection bool
+	leaderKey      int64
+
+	now func() time.Time
 }
 
 // Option configures an Outbox.
@@ -66,6 +76,13 @@ func WithPollInterval(d time.Duration) Option {
 	return func(o *Outbox) { o.pollInterval = d }
 }
 
+// WithRetention sets how long delivered records are kept before Run's cleaner
+// purges them (default 24h). The transport remains the durable replay source
+// beyond this window.
+func WithRetention(d time.Duration) Option {
+	return func(o *Outbox) { o.retention = d }
+}
+
 // New constructs an Outbox over one or more destinations.
 func New(dests []Destination, opts ...Option) (*Outbox, error) {
 	if len(dests) == 0 {
@@ -73,12 +90,16 @@ func New(dests []Destination, opts ...Option) (*Outbox, error) {
 	}
 
 	o := &Outbox{
-		dests:        dests,
-		destByName:   make(map[string]Destination, len(dests)),
-		maxAttempts:  defaultMaxAttempts,
-		pollInterval: defaultPollInterval,
-		batchSize:    defaultBatchSize,
-		now:          time.Now,
+		dests:            dests,
+		destByName:       make(map[string]Destination, len(dests)),
+		maxAttempts:      defaultMaxAttempts,
+		pollInterval:     defaultPollInterval,
+		batchSize:        defaultBatchSize,
+		retention:        defaultRetention,
+		cleanupInterval:  defaultCleanupInterval,
+		cleanupBatchSize: defaultCleanupBatchSize,
+		leaderKey:        defaultLeaderKey,
+		now:              time.Now,
 	}
 
 	for _, opt := range opts {
@@ -96,6 +117,15 @@ func New(dests []Destination, opts ...Option) (*Outbox, error) {
 	}
 	if o.batchSize < 1 {
 		o.batchSize = defaultBatchSize
+	}
+	if o.retention <= 0 {
+		o.retention = defaultRetention
+	}
+	if o.cleanupInterval <= 0 {
+		o.cleanupInterval = defaultCleanupInterval
+	}
+	if o.cleanupBatchSize < 1 {
+		o.cleanupBatchSize = defaultCleanupBatchSize
 	}
 
 	for _, d := range dests {
@@ -262,26 +292,23 @@ func (o *Outbox) publishDirect(ctx context.Context, msg proto.Message) error {
 }
 
 // Run is the drain loop: poll the store, publish un-acked deliveries per
-// destination in order, mark them. It is a no-op without a store. Run a single
-// instance (single-writer) so per-subject order is preserved on S2. Returns nil
-// on context cancellation.
+// destination in order, mark them, and periodically purge delivered records past
+// the retention window. It is a no-op without a store. Returns nil on context
+// cancellation.
+//
+// The drain is single-writer: it preserves per-subject ordering, so it must not
+// run concurrently. With WithLeaderElection, Run is safe to start on every
+// replica — only the holder of a Postgres advisory lock drains, and a standby
+// takes over if the leader dies. Without it, Run must execute on exactly one
+// instance (single-replica worker). Emit and Send are safe on every replica.
 func (o *Outbox) Run(ctx context.Context) error {
 	if o.store == nil {
 		return nil
 	}
 
-	ticker := time.NewTicker(o.pollInterval)
-	defer ticker.Stop()
-
-	for {
-		if _, err := o.drainOnce(ctx); err != nil {
-			log.Warnf("outbox: drain error: %v", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-		}
+	if o.leaderElection {
+		return o.runWithLeader(ctx)
 	}
+
+	return o.drainLoop(ctx, nil)
 }

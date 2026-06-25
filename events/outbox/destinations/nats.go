@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/safedep/dry/async"
-	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/outbox"
 )
 
@@ -20,8 +19,7 @@ type NatsPublisher interface {
 }
 
 // NatsDestination publishes events to NATS on the subject derived from the
-// routing (the fully-qualified message name). NATS is intra-platform only:
-// public feeds are rejected (events spec §7 eligibility).
+// routing. NATS is intra-platform only, so public feeds are rejected.
 type NatsDestination struct {
 	pub NatsPublisher
 }
@@ -35,10 +33,10 @@ func NewNATS(pub NatsPublisher) *NatsDestination {
 
 func (d *NatsDestination) Name() string { return "nats" }
 
-func (d *NatsDestination) Publish(ctx context.Context, routing events.Routing, _ string, record []byte) error {
-	if routing.IsPublic() {
-		return fmt.Errorf("nats destination: public feed %s is not eligible for NATS (S2 only)", routing.FQN)
+func (d *NatsDestination) Publish(ctx context.Context, req outbox.PublishRequest) error {
+	if req.Routing.IsPublic() {
+		return fmt.Errorf("nats destination: public feed %s is not eligible for NATS (S2 only)", req.Routing.FQN)
 	}
 
-	return d.pub.Publish(ctx, async.EventSubject(routing), record)
+	return d.pub.Publish(ctx, async.EventSubject(req.Routing), req.Record)
 }

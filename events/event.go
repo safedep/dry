@@ -131,6 +131,12 @@ func MetaOf(m proto.Message) (*commonv1.EventMeta, error) {
 			refl.Descriptor().FullName(), eventMetaFullName)
 	}
 
+	// Unset envelope: return a zero EventMeta explicitly rather than relying on
+	// reflect Get's default-message behavior.
+	if !refl.Has(fd) {
+		return commonv1.EventMeta_builder{}.Build(), nil
+	}
+
 	meta, ok := refl.Get(fd).Message().Interface().(*commonv1.EventMeta)
 	if !ok {
 		return nil, fmt.Errorf("events: field 1 of %s is not an EventMeta", refl.Descriptor().FullName())

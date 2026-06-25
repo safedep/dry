@@ -1,17 +1,13 @@
-// Package outbox is the producer half of the SafeDep event framework
-// (dry/events/outbox). It reliably delivers typed <Feed>Event messages to one or
-// more transport destinations, with two write paths:
+// Package outbox delivers typed event messages to one or more transport
+// destinations. It has two write paths:
 //
-//   - Emit(ctx, tx, msg) — transactional: the event row joins the caller's gorm
-//     transaction, so the business write and the event are atomic. Requires a
-//     store. Use for projection / typed-republish producers.
-//   - Send(ctx, msg) — fire-and-forget: with a store, the event is buffered
-//     durably and the drain (Run) publishes it; without a store, it is published
-//     directly (lose-on-crash, accepted). Use for direct-append / non-DB producers.
+//   - Emit(ctx, tx, msg) writes the event into the caller's transaction, so the
+//     business write and the event commit atomically. Requires a store.
+//   - Send(ctx, msg) is fire-and-forget: with a store the event is buffered and
+//     the drain (Run) publishes it; without a store it is published directly.
 //
-// Durability is a db.SqlDataAdapter injected via WithStore — no bespoke storage.
-// Delivery is at-least-once per destination; consumers dedupe on event_id. See
-// docs/specs/2026-06-20-dry-outbox-standard-spec.md.
+// Durability is a db.SqlDataAdapter injected via WithStore. Delivery is
+// at-least-once per destination; consumers dedupe on event_id.
 package outbox
 
 import (
@@ -89,6 +85,18 @@ func New(dests []Destination, opts ...Option) (*Outbox, error) {
 		opt(o)
 	}
 
+	// Guard against options set to non-positive values (Run's ticker panics on a
+	// non-positive interval; a non-positive maxAttempts would poison immediately).
+	if o.maxAttempts < 1 {
+		o.maxAttempts = defaultMaxAttempts
+	}
+	if o.pollInterval <= 0 {
+		o.pollInterval = defaultPollInterval
+	}
+	if o.batchSize < 1 {
+		o.batchSize = defaultBatchSize
+	}
+
 	for _, d := range dests {
 		name := d.Name()
 		if name == "" {
@@ -145,28 +153,46 @@ func (o *Outbox) Send(ctx context.Context, msg proto.Message) error {
 	})
 }
 
-// buildRecord derives the durable row from a typed event message. RoutingFor is
-// the enforcement seam — a non-event message errors before anything is written.
-func (o *Outbox) buildRecord(msg proto.Message) (*Record, error) {
-	routing, err := events.RoutingFor(msg)
+// prepare resolves the routing, envelope ids, and serialized bytes of a typed
+// event message, and enforces the outbox's contract: RoutingFor rejects a
+// non-event message, and a missing event_id is rejected before anything is
+// written or published — an empty event_id would break the consumer dedupe path.
+func (o *Outbox) prepare(msg proto.Message) (routing events.Routing, eventID, tenant string, payload []byte, err error) {
+	routing, err = events.RoutingFor(msg)
 	if err != nil {
-		return nil, err
+		return events.Routing{}, "", "", nil, err
 	}
 
 	meta, err := events.MetaOf(msg)
 	if err != nil {
+		return events.Routing{}, "", "", nil, err
+	}
+
+	eventID = meta.GetEventId()
+	if eventID == "" {
+		return events.Routing{}, "", "", nil,
+			errors.New("outbox: event has no event_id envelope (stamp it with events.New before sending)")
+	}
+
+	payload, err = proto.Marshal(msg)
+	if err != nil {
+		return events.Routing{}, "", "", nil, fmt.Errorf("outbox: marshal event: %w", err)
+	}
+
+	return routing, eventID, meta.GetTenant().GetTenantId(), payload, nil
+}
+
+// buildRecord derives the durable row from a typed event message.
+func (o *Outbox) buildRecord(msg proto.Message) (*Record, error) {
+	routing, eventID, tenant, payload, err := o.prepare(msg)
+	if err != nil {
 		return nil, err
 	}
 
-	payload, err := proto.Marshal(msg)
-	if err != nil {
-		return nil, fmt.Errorf("outbox: marshal event: %w", err)
-	}
-
 	return &Record{
-		EventID: meta.GetEventId(),
+		EventID: eventID,
 		FQN:     routing.FQN,
-		Tenant:  meta.GetTenant().GetTenantId(),
+		Tenant:  tenant,
 		Payload: payload,
 	}, nil
 }
@@ -192,26 +218,16 @@ func (o *Outbox) insert(tx *gorm.DB, rec *Record) error {
 // Best-effort — partial delivery is possible and an in-flight event is lost on
 // crash. Errors from all destinations are joined.
 func (o *Outbox) publishDirect(ctx context.Context, msg proto.Message) error {
-	routing, err := events.RoutingFor(msg)
+	routing, eventID, tenant, payload, err := o.prepare(msg)
 	if err != nil {
 		return err
 	}
 
-	meta, err := events.MetaOf(msg)
-	if err != nil {
-		return err
-	}
-
-	payload, err := proto.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("outbox: marshal event: %w", err)
-	}
-
-	tenant := meta.GetTenant().GetTenantId()
+	req := PublishRequest{Routing: routing, Tenant: tenant, EventID: eventID, Record: payload}
 
 	var errs []error
 	for _, d := range o.dests {
-		if err := d.Publish(ctx, routing, tenant, payload); err != nil {
+		if err := d.Publish(ctx, req); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", d.Name(), err))
 		}
 	}

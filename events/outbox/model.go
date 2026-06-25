@@ -24,10 +24,10 @@ type Record struct {
 
 func (Record) TableName() string { return "event_outbox" }
 
-// Delivery is the per-destination delivery state for a Record (§8). The drain
-// retries only un-acked, non-poisoned deliveries, so a healthy destination is
-// never re-sent because a sibling failed, and a persistently-failing destination
-// is isolated rather than blocking the others.
+// Delivery is the per-destination delivery state for a Record. The drain retries
+// only un-acked, non-poisoned deliveries, so a healthy destination is never
+// re-sent because a sibling failed, and a persistently-failing destination is
+// isolated rather than blocking the others.
 type Delivery struct {
 	ID          uint64 `gorm:"primaryKey;autoIncrement"`
 	OutboxID    uint64 `gorm:"column:outbox_id;index:idx_delivery_pending,priority:2"`

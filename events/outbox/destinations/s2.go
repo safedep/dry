@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/outbox"
 	"github.com/safedep/dry/stream"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -43,10 +42,10 @@ func NewS2(config stream.S2StreamProviderConfig, basinResolver stream.S2BasinRes
 
 func (d *S2Destination) Name() string { return "s2" }
 
-func (d *S2Destination) Publish(ctx context.Context, routing events.Routing, tenant string, record []byte) error {
-	target := stream.StreamFor(routing)
-	if tenant != "" {
-		target = stream.StreamForWithTenant(routing, tenant)
+func (d *S2Destination) Publish(ctx context.Context, req outbox.PublishRequest) error {
+	target := stream.StreamFor(req.Routing)
+	if req.Tenant != "" {
+		target = stream.StreamForWithTenant(req.Routing, req.Tenant)
 	}
 
 	id, err := target.ID()
@@ -60,8 +59,9 @@ func (d *S2Destination) Publish(ctx context.Context, routing events.Routing, ten
 	}
 
 	return writer.AppendOne(ctx, &stream.StreamEntity[*wrapperspb.BytesValue]{
-		Record:  wrapperspb.Bytes(record),
-		Headers: map[string]string{"event_id": routing.FQN},
+		Record: wrapperspb.Bytes(req.Record),
+		// Mirror the ids into headers so consumers can filter without decoding.
+		Headers: map[string]string{"event_id": req.EventID, "fqn": req.Routing.FQN},
 	})
 }
 

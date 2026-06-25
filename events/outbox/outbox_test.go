@@ -48,6 +48,7 @@ type fakeDest struct {
 	name       string
 	mu         sync.Mutex
 	delivered  [][]byte
+	eventIDs   []string
 	calls      int
 	failFirst  int
 	failAlways bool
@@ -55,15 +56,25 @@ type fakeDest struct {
 
 func (f *fakeDest) Name() string { return f.name }
 
-func (f *fakeDest) Publish(_ context.Context, _ events.Routing, _ string, record []byte) error {
+func (f *fakeDest) Publish(_ context.Context, req PublishRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	if f.failAlways || f.calls <= f.failFirst {
 		return errors.New("boom")
 	}
-	f.delivered = append(f.delivered, record)
+	f.delivered = append(f.delivered, req.Record)
+	f.eventIDs = append(f.eventIDs, req.EventID)
 	return nil
+}
+
+func (f *fakeDest) lastEventID() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.eventIDs) == 0 {
+		return ""
+	}
+	return f.eventIDs[len(f.eventIDs)-1]
 }
 
 func (f *fakeDest) deliveredCount() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.delivered) }
@@ -107,8 +118,32 @@ func TestSend_DirectNoStore(t *testing.T) {
 	o, err := New([]Destination{d})
 	require.NoError(t, err)
 
-	require.NoError(t, o.Send(context.Background(), newEvent(t)))
+	evt := newEvent(t)
+	meta, err := events.MetaOf(evt)
+	require.NoError(t, err)
+
+	require.NoError(t, o.Send(context.Background(), evt))
 	assert.Equal(t, 1, d.deliveredCount())
+	// The destination receives the real envelope event_id (not the feed FQN).
+	assert.Equal(t, meta.GetEventId(), d.lastEventID())
+	assert.NotEmpty(t, d.lastEventID())
+}
+
+func TestSend_RejectsMissingEventID(t *testing.T) {
+	d := &fakeDest{name: "nats"}
+	o, err := New([]Destination{d})
+	require.NoError(t, err)
+
+	// A well-typed event with NO envelope stamped (event_id empty) must be
+	// rejected before publish — it would break consumer dedupe.
+	raw := pkgregv1.PackageVersionObservationEvent_builder{
+		Kind: pkgregv1.PackageVersionObservationEvent_KIND_PUBLISHED,
+	}.Build()
+
+	err = o.Send(context.Background(), raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "event_id")
+	assert.Equal(t, 0, d.callCount())
 }
 
 func TestSend_DirectPartialError(t *testing.T) {

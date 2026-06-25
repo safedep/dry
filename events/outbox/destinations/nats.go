@@ -43,6 +43,9 @@ func (d *NatsDestination) Publish(ctx context.Context, req outbox.PublishRequest
 	if req.Routing.IsPublic() {
 		return fmt.Errorf("nats destination: public feed %s is not eligible for NATS (S2 only)", req.Routing.FQN)
 	}
+	if d.pub == nil {
+		return fmt.Errorf("nats destination: nil publisher")
+	}
 
 	return d.pub.Publish(ctx, async.EventSubject(req.Routing), req.Record)
 }

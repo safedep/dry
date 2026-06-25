@@ -138,6 +138,20 @@ go ob.Run(ctx)
 Without `WithLeaderElection`, run `Run` on exactly one instance (a single-replica
 worker). Cleanup rides inside `Run`, so it runs on the leader only.
 
+### Connection handling
+
+Leader election uses a Postgres **session advisory lock**, which the leader holds on
+one dedicated connection for the duration of leadership (drain/cleanup queries use the
+normal pool, not this connection). So:
+
+- The pool needs **≥2 connections** (1 pinned for the lock, ≥1 for the drain).
+- Works with a **direct** connection, **RDS Proxy** (it pins the connection — expect 1
+  in `DatabaseConnectionsCurrentlySessionPinned`), or **PgBouncer in `session` mode**.
+  It does **not** work under PgBouncer `transaction`/`statement` pooling, which rebinds
+  server connections per transaction and would break the session lock.
+- The lock connection is kept alive by a ping every `pollInterval`, so it is not reaped
+  by idle timeouts (keep `pollInterval` well below any client idle timeout).
+
 ## Delivery guarantees
 
 - **At-least-once per destination** for the durable paths (`Emit`, buffered

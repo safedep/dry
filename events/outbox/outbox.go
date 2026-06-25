@@ -86,7 +86,8 @@ func New(dests []Destination, opts ...Option) (*Outbox, error) {
 	}
 
 	// Guard against options set to non-positive values (Run's ticker panics on a
-	// non-positive interval; a non-positive maxAttempts would poison immediately).
+	// non-positive interval; a non-positive maxAttempts would flag stuck on the
+	// first failure).
 	if o.maxAttempts < 1 {
 		o.maxAttempts = defaultMaxAttempts
 	}

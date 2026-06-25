@@ -144,6 +144,16 @@ func TestNew_Validation(t *testing.T) {
 	assert.NotNil(t, o)
 }
 
+func TestNew_ClampsNonPositiveOptions(t *testing.T) {
+	// Non-positive tuning values fall back to defaults (Run's ticker would panic
+	// on a non-positive interval) rather than failing construction.
+	o, err := New([]Destination{&fakeDest{name: "a"}},
+		WithPollInterval(0), WithMaxAttempts(-1))
+	require.NoError(t, err)
+	assert.Equal(t, defaultPollInterval, o.pollInterval)
+	assert.Equal(t, defaultMaxAttempts, o.maxAttempts)
+}
+
 // --- Send (direct, no store) ---------------------------------------------
 
 func TestSend_DirectNoStore(t *testing.T) {

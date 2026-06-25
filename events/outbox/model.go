@@ -19,7 +19,7 @@ type Record struct {
 
 	// DeliveredAt is set once every Delivery for this record has been published.
 	// Nil while any delivery is still outstanding (including stuck ones).
-	DeliveredAt *time.Time `gorm:"column:delivered_at"`
+	DeliveredAt *time.Time `gorm:"column:delivered_at;index"`
 	CreatedAt   time.Time
 }
 

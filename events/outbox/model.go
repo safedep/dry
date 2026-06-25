@@ -30,9 +30,14 @@ func (Record) TableName() string { return "event_outbox" }
 // subject (other subjects and destinations keep flowing) and is retried — never
 // skipped — so downstream state never advances past a gap.
 type Delivery struct {
-	ID          uint64 `gorm:"primaryKey;autoIncrement"`
-	OutboxID    uint64 `gorm:"column:outbox_id;index:idx_delivery_pending,priority:2"`
-	Destination string `gorm:"column:destination;index:idx_delivery_pending,priority:1"`
+	ID uint64 `gorm:"primaryKey;autoIncrement"`
+
+	// (outbox_id, destination) is unique: a record fans out to exactly one
+	// delivery per destination. The drain cursors by outbox_id and treats it as
+	// the per-destination key, so a duplicate would risk a skipped or double
+	// publish — the constraint makes an accidental double-insert fail loudly.
+	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:2"`
+	Destination string `gorm:"column:destination;uniqueIndex:idx_event_outbox_delivery_unique,priority:1;index:idx_event_outbox_delivery_pending,priority:1"`
 
 	// Subject is denormalized from the Record so the drain can exclude blocked
 	// subjects in the query — a blocked subject must not monopolize a batch and

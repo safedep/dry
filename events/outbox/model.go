@@ -32,10 +32,7 @@ func (Record) TableName() string { return "event_outbox" }
 type Delivery struct {
 	ID uint64 `gorm:"primaryKey;autoIncrement"`
 
-	// (outbox_id, destination) is unique: a record fans out to exactly one
-	// delivery per destination. The drain cursors by outbox_id and treats it as
-	// the per-destination key, so a duplicate would risk a skipped or double
-	// publish — the constraint makes an accidental double-insert fail loudly.
+	// (outbox_id, destination) is unique: one delivery per destination per record.
 	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:2"`
 	Destination string `gorm:"column:destination;uniqueIndex:idx_event_outbox_delivery_unique,priority:1;index:idx_event_outbox_delivery_pending,priority:1"`
 

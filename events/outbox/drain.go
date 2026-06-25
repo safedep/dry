@@ -108,6 +108,10 @@ func (o *Outbox) drainDestination(ctx context.Context, gdb *gorm.DB, dest Destin
 
 			now := o.now()
 			del.PublishedAt = &now
+			// A published delivery is no longer stuck; don't leave failure state
+			// that would trip alerting on stuck_since IS NOT NULL.
+			del.StuckSince = nil
+			del.LastError = ""
 			if err := gdb.Save(del).Error; err != nil {
 				return published, err
 			}

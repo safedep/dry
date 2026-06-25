@@ -381,6 +381,35 @@ func TestDrain_TransientRetryThenSucceeds(t *testing.T) {
 	assert.Equal(t, int64(0), stuck, "transient failures below maxAttempts must not flag stuck")
 }
 
+func TestDrain_StuckThenSucceedsClearsFailureState(t *testing.T) {
+	store := newStore(t)
+	flaky := &fakeDest{name: "s2", failFirst: 2} // fail twice (2nd trips stuck), then succeed
+	o, err := New([]Destination{flaky}, WithStore(store), WithMaxAttempts(2))
+	require.NoError(t, err)
+
+	require.NoError(t, o.Send(context.Background(), newEvent(t)))
+
+	// Drain twice to exhaust maxAttempts and flag the delivery stuck.
+	for i := 0; i < 2; i++ {
+		_, err := o.drainOnce(context.Background())
+		require.NoError(t, err)
+	}
+	var del Delivery
+	require.NoError(t, store.gdb.First(&del).Error)
+	require.NotNil(t, del.StuckSince, "delivery should be flagged stuck after exhausting maxAttempts")
+	require.NotEmpty(t, del.LastError)
+
+	_, err = o.drainOnce(context.Background())
+	require.NoError(t, err)
+
+	var published Delivery
+	require.NoError(t, store.gdb.First(&published).Error)
+	assert.Equal(t, 1, flaky.deliveredCount())
+	assert.NotNil(t, published.PublishedAt)
+	assert.Nil(t, published.StuckSince, "stuck_since must be cleared once the delivery succeeds")
+	assert.Empty(t, published.LastError, "last_error must be cleared once the delivery succeeds")
+}
+
 // --- per-subject head-of-line ---------------------------------------------
 
 func TestDrain_PerSubjectHeadOfLine(t *testing.T) {

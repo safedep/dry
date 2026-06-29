@@ -13,10 +13,13 @@ import (
 
 // ProcessedEvent records that a consumer has handled an event_id. It backs the
 // optional WithDedup helper; see Dedup for the (best-effort, not exactly-once)
-// semantics.
+// semantics. Same identity shape as Cursor: surrogate PK + a unique index on the
+// natural key (consumer_name, event_id), which backs the Seen lookup and the
+// Mark insert's conflict target.
 type ProcessedEvent struct {
-	ConsumerName string    `gorm:"column:consumer_name;primaryKey"`
-	EventID      string    `gorm:"column:event_id;primaryKey"`
+	ID           uint64    `gorm:"primaryKey;autoIncrement"`
+	ConsumerName string    `gorm:"column:consumer_name;uniqueIndex:idx_event_inbox_processed_unique,priority:1"`
+	EventID      string    `gorm:"column:event_id;uniqueIndex:idx_event_inbox_processed_unique,priority:2"`
 	ProcessedAt  time.Time `gorm:"column:processed_at"`
 }
 

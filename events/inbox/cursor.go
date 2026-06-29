@@ -15,9 +15,16 @@ import (
 // read-side dual of the outbox's per-destination delivery row: dry owns the
 // model, the table lives in the consumer's database. One row per consumer per
 // feed, so two consumers of the same feed track independent positions.
+//
+// Following the outbox models, the identity is a surrogate auto-increment PK with
+// a unique index on the natural key — rather than a natural composite PK or an
+// embedded gorm.Model (whose soft-delete deleted_at has no meaning for a cursor).
+// The unique index both enforces one-cursor-per-feed and backs the Load lookup
+// and the Advance upsert's conflict target.
 type Cursor struct {
-	ConsumerName string    `gorm:"column:consumer_name;primaryKey"`
-	Feed         string    `gorm:"column:feed;primaryKey"`
+	ID           uint64    `gorm:"primaryKey;autoIncrement"`
+	ConsumerName string    `gorm:"column:consumer_name;uniqueIndex:idx_event_inbox_cursor_unique,priority:1"`
+	Feed         string    `gorm:"column:feed;uniqueIndex:idx_event_inbox_cursor_unique,priority:2"`
 	Position     string    `gorm:"column:position"`
 	UpdatedAt    time.Time `gorm:"column:updated_at"`
 }

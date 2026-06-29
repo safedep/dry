@@ -117,6 +117,33 @@ func TestS2Source_BootstrapFromTailOnlyOnFirstOpen(t *testing.T) {
 	assert.Equal(t, "6", script.openOpts[1].StartPosition)
 }
 
+func TestS2Source_BootstrapFromTailRedeliversUnackedRecord(t *testing.T) {
+	// The first live tail record fails before any ack: the reopen must redeliver it
+	// (resume at its position), not re-tail past it — at-least-once for record one.
+	cursors := newMemCursors()
+	script := &sessionScript{sessions: []*fakeSession{
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}},
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}}, // redelivered on reopen
+	}}
+	src := newSource(cursors, script)
+	src.bootstrapFromTail = true
+	ctx := context.Background()
+
+	d, err := src.Receive(ctx)
+	require.NoError(t, err)
+	require.NoError(t, d.Nack()) // handler failed before ack
+
+	d2, err := src.Receive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("a"), d2.Payload, "unacked bootstrap record is redelivered")
+
+	require.Len(t, script.openOpts, 2)
+	assert.True(t, script.openOpts[0].FromTail, "first open is the tail")
+	assert.False(t, script.openOpts[1].FromTail, "reopen resumes at the read position, not a fresh tail")
+	assert.Equal(t, "5", script.openOpts[1].StartPosition)
+	assert.Equal(t, "", cursors.m["consumer-a|feed.v1.X"], "no ack means no persisted cursor")
+}
+
 func TestS2Source_AckAdvancesCursorAndReopensPastIt(t *testing.T) {
 	cursors := newMemCursors()
 	script := &sessionScript{sessions: []*fakeSession{

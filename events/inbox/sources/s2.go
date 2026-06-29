@@ -51,6 +51,12 @@ type s2Source struct {
 	// rather than the start of the stream. Only the bootstrap is affected; once a
 	// cursor is persisted, resume is always from it.
 	bootstrapFromTail bool
+
+	// tailResolvedPosition is the position of the first record read during a
+	// from-tail bootstrap, before any ack has persisted a cursor. A pre-ack reopen
+	// (Nack / leadership / transport loss) resumes here instead of re-tailing, so
+	// the unacked record is redelivered rather than skipped. Cleared once acked.
+	tailResolvedPosition string
 }
 
 var _ inbox.Source = &s2Source{}
@@ -175,6 +181,11 @@ func (s *s2Source) Receive(ctx context.Context) (*inbox.Delivery, error) {
 		return nil, err // io.EOF / transport error: Consume backs off and retries
 	}
 
+	// Remember the read position so a from-tail bootstrap that fails before its
+	// first ack reopens here (redelivering) instead of re-tailing past it. Harmless
+	// once a cursor exists — the persisted cursor takes precedence in reopen.
+	s.tailResolvedPosition = rec.Position
+
 	return &inbox.Delivery{
 		Payload: rec.Body,
 		// Advance under readCtx so a cursor write by a former leader fails once its
@@ -201,25 +212,37 @@ func (s *s2Source) reopen(ctx context.Context) error {
 	if err != nil && !errors.Is(err, inbox.ErrNoCursor) {
 		return err
 	}
-	// ErrNoCursor leaves position == "" — the bootstrap signal. By default an
-	// empty StartPosition reads from the beginning; WithBootstrapFromTail instead
-	// starts at the live tail. Either way, once a cursor exists position is
-	// non-empty and resume is from it.
-	readOpts := stream.StreamReadOptions{StartPosition: position}
-	if position == "" && s.bootstrapFromTail {
+
+	// Pick the read start. A persisted cursor always wins. With no cursor yet:
+	// from-tail bootstrap reads the live tail until it has read a record, then
+	// resumes at that record (so a pre-ack failure redelivers it, not skips it);
+	// otherwise read from the beginning.
+	var readOpts stream.StreamReadOptions
+	switch {
+	case position != "":
+		readOpts = stream.StreamReadOptions{StartPosition: position}
+	case s.bootstrapFromTail && s.tailResolvedPosition != "":
+		readOpts = stream.StreamReadOptions{StartPosition: s.tailResolvedPosition}
+	case s.bootstrapFromTail:
 		readOpts = stream.StreamReadOptions{FromTail: true}
+	default:
+		readOpts = stream.StreamReadOptions{StartPosition: ""}
 	}
 
-	if position == s.lastOpenPosition {
-		s.redeliverAttempts++
-	} else {
-		s.lastOpenPosition = position
-		s.redeliverAttempts = 1
-	}
-	if s.redeliverAttempts > 1 {
-		log.Warnf("inbox/s2: stalled cursor consumer=%s feed=%s position=%q attempts=%d "+
-			"(a record is repeatedly failing and blocking the feed; wire WithErrorHandler->Skip or a DLQ)",
-			s.consumerName, s.feed, position, s.redeliverAttempts)
+	// Stall detection on a concrete position only — the tail is a moving target,
+	// so repeated FromTail opens aren't a stalled record.
+	if !readOpts.FromTail {
+		if readOpts.StartPosition == s.lastOpenPosition {
+			s.redeliverAttempts++
+		} else {
+			s.lastOpenPosition = readOpts.StartPosition
+			s.redeliverAttempts = 1
+		}
+		if s.redeliverAttempts > 1 {
+			log.Warnf("inbox/s2: stalled cursor consumer=%s feed=%s position=%q attempts=%d "+
+				"(a record is repeatedly failing and blocking the feed; wire WithErrorHandler->Skip or a DLQ)",
+				s.consumerName, s.feed, readOpts.StartPosition, s.redeliverAttempts)
+		}
 	}
 
 	session, err := s.newSession(ctx, readOpts)
@@ -237,6 +260,8 @@ func (s *s2Source) ack(ctx context.Context, nextPosition string) error {
 		s.closeSession()
 		return err
 	}
+	// The cursor now governs resume; the bootstrap fallback is no longer needed.
+	s.tailResolvedPosition = ""
 	return nil
 }
 

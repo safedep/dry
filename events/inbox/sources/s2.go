@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/safedep/dry/db"
 	"github.com/safedep/dry/events/inbox"
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/stream"
@@ -35,9 +36,30 @@ type s2Source struct {
 	// newSession opens a read session at a position. Defaults to the real S2 read
 	// session; tests inject a fake to exercise reopen/stall/cursor logic offline.
 	newSession func(ctx context.Context, startPosition string) (stream.StreamReadSession, error)
+
+	// leader, when set (WithLeader), gates reading so only one replica consumes
+	// the feed — required because the S2 cursor is client-side and two readers
+	// would clobber it. Nil for single-replica deployments.
+	leader *advisoryLeader
+
+	// leaderAdapter is staged by WithLeader and consumed by NewS2 once the cursor
+	// key (consumer + feed) is known, then discarded.
+	leaderAdapter db.SqlDataAdapter
 }
 
 var _ inbox.Source = &s2Source{}
+
+// S2Option configures an S2 inbox Source.
+type S2Option func(*s2Source)
+
+// WithLeader makes the source safe to run on every replica: only the holder of a
+// Postgres advisory lock (keyed on the consumer + feed) actually reads; the rest
+// idle and take over if it dies. Requires a PostgreSQL adapter — NewS2 errors
+// otherwise. Omit it for single-replica deployments (S2's server side does not
+// elect for us, unlike a NATS durable consumer).
+func WithLeader(adapter db.SqlDataAdapter) S2Option {
+	return func(s *s2Source) { s.leaderAdapter = adapter }
+}
 
 // NewS2 builds an S2 inbox Source for one event feed. The caller resolves the
 // stream identity — stream.StreamFor(routing) for a global feed, or
@@ -51,7 +73,7 @@ var _ inbox.Source = &s2Source{}
 // and identifies this consumer in stalled-cursor diagnostics. A nil basinResolver
 // uses the default.
 func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
-	basinResolver stream.S2BasinResolver, cursors inbox.CursorStore, consumerName string) (inbox.Source, error) {
+	basinResolver stream.S2BasinResolver, cursors inbox.CursorStore, consumerName string, opts ...S2Option) (inbox.Source, error) {
 
 	if config.ApiKey == "" {
 		return nil, fmt.Errorf("inbox/s2: S2 API key is not set")
@@ -80,6 +102,17 @@ func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
 		consumerName:  consumerName,
 		feed:          feed,
 	}
+	for _, opt := range opts {
+		opt(src)
+	}
+	if src.leaderAdapter != nil {
+		leader, err := newAdvisoryLeader(src.leaderAdapter, leaderKey(consumerName, feed))
+		if err != nil {
+			return nil, err
+		}
+		src.leader = leader
+		src.leaderAdapter = nil
+	}
 	src.newSession = func(ctx context.Context, startPosition string) (stream.StreamReadSession, error) {
 		return stream.NewS2StreamReadSession(ctx, src.config, src.basinResolver, src.stream,
 			stream.StreamReadOptions{StartPosition: startPosition})
@@ -88,6 +121,19 @@ func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
 }
 
 func (s *s2Source) Receive(ctx context.Context) (*inbox.Delivery, error) {
+	if s.leader != nil {
+		// Block until we hold leadership. A standby parks here until the current
+		// leader dies; a fresh acquisition (reacquired) means another replica may
+		// have advanced the cursor, so drop our session and resume from it.
+		reacquired, err := s.leader.ensureLeading(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if reacquired {
+			s.closeSession()
+		}
+	}
+
 	if s.session == nil {
 		if err := s.reopen(ctx); err != nil {
 			return nil, err

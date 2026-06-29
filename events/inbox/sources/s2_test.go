@@ -60,16 +60,18 @@ func (c *memCursors) Advance(_ context.Context, consumer, feed, position string)
 	return nil
 }
 
-// sessionScript hands out pre-built sessions in order, recording the position
-// each (re)open was requested at.
+// sessionScript hands out pre-built sessions in order, recording the options
+// each (re)open was requested with.
 type sessionScript struct {
 	sessions      []*fakeSession
 	i             int
 	openPositions []string
+	openOpts      []stream.StreamReadOptions
 }
 
-func (s *sessionScript) open(_ context.Context, startPosition string) (stream.StreamReadSession, error) {
-	s.openPositions = append(s.openPositions, startPosition)
+func (s *sessionScript) open(_ context.Context, opts stream.StreamReadOptions) (stream.StreamReadSession, error) {
+	s.openPositions = append(s.openPositions, opts.StartPosition)
+	s.openOpts = append(s.openOpts, opts)
 	sess := s.sessions[s.i]
 	s.i++
 	return sess, nil
@@ -86,6 +88,60 @@ func newSource(cursors *memCursors, script *sessionScript) *s2Source {
 
 func rec(body, position, next string) *stream.StreamRecord {
 	return &stream.StreamRecord{Body: []byte(body), Position: position, Next: next}
+}
+
+func TestS2Source_BootstrapFromTailOnlyOnFirstOpen(t *testing.T) {
+	cursors := newMemCursors()
+	script := &sessionScript{sessions: []*fakeSession{
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}}, // bootstrap read at tail
+		{},                                                    // reopen after ack: from cursor
+	}}
+	src := newSource(cursors, script)
+	src.bootstrapFromTail = true
+	ctx := context.Background()
+
+	d, err := src.Receive(ctx)
+	require.NoError(t, err)
+	require.NoError(t, d.Ack())
+
+	// reopen after the EOF on session 0.
+	_, err = src.Receive(ctx) // session 0 EOF
+	require.ErrorIs(t, err, io.EOF)
+	_, err = src.Receive(ctx) // reopen -> session 1
+	require.ErrorIs(t, err, io.EOF)
+
+	require.Len(t, script.openOpts, 2)
+	assert.True(t, script.openOpts[0].FromTail, "first open (no cursor) starts at tail")
+	assert.Equal(t, "", script.openOpts[0].StartPosition)
+	assert.False(t, script.openOpts[1].FromTail, "after a cursor exists, resume from position")
+	assert.Equal(t, "6", script.openOpts[1].StartPosition)
+}
+
+func TestS2Source_BootstrapFromTailRedeliversUnackedRecord(t *testing.T) {
+	// The first live tail record fails before any ack: the reopen must redeliver it
+	// (resume at its position), not re-tail past it — at-least-once for record one.
+	cursors := newMemCursors()
+	script := &sessionScript{sessions: []*fakeSession{
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}},
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}}, // redelivered on reopen
+	}}
+	src := newSource(cursors, script)
+	src.bootstrapFromTail = true
+	ctx := context.Background()
+
+	d, err := src.Receive(ctx)
+	require.NoError(t, err)
+	require.NoError(t, d.Nack()) // handler failed before ack
+
+	d2, err := src.Receive(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("a"), d2.Payload, "unacked bootstrap record is redelivered")
+
+	require.Len(t, script.openOpts, 2)
+	assert.True(t, script.openOpts[0].FromTail, "first open is the tail")
+	assert.False(t, script.openOpts[1].FromTail, "reopen resumes at the read position, not a fresh tail")
+	assert.Equal(t, "5", script.openOpts[1].StartPosition)
+	assert.Equal(t, "", cursors.m["consumer-a|feed.v1.X"], "no ack means no persisted cursor")
 }
 
 func TestS2Source_AckAdvancesCursorAndReopensPastIt(t *testing.T) {

@@ -63,6 +63,14 @@ func leaderKey(consumerName, feed string) int64 {
 	return int64(h.Sum64())
 }
 
+// closeLockConn returns a lock connection to the pool, logging an unexpected
+// close failure rather than swallowing it.
+func closeLockConn(conn *sql.Conn) {
+	if err := conn.Close(); err != nil {
+		log.Warnf("inbox/s2: close lock connection: %v", err)
+	}
+}
+
 // ensureLeading blocks until this instance holds leadership, returning the term
 // context — alive while it leads, cancelled the moment leadership is lost (the
 // lock connection drops) or baseCtx is done. The read session MUST be opened with
@@ -106,11 +114,11 @@ func (l *advisoryLeader) tryAcquire(baseCtx context.Context) (context.Context, b
 
 	var acquired bool
 	if err := conn.QueryRowContext(baseCtx, "SELECT pg_try_advisory_lock($1)", l.key).Scan(&acquired); err != nil {
-		_ = conn.Close()
+		closeLockConn(conn)
 		return nil, false, fmt.Errorf("advisory lock: %w", err)
 	}
 	if !acquired {
-		_ = conn.Close() // returns the connection to the pool, holding no lock
+		closeLockConn(conn) // returns the connection to the pool, holding no lock
 		return nil, false, nil
 	}
 
@@ -155,8 +163,11 @@ func (l *advisoryLeader) hold(conn *sql.Conn, leadCtx context.Context, cancel co
 // term ended via cancellation.
 func (l *advisoryLeader) release(conn *sql.Conn, cancel context.CancelFunc) {
 	cancel()
-	_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", l.key)
-	_ = conn.Close()
+	if _, err := conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", l.key); err != nil {
+		// Non-fatal: closing the connection below releases the session lock anyway.
+		log.Warnf("inbox/s2: advisory unlock: %v", err)
+	}
+	closeLockConn(conn)
 
 	l.mu.Lock()
 	if l.conn == conn {

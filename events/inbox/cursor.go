@@ -31,12 +31,20 @@ type Cursor struct {
 
 func (Cursor) TableName() string { return "event_inbox_cursor" }
 
+// ErrNoCursor is returned by CursorStore.Load when no cursor exists yet for a
+// (consumer_name, feed) — the first-run / bootstrap case. It is not a failure:
+// the caller treats it as "read from the start" (an empty StartPosition). It is
+// an exported sentinel so callers handle the bootstrap case explicitly rather
+// than overloading an empty-string return.
+var ErrNoCursor = errors.New("inbox: no cursor for consumer/feed")
+
 // CursorStore loads and advances the durable read position. It is keyed
 // explicitly on (consumer_name, feed) — the S2 source supplies both — rather than
 // being consumer-scoped, so one store instance serves every feed in a process.
 type CursorStore interface {
-	// Load returns the persisted position for (consumerName, feed), or "" when no
-	// cursor exists yet (first run — read from the start).
+	// Load returns the persisted position for (consumerName, feed). It returns
+	// ErrNoCursor (with an empty position) when no cursor exists yet — a bootstrap
+	// signal the caller resumes from the start on, not a failure.
 	Load(ctx context.Context, consumerName, feed string) (string, error)
 	// Advance upserts the position for (consumerName, feed).
 	Advance(ctx context.Context, consumerName, feed, position string) error
@@ -66,7 +74,7 @@ func (s *gormCursorStore) Load(ctx context.Context, consumerName, feed string) (
 		Where("consumer_name = ? AND feed = ?", consumerName, feed).
 		First(&cursor).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		return "", ErrNoCursor
 	}
 	if err != nil {
 		return "", fmt.Errorf("inbox: load cursor: %w", err)

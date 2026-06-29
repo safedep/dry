@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/safedep/dry/events"
+	"github.com/safedep/dry/events/inbox"
 	"github.com/safedep/dry/stream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,7 +49,11 @@ func newMemCursors() *memCursors { return &memCursors{m: map[string]string{}} }
 
 func (c *memCursors) key(consumer, feed string) string { return consumer + "|" + feed }
 func (c *memCursors) Load(_ context.Context, consumer, feed string) (string, error) {
-	return c.m[c.key(consumer, feed)], nil
+	pos, ok := c.m[c.key(consumer, feed)]
+	if !ok {
+		return "", inbox.ErrNoCursor
+	}
+	return pos, nil
 }
 func (c *memCursors) Advance(_ context.Context, consumer, feed, position string) error {
 	c.m[c.key(consumer, feed)] = position

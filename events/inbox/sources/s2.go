@@ -4,6 +4,7 @@ package sources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/safedep/dry/events/inbox"
@@ -118,9 +119,12 @@ func (s *s2Source) Receive(ctx context.Context) (*inbox.Delivery, error) {
 // when consecutive reopens land on the same position (a stalled/poison record).
 func (s *s2Source) reopen(ctx context.Context) error {
 	position, err := s.cursors.Load(ctx, s.consumerName, s.feed)
-	if err != nil {
+	if err != nil && !errors.Is(err, inbox.ErrNoCursor) {
 		return err
 	}
+	// ErrNoCursor leaves position == "" — the bootstrap signal that opens the
+	// read session at the start of the stream (StreamReadOptions treats an empty
+	// StartPosition as "from the beginning").
 
 	if position == s.lastOpenPosition {
 		s.redeliverAttempts++

@@ -39,13 +39,13 @@ func newTestAdapter(t *testing.T) db.SqlDataAdapter {
 	return a
 }
 
-func TestCursorStore_LoadEmptyIsBeginning(t *testing.T) {
+func TestCursorStore_LoadMissingReturnsErrNoCursor(t *testing.T) {
 	store, err := inbox.NewGormCursorStore(newTestAdapter(t))
 	require.NoError(t, err)
 
 	pos, err := store.Load(t.Context(), "consumer-a", "feed.v1.X")
-	require.NoError(t, err)
-	assert.Equal(t, "", pos, "no cursor yet means read from the beginning")
+	require.ErrorIs(t, err, inbox.ErrNoCursor, "no cursor yet is signalled explicitly")
+	assert.Equal(t, "", pos)
 }
 
 func TestCursorStore_AdvanceAndLoad(t *testing.T) {

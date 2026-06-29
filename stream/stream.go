@@ -280,3 +280,60 @@ type StreamWriter[T any] interface {
 	AppendOne(ctx context.Context, record *StreamEntity[T]) error
 	AppendMany(ctx context.Context, records []*StreamEntity[T]) error
 }
+
+// StreamReadOptions selects where a read session starts. A persisted cursor
+// always wins: when StartPosition is non-empty it is the authoritative resume
+// point and FromTail is ignored.
+type StreamReadOptions struct {
+	// StartPosition is the opaque, provider-encoded position to begin reading
+	// from. Empty means "from the beginning" of whatever the provider retains.
+	StartPosition string
+
+	// FromTail, when true and StartPosition is empty, starts at the newest end
+	// of the stream. It is an abstract start intent, not a position.
+	FromTail bool
+}
+
+// StreamRecord is one record yielded by a StreamReadSession: its raw body,
+// headers, and the opaque cursor positions around it.
+//
+// The body is intentionally left undecoded. Decode happens one layer above the
+// session so a consumer can persist the cursor and dead-letter the raw body even
+// when the typed decode fails — a typed StreamReadSession would swallow the bytes
+// of an unparseable record inside the read call. This is the read-side reason the
+// session is byte-oriented while StreamWriter/StreamReader are typed over T.
+type StreamRecord struct {
+	// Body is the raw record payload as stored on the stream.
+	Body []byte
+
+	// Headers are the record's name-value metadata pairs.
+	Headers map[string]string
+
+	// Position is the opaque, provider-encoded position of this record.
+	Position string
+
+	// Next is the cursor to persist after this record is durably handled, so a
+	// resume starts one past it rather than replaying it.
+	Next string
+}
+
+// StreamReadSession is a blocking, single-record, cursor-resumable read over a
+// stream — the read-side dual of StreamWriter, and the shape an at-least-once
+// consumer needs (read → handle → persist Next). Neither the batch-pull
+// StreamReader nor the channel StreamListener provides per-record handle-then-ack
+// with a resumable cursor, so this is a distinct primitive rather than a method
+// on either.
+//
+// The session is bound to the context passed at construction: cancelling that
+// context (or calling Close) terminates it. Next is not safe for concurrent use;
+// one goroutine drives it in a loop.
+type StreamReadSession interface {
+	// Next blocks until the next record is available, the session's context is
+	// done, or the session ends. It returns io.EOF when the stream is exhausted
+	// or the session is closed, and context.Canceled / context.DeadlineExceeded
+	// when the bound context is done.
+	Next() (*StreamRecord, error)
+
+	// Close releases the underlying transport session. It is idempotent.
+	Close() error
+}

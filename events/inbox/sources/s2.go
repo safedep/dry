@@ -33,9 +33,10 @@ type s2Source struct {
 	lastOpenPosition  string
 	redeliverAttempts int
 
-	// newSession opens a read session at a position. Defaults to the real S2 read
-	// session; tests inject a fake to exercise reopen/stall/cursor logic offline.
-	newSession func(ctx context.Context, startPosition string) (stream.StreamReadSession, error)
+	// newSession opens a read session at the given options. Defaults to the real
+	// S2 read session; tests inject a fake to exercise reopen/stall/cursor logic
+	// offline.
+	newSession func(ctx context.Context, opts stream.StreamReadOptions) (stream.StreamReadSession, error)
 
 	// leader, when set (WithLeader), gates reading so only one replica consumes
 	// the feed — required because the S2 cursor is client-side and two readers
@@ -45,6 +46,11 @@ type s2Source struct {
 	// leaderAdapter is staged by WithLeader and consumed by NewS2 once the cursor
 	// key (consumer + feed) is known, then discarded.
 	leaderAdapter db.SqlDataAdapter
+
+	// bootstrapFromTail starts the first read (no cursor yet) at the live tail
+	// rather than the start of the stream. Only the bootstrap is affected; once a
+	// cursor is persisted, resume is always from it.
+	bootstrapFromTail bool
 }
 
 var _ inbox.Source = &s2Source{}
@@ -59,6 +65,14 @@ type S2Option func(*s2Source)
 // elect for us, unlike a NATS durable consumer).
 func WithLeader(adapter db.SqlDataAdapter) S2Option {
 	return func(s *s2Source) { s.leaderAdapter = adapter }
+}
+
+// WithBootstrapFromTail starts a brand-new consumer (no persisted cursor) at the
+// live tail of the feed instead of replaying from the beginning. It applies only
+// to the bootstrap read; once the cursor is persisted, resume is always from it.
+// Use it when historical backlog is irrelevant and only new events matter.
+func WithBootstrapFromTail() S2Option {
+	return func(s *s2Source) { s.bootstrapFromTail = true }
 }
 
 // NewS2 builds an S2 inbox Source for one event feed. The caller resolves the
@@ -113,9 +127,8 @@ func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
 		src.leader = leader
 		src.leaderAdapter = nil
 	}
-	src.newSession = func(ctx context.Context, startPosition string) (stream.StreamReadSession, error) {
-		return stream.NewS2StreamReadSession(ctx, src.config, src.basinResolver, src.stream,
-			stream.StreamReadOptions{StartPosition: startPosition})
+	src.newSession = func(ctx context.Context, readOpts stream.StreamReadOptions) (stream.StreamReadSession, error) {
+		return stream.NewS2StreamReadSession(ctx, src.config, src.basinResolver, src.stream, readOpts)
 	}
 	return src, nil
 }
@@ -188,9 +201,14 @@ func (s *s2Source) reopen(ctx context.Context) error {
 	if err != nil && !errors.Is(err, inbox.ErrNoCursor) {
 		return err
 	}
-	// ErrNoCursor leaves position == "" — the bootstrap signal that opens the
-	// read session at the start of the stream (StreamReadOptions treats an empty
-	// StartPosition as "from the beginning").
+	// ErrNoCursor leaves position == "" — the bootstrap signal. By default an
+	// empty StartPosition reads from the beginning; WithBootstrapFromTail instead
+	// starts at the live tail. Either way, once a cursor exists position is
+	// non-empty and resume is from it.
+	readOpts := stream.StreamReadOptions{StartPosition: position}
+	if position == "" && s.bootstrapFromTail {
+		readOpts = stream.StreamReadOptions{FromTail: true}
+	}
 
 	if position == s.lastOpenPosition {
 		s.redeliverAttempts++
@@ -204,7 +222,7 @@ func (s *s2Source) reopen(ctx context.Context) error {
 			s.consumerName, s.feed, position, s.redeliverAttempts)
 	}
 
-	session, err := s.newSession(ctx, position)
+	session, err := s.newSession(ctx, readOpts)
 	if err != nil {
 		return err
 	}

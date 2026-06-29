@@ -60,16 +60,18 @@ func (c *memCursors) Advance(_ context.Context, consumer, feed, position string)
 	return nil
 }
 
-// sessionScript hands out pre-built sessions in order, recording the position
-// each (re)open was requested at.
+// sessionScript hands out pre-built sessions in order, recording the options
+// each (re)open was requested with.
 type sessionScript struct {
 	sessions      []*fakeSession
 	i             int
 	openPositions []string
+	openOpts      []stream.StreamReadOptions
 }
 
-func (s *sessionScript) open(_ context.Context, startPosition string) (stream.StreamReadSession, error) {
-	s.openPositions = append(s.openPositions, startPosition)
+func (s *sessionScript) open(_ context.Context, opts stream.StreamReadOptions) (stream.StreamReadSession, error) {
+	s.openPositions = append(s.openPositions, opts.StartPosition)
+	s.openOpts = append(s.openOpts, opts)
 	sess := s.sessions[s.i]
 	s.i++
 	return sess, nil
@@ -86,6 +88,33 @@ func newSource(cursors *memCursors, script *sessionScript) *s2Source {
 
 func rec(body, position, next string) *stream.StreamRecord {
 	return &stream.StreamRecord{Body: []byte(body), Position: position, Next: next}
+}
+
+func TestS2Source_BootstrapFromTailOnlyOnFirstOpen(t *testing.T) {
+	cursors := newMemCursors()
+	script := &sessionScript{sessions: []*fakeSession{
+		{records: []*stream.StreamRecord{rec("a", "5", "6")}}, // bootstrap read at tail
+		{},                                                    // reopen after ack: from cursor
+	}}
+	src := newSource(cursors, script)
+	src.bootstrapFromTail = true
+	ctx := context.Background()
+
+	d, err := src.Receive(ctx)
+	require.NoError(t, err)
+	require.NoError(t, d.Ack())
+
+	// reopen after the EOF on session 0.
+	_, err = src.Receive(ctx) // session 0 EOF
+	require.ErrorIs(t, err, io.EOF)
+	_, err = src.Receive(ctx) // reopen -> session 1
+	require.ErrorIs(t, err, io.EOF)
+
+	require.Len(t, script.openOpts, 2)
+	assert.True(t, script.openOpts[0].FromTail, "first open (no cursor) starts at tail")
+	assert.Equal(t, "", script.openOpts[0].StartPosition)
+	assert.False(t, script.openOpts[1].FromTail, "after a cursor exists, resume from position")
+	assert.Equal(t, "6", script.openOpts[1].StartPosition)
 }
 
 func TestS2Source_AckAdvancesCursorAndReopensPastIt(t *testing.T) {

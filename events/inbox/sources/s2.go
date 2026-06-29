@@ -121,37 +121,52 @@ func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
 }
 
 func (s *s2Source) Receive(ctx context.Context) (*inbox.Delivery, error) {
+	// readCtx is the context the read session is bound to. With a leader it is the
+	// leadership-term context, so a read blocked in Next() unwinds the instant
+	// leadership is lost (preventing a former leader from reading alongside a new
+	// one). Without a leader it is just the consumer's context.
+	readCtx := ctx
 	if s.leader != nil {
 		// Block until we hold leadership. A standby parks here until the current
 		// leader dies; a fresh acquisition (reacquired) means another replica may
 		// have advanced the cursor, so drop our session and resume from it.
-		reacquired, err := s.leader.ensureLeading(ctx)
+		leadCtx, reacquired, err := s.leader.ensureLeading(ctx)
 		if err != nil {
 			return nil, err
 		}
 		if reacquired {
 			s.closeSession()
 		}
+		readCtx = leadCtx
 	}
 
 	if s.session == nil {
-		if err := s.reopen(ctx); err != nil {
+		if err := s.reopen(readCtx); err != nil {
 			return nil, err
 		}
 	}
 
 	rec, err := s.session.Next()
 	if err != nil {
-		// io.EOF, a transport error, or ctx done: drop the session so the next
-		// Receive reopens at the persisted cursor. Consume returns on ctx errors
-		// and backs off + retries on the rest.
+		// Drop the session so the next Receive reopens at the persisted cursor.
 		s.closeSession()
-		return nil, err
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr // the consumer's own context ended → terminal
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			// The lease context (not the consumer's) was cancelled: leadership was
+			// lost mid-read. Surface a non-terminal error so Consume backs off and
+			// the next Receive re-acquires leadership and reopens at the cursor.
+			return nil, errLeadershipLost
+		}
+		return nil, err // io.EOF / transport error: Consume backs off and retries
 	}
 
 	return &inbox.Delivery{
 		Payload: rec.Body,
-		Ack:     func() error { return s.ack(ctx, rec.Next) },
+		// Advance under readCtx so a cursor write by a former leader fails once its
+		// lease is cancelled, rather than racing the new leader's advance.
+		Ack: func() error { return s.ack(readCtx, rec.Next) },
 		Nack: func() error {
 			// Tear down so the next Receive reopens at the (un-advanced) cursor,
 			// redelivering this record and everything after it.
@@ -160,6 +175,11 @@ func (s *s2Source) Receive(ctx context.Context) (*inbox.Delivery, error) {
 		},
 	}, nil
 }
+
+// errLeadershipLost signals that the read stopped because this replica lost
+// leadership (its lease context was cancelled) while the consumer is still
+// running. It is non-terminal: Consume backs off and re-acquires.
+var errLeadershipLost = errors.New("inbox/s2: leadership lost")
 
 // reopen loads the persisted cursor and opens a fresh read session there, warning
 // when consecutive reopens land on the same position (a stalled/poison record).

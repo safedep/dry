@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"hash/fnv"
+	"sync"
 	"time"
 
 	"github.com/safedep/dry/db"
@@ -23,12 +24,19 @@ const (
 // Postgres session advisory lock on a dedicated connection: holding the
 // connection holds the lock, and losing it (crash / network) releases it so a
 // standby takes over. Mirrors the outbox drain leader.
+//
+// A leadership term has its own context, cancelled the moment the term ends. The
+// read session is opened with it, so a read blocked in Next() unwinds immediately
+// when leadership is lost — without that, a former leader's session would keep
+// returning records alongside the new leader's and both would advance the cursor.
 type advisoryLeader struct {
 	sqlDB *sql.DB
 	key   int64
 
-	conn     *sql.Conn // non-nil while this instance holds leadership
-	lastPing time.Time
+	mu      sync.Mutex
+	conn    *sql.Conn // non-nil while this instance holds leadership
+	leadCtx context.Context
+	cancel  context.CancelFunc
 }
 
 func newAdvisoryLeader(adapter db.SqlDataAdapter, key int64) (*advisoryLeader, error) {
@@ -55,73 +63,106 @@ func leaderKey(consumerName, feed string) int64 {
 	return int64(h.Sum64())
 }
 
-// ensureLeading guarantees this instance holds leadership before returning, or
-// returns ctx's error. reacquired is true when leadership was freshly taken
-// (first acquisition, or after a lost lock) — the caller reopens its read session
-// so it resumes from the persisted cursor under the new leadership rather than
-// continuing a session opened by (or concurrent with) a former leader.
-func (l *advisoryLeader) ensureLeading(ctx context.Context) (reacquired bool, err error) {
-	if l.conn != nil {
-		if time.Since(l.lastPing) < leaderPingInterval {
-			return false, nil
-		}
-		if pingErr := l.conn.PingContext(ctx); pingErr == nil {
-			l.lastPing = time.Now()
-			return false, nil
-		}
-		log.Warnf("inbox/s2: lost feed leadership; re-acquiring")
-		l.release()
+// ensureLeading blocks until this instance holds leadership, returning the term
+// context — alive while it leads, cancelled the moment leadership is lost (the
+// lock connection drops) or baseCtx is done. The read session MUST be opened with
+// it (§ the type doc). reacquired is true on a fresh term so the caller reopens
+// its session under the new context, resuming from the persisted cursor.
+func (l *advisoryLeader) ensureLeading(baseCtx context.Context) (leadCtx context.Context, reacquired bool, err error) {
+	l.mu.Lock()
+	if l.leadCtx != nil && l.leadCtx.Err() == nil {
+		current := l.leadCtx
+		l.mu.Unlock()
+		return current, false, nil
 	}
+	l.mu.Unlock()
 
 	for {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return false, ctxErr
+		if err := baseCtx.Err(); err != nil {
+			return nil, false, err
 		}
-		acquired, acqErr := l.tryAcquire(ctx)
-		if acqErr != nil {
-			return false, acqErr
+		ctx, acquired, err := l.tryAcquire(baseCtx)
+		if err != nil {
+			return nil, false, err
 		}
 		if acquired {
 			log.Infof("inbox/s2: acquired feed leadership")
-			return true, nil
+			return ctx, true, nil
 		}
 		// Another replica leads; idle and retry so we fail over when it dies.
 		select {
-		case <-ctx.Done():
-			return false, ctx.Err()
+		case <-baseCtx.Done():
+			return nil, false, baseCtx.Err()
 		case <-time.After(leaderRetryInterval):
 		}
 	}
 }
 
-func (l *advisoryLeader) tryAcquire(ctx context.Context) (bool, error) {
-	conn, err := l.sqlDB.Conn(ctx)
+func (l *advisoryLeader) tryAcquire(baseCtx context.Context) (context.Context, bool, error) {
+	conn, err := l.sqlDB.Conn(baseCtx)
 	if err != nil {
-		return false, fmt.Errorf("acquire connection: %w", err)
+		return nil, false, fmt.Errorf("acquire connection: %w", err)
 	}
 
 	var acquired bool
-	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", l.key).Scan(&acquired); err != nil {
+	if err := conn.QueryRowContext(baseCtx, "SELECT pg_try_advisory_lock($1)", l.key).Scan(&acquired); err != nil {
 		_ = conn.Close()
-		return false, fmt.Errorf("advisory lock: %w", err)
+		return nil, false, fmt.Errorf("advisory lock: %w", err)
 	}
 	if !acquired {
 		_ = conn.Close() // returns the connection to the pool, holding no lock
-		return false, nil
+		return nil, false, nil
 	}
 
+	leadCtx, cancel := context.WithCancel(baseCtx)
+	l.mu.Lock()
 	l.conn = conn
-	l.lastPing = time.Now()
-	return true, nil
+	l.leadCtx = leadCtx
+	l.cancel = cancel
+	l.mu.Unlock()
+
+	go l.hold(conn, leadCtx, cancel)
+	return leadCtx, true, nil
 }
 
-// release unlocks and returns the held connection to the pool. Uses a background
-// context so the unlock runs even when the caller's context is already cancelled.
-func (l *advisoryLeader) release() {
-	if l.conn == nil {
-		return
+// hold owns a leadership term: it pings the lock connection until the ping fails
+// (the lock is gone) or leadCtx is cancelled (baseCtx / graceful stop), then
+// releases the lock exactly once. Running release here — not in the read path —
+// frees the lock promptly on a graceful stop even though Source has no Close hook.
+func (l *advisoryLeader) hold(conn *sql.Conn, leadCtx context.Context, cancel context.CancelFunc) {
+	ticker := time.NewTicker(leaderPingInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-leadCtx.Done():
+			l.release(conn, cancel)
+			return
+		case <-ticker.C:
+			if err := conn.PingContext(leadCtx); err != nil {
+				if leadCtx.Err() == nil {
+					log.Warnf("inbox/s2: lost feed leadership: %v", err)
+				}
+				l.release(conn, cancel)
+				return
+			}
+		}
 	}
-	_, _ = l.conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", l.key)
-	_ = l.conn.Close()
-	l.conn = nil
+}
+
+// release cancels the term (unblocking the read), unlocks, and returns the
+// connection to the pool. Background context so the unlock runs even when the
+// term ended via cancellation.
+func (l *advisoryLeader) release(conn *sql.Conn, cancel context.CancelFunc) {
+	cancel()
+	_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", l.key)
+	_ = conn.Close()
+
+	l.mu.Lock()
+	if l.conn == conn {
+		l.conn = nil
+		l.leadCtx = nil
+		l.cancel = nil
+	}
+	l.mu.Unlock()
 }

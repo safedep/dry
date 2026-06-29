@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 
 	"github.com/s2-streamstore/s2-sdk-go/s2"
@@ -82,11 +83,20 @@ func streamRecordFromS2(rec s2.SequencedRecord) *StreamRecord {
 		headers[string(h.Name)] = string(h.Value)
 	}
 
+	// Guard the +1 against uint64 wraparound: at the max sequence number Next
+	// stays put rather than rewinding the cursor to 0. Unreachable in practice
+	// (an S2 stream will not hit 2^64 records) but a silent rewind would be a
+	// nasty failure mode, so pin it.
+	next := rec.SeqNum
+	if next < math.MaxUint64 {
+		next++
+	}
+
 	return &StreamRecord{
 		Body:     rec.Body,
 		Headers:  headers,
 		Position: encodeS2Position(rec.SeqNum),
-		Next:     encodeS2Position(rec.SeqNum + 1),
+		Next:     encodeS2Position(next),
 	}
 }
 

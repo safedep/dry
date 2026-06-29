@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/inbox"
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/stream"
@@ -39,10 +38,18 @@ type s2Source struct {
 
 var _ inbox.Source = &s2Source{}
 
-// NewS2 builds an S2 inbox Source for one event feed. The cursor lives in the
-// consumer's DB (via cursors); consumerName is the cursor key and identifies this
-// consumer in stalled-cursor diagnostics. A nil basinResolver uses the default.
-func NewS2(routing events.Routing, config stream.S2StreamProviderConfig,
+// NewS2 builds an S2 inbox Source for one event feed. The caller resolves the
+// stream identity — stream.StreamFor(routing) for a global feed, or
+// stream.StreamForWithTenant(routing, tenant) for a tenant-scoped one — mirroring
+// how the outbox publisher addresses the same feed; reading a different identity
+// than the publisher wrote would silently see no records.
+//
+// The cursor is keyed by the full stream id (which encodes exposure and tenant),
+// so feeds that differ only by exposure or tenant never share a cursor row. The
+// cursor lives in the consumer's DB (via cursors); consumerName is the cursor key
+// and identifies this consumer in stalled-cursor diagnostics. A nil basinResolver
+// uses the default.
+func NewS2(feedStream stream.Stream, config stream.S2StreamProviderConfig,
 	basinResolver stream.S2BasinResolver, cursors inbox.CursorStore, consumerName string) (inbox.Source, error) {
 
 	if config.ApiKey == "" {
@@ -54,17 +61,23 @@ func NewS2(routing events.Routing, config stream.S2StreamProviderConfig,
 	if consumerName == "" {
 		return nil, fmt.Errorf("inbox/s2: consumer name is required")
 	}
+
+	feed, err := feedStream.ID()
+	if err != nil {
+		return nil, fmt.Errorf("inbox/s2: invalid stream: %w", err)
+	}
+
 	if basinResolver == nil {
 		basinResolver = stream.NewDefaultS2BasinResolver()
 	}
 
 	src := &s2Source{
-		stream:        stream.StreamFor(routing),
+		stream:        feedStream,
 		config:        config,
 		basinResolver: basinResolver,
 		cursors:       cursors,
 		consumerName:  consumerName,
-		feed:          routing.Name(),
+		feed:          feed,
 	}
 	src.newSession = func(ctx context.Context, startPosition string) (stream.StreamReadSession, error) {
 		return stream.NewS2StreamReadSession(ctx, src.config, src.basinResolver, src.stream,

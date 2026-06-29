@@ -194,4 +194,9 @@ func TestConsume_Validation(t *testing.T) {
 	assert.Error(t, inbox.Consume(t.Context(), nil, newObservation, handler))
 	assert.Error(t, inbox.Consume[*pkgregv1.PackageVersionObservationEvent](t.Context(), &fakeSource{}, nil, handler))
 	assert.Error(t, inbox.Consume(t.Context(), &fakeSource{}, newObservation, nil))
+
+	// A constructor that returns a nil message is rejected up front rather than
+	// panicking proto.Unmarshal mid-loop.
+	nilFactory := func() *pkgregv1.PackageVersionObservationEvent { return nil }
+	assert.Error(t, inbox.Consume(t.Context(), &fakeSource{}, nilFactory, handler))
 }

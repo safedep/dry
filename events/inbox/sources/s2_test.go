@@ -148,12 +148,29 @@ func TestS2Source_TransientNextErrorClosesSession(t *testing.T) {
 
 func TestS2Source_ConstructorValidation(t *testing.T) {
 	cfg := stream.S2StreamProviderConfig{ApiKey: "k"}
-	_, err := NewS2(routingX(), stream.S2StreamProviderConfig{}, nil, newMemCursors(), "c")
+	st := stream.StreamFor(routingX())
+
+	_, err := NewS2(st, stream.S2StreamProviderConfig{}, nil, newMemCursors(), "c")
 	assert.Error(t, err, "missing API key")
-	_, err = NewS2(routingX(), cfg, nil, nil, "c")
+	_, err = NewS2(st, cfg, nil, nil, "c")
 	assert.Error(t, err, "missing cursor store")
-	_, err = NewS2(routingX(), cfg, nil, newMemCursors(), "")
+	_, err = NewS2(st, cfg, nil, newMemCursors(), "")
 	assert.Error(t, err, "missing consumer name")
-	_, err = NewS2(routingX(), cfg, nil, newMemCursors(), "c")
+	_, err = NewS2(stream.Stream{}, cfg, nil, newMemCursors(), "c")
+	assert.Error(t, err, "invalid stream (no namespace/name)")
+	_, err = NewS2(st, cfg, nil, newMemCursors(), "c")
 	assert.NoError(t, err)
+}
+
+func TestS2Source_CursorKeyIncludesExposureAndTenant(t *testing.T) {
+	// Two feeds that differ only by exposure/tenant must not collide on the cursor
+	// key — the key is the full stream id, not just the routing name.
+	global := stream.StreamFor(routingX())
+	tenant := stream.StreamForWithTenant(routingX(), "tenant-1")
+
+	gid, err := global.ID()
+	require.NoError(t, err)
+	tid, err := tenant.ID()
+	require.NoError(t, err)
+	assert.NotEqual(t, gid, tid)
 }

@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"math"
 	"testing"
 
 	"github.com/s2-streamstore/s2-sdk-go/s2"
@@ -88,6 +89,14 @@ func TestStreamRecordFromS2_NoHeaders(t *testing.T) {
 	assert.Empty(t, got.Headers)
 	assert.Equal(t, "0", got.Position)
 	assert.Equal(t, "1", got.Next)
+}
+
+func TestStreamRecordFromS2_NextDoesNotWrapAtMax(t *testing.T) {
+	got := streamRecordFromS2(s2.SequencedRecord{Body: []byte("x"), SeqNum: math.MaxUint64})
+	// At the max sequence number Next stays pinned rather than wrapping to 0,
+	// which would rewind the cursor to the start of the stream.
+	assert.Equal(t, encodeS2Position(math.MaxUint64), got.Next)
+	assert.NotEqual(t, "0", got.Next)
 }
 
 func TestNewS2StreamReadSession_RequiresApiKey(t *testing.T) {

@@ -43,6 +43,9 @@ var _ CursorStore = &gormCursorStore{}
 
 // NewGormCursorStore builds a CursorStore over the consumer's SQL adapter.
 func NewGormCursorStore(adapter db.SqlDataAdapter) (CursorStore, error) {
+	if adapter == nil {
+		return nil, fmt.Errorf("inbox: cursor store: adapter is required")
+	}
 	gdb, err := adapter.GetDB()
 	if err != nil {
 		return nil, fmt.Errorf("inbox: cursor store: %w", err)

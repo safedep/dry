@@ -32,6 +32,13 @@ var _ Dedup = &gormDedup{}
 // NewGormDedup builds a consumer-scoped Dedup over the consumer's SQL adapter.
 // The consumer name is bound here so Consume's Dedup calls stay keyless.
 func NewGormDedup(adapter db.SqlDataAdapter, consumerName string) (Dedup, error) {
+	if adapter == nil {
+		return nil, fmt.Errorf("inbox: dedup store: adapter is required")
+	}
+	if consumerName == "" {
+		// An empty name would silently share one processed set across consumers.
+		return nil, fmt.Errorf("inbox: dedup store: consumer name is required")
+	}
 	gdb, err := adapter.GetDB()
 	if err != nil {
 		return nil, fmt.Errorf("inbox: dedup store: %w", err)

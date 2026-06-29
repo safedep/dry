@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
@@ -126,6 +127,13 @@ func Consume[T proto.Message](ctx context.Context, source Source, newEvent func(
 	if handler == nil {
 		return errors.New("inbox: handler is required")
 	}
+	// Probe the constructor once: a nil message would panic proto.Unmarshal. The
+	// factory is deterministic, so a nil here is a permanent misconfiguration —
+	// fail fast rather than block the feed by routing every record through the
+	// error policy.
+	if nilMessage(newEvent()) {
+		return errors.New("inbox: newEvent must return a non-nil message")
+	}
 
 	cfg := config{restartDelay: defaultRestartDelay}
 	for _, o := range opts {
@@ -233,6 +241,21 @@ func dispose(ctx context.Context, d *Delivery, cause error, cfg config) {
 func ackQuietly(d *Delivery) {
 	if err := d.Ack(); err != nil {
 		log.Warnf("inbox: ack failed (record will be redelivered): %v", err)
+	}
+}
+
+// nilMessage reports whether a constructed event is a nil pointer (or boxed nil),
+// which would panic proto.Unmarshal. proto messages are pointer types.
+func nilMessage[T proto.Message](m T) bool {
+	v := reflect.ValueOf(m)
+	if !v.IsValid() {
+		return true
+	}
+	switch v.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
 	}
 }
 

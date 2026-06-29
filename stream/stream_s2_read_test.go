@@ -1,6 +1,9 @@
 package stream
 
 import (
+	"context"
+	"errors"
+	"io"
 	"math"
 	"testing"
 
@@ -47,6 +50,7 @@ func TestS2ReadOptionsFrom(t *testing.T) {
 		require.NotNil(t, got.SeqNum)
 		assert.Equal(t, uint64(42), *got.SeqNum)
 		assert.Nil(t, got.TailOffset)
+		assert.True(t, got.IgnoreCommandRecords)
 	})
 	t.Run("from tail when no position", func(t *testing.T) {
 		got, err := s2ReadOptionsFrom(StreamReadOptions{FromTail: true})
@@ -54,6 +58,7 @@ func TestS2ReadOptionsFrom(t *testing.T) {
 		require.NotNil(t, got.TailOffset)
 		assert.Equal(t, int64(0), *got.TailOffset)
 		assert.Nil(t, got.SeqNum)
+		assert.True(t, got.IgnoreCommandRecords)
 	})
 	t.Run("empty options read from the beginning", func(t *testing.T) {
 		got, err := s2ReadOptionsFrom(StreamReadOptions{})
@@ -97,6 +102,25 @@ func TestStreamRecordFromS2_NextDoesNotWrapAtMax(t *testing.T) {
 	// which would rewind the cursor to the start of the stream.
 	assert.Equal(t, encodeS2Position(math.MaxUint64), got.Next)
 	assert.NotEqual(t, "0", got.Next)
+}
+
+func TestResolveTerminalErr(t *testing.T) {
+	sessErr := errors.New("transport boom")
+
+	t.Run("session error wins", func(t *testing.T) {
+		_, err := resolveTerminalErr(sessErr, context.Canceled)
+		assert.ErrorIs(t, err, sessErr)
+	})
+	t.Run("falls back to context error when session error is nil", func(t *testing.T) {
+		// The S2 SDK can close its channels on cancellation without setting Err();
+		// the bound context's error must surface instead of a clean io.EOF.
+		_, err := resolveTerminalErr(nil, context.Canceled)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+	t.Run("clean end is io.EOF", func(t *testing.T) {
+		_, err := resolveTerminalErr(nil, nil)
+		assert.ErrorIs(t, err, io.EOF)
+	})
 }
 
 func TestNewS2StreamReadSession_RequiresApiKey(t *testing.T) {

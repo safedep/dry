@@ -12,6 +12,11 @@ import (
 
 type s2StreamReadSession struct {
 	session *s2.ReadSession
+	// ctx is the session-bound context. The S2 SDK can close its record channel
+	// on context cancellation without surfacing the cause via ReadSession.Err(),
+	// so Next consults ctx before falling back to io.EOF — otherwise a shutdown
+	// reads as a clean end-of-stream.
+	ctx context.Context //nolint:containedctx // bound to the read session lifetime
 }
 
 var _ StreamReadSession = &s2StreamReadSession{}
@@ -52,7 +57,7 @@ func NewS2StreamReadSession(ctx context.Context, config S2StreamProviderConfig,
 		return nil, fmt.Errorf("failed to open read session: %w", err)
 	}
 
-	return &s2StreamReadSession{session: session}, nil
+	return &s2StreamReadSession{session: session, ctx: ctx}, nil
 }
 
 func (s *s2StreamReadSession) Next() (*StreamRecord, error) {
@@ -60,14 +65,23 @@ func (s *s2StreamReadSession) Next() (*StreamRecord, error) {
 		return streamRecordFromS2(s.session.Record()), nil
 	}
 
-	// Next returned false: either the bound context is done, the session hit a
-	// terminal transport error, or the stream is exhausted / closed. Err is the
-	// authoritative discriminator; a nil Err is a clean end, reported as io.EOF.
-	if err := s.session.Err(); err != nil {
-		return nil, err
-	}
+	// Next returned false: the session hit a terminal transport error, the bound
+	// context is done, or the stream is exhausted / closed.
+	return resolveTerminalErr(s.session.Err(), s.ctx.Err())
+}
 
-	return nil, io.EOF
+// resolveTerminalErr picks the terminal error to report when a read session stops
+// yielding records. The session's own error wins; otherwise the bound context's
+// error (the SDK can cancel without setting Err); otherwise a clean end-of-stream.
+func resolveTerminalErr(sessionErr, ctxErr error) (*StreamRecord, error) {
+	switch {
+	case sessionErr != nil:
+		return nil, sessionErr
+	case ctxErr != nil:
+		return nil, ctxErr
+	default:
+		return nil, io.EOF
+	}
 }
 
 func (s *s2StreamReadSession) Close() error {
@@ -104,8 +118,12 @@ func streamRecordFromS2(rec s2.SequencedRecord) *StreamRecord {
 // options. A persisted cursor (StartPosition) takes precedence over the FromTail
 // start intent.
 func s2ReadOptionsFrom(opts StreamReadOptions) (*s2.ReadOptions, error) {
+	// Filter S2 command records (trim/fence) client-side: they are stream
+	// management artifacts, not events, and would otherwise be delivered as
+	// payloads and poison a typed consumer's decode. The cursor still advances
+	// past their sequence numbers.
 	if opts.StartPosition == "" && opts.FromTail {
-		return &s2.ReadOptions{TailOffset: s2.Int64(0)}, nil
+		return &s2.ReadOptions{TailOffset: s2.Int64(0), IgnoreCommandRecords: true}, nil
 	}
 
 	startSeq, err := decodeS2Position(opts.StartPosition)
@@ -113,7 +131,7 @@ func s2ReadOptionsFrom(opts StreamReadOptions) (*s2.ReadOptions, error) {
 		return nil, err
 	}
 
-	return &s2.ReadOptions{SeqNum: s2.Uint64(startSeq)}, nil
+	return &s2.ReadOptions{SeqNum: s2.Uint64(startSeq), IgnoreCommandRecords: true}, nil
 }
 
 // encodeS2Position serializes an S2 sequence number into the opaque position

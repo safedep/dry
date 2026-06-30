@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/safedep/dry/db"
-	"gorm.io/gorm"
 )
 
 // StatsReader exposes read-only aggregate views over the outbox tables for a
@@ -60,33 +59,36 @@ func (r *StatsReader) StateTotals(ctx context.Context, since time.Time) (StateTo
 	}
 	gdb = gdb.WithContext(ctx)
 
-	scope := func(tx *gorm.DB) *gorm.DB {
-		if since.IsZero() {
-			return tx
-		}
-		return tx.Where("created_at >= ?", since)
+	// One aggregate so every count comes from a single consistent snapshot.
+	// Separate Count statements could interleave with Emit/drain/cleanup and break
+	// the delivered+pending=emitted partition (e.g. observe Delivered > Emitted).
+	// Stuck is SUM over a correlated EXISTS: undelivered records carrying a delivery
+	// flagged past maxAttempts. COALESCE keeps the empty-window result 0, not NULL.
+	const stuckSum = "COALESCE(SUM(CASE WHEN delivered_at IS NULL AND " +
+		"EXISTS (SELECT 1 FROM event_outbox_delivery d WHERE d.outbox_id = event_outbox.id AND d.stuck_since IS NOT NULL) " +
+		"THEN 1 ELSE 0 END), 0) AS stuck"
+
+	q := gdb.Model(&Record{}).
+		Select("COUNT(*) AS emitted, COUNT(delivered_at) AS delivered, " + stuckSum)
+	if !since.IsZero() {
+		q = q.Where("created_at >= ?", since)
 	}
 
-	var totals StateTotals
-	if err := scope(gdb.Model(&Record{})).Count(&totals.Emitted).Error; err != nil {
-		return StateTotals{}, fmt.Errorf("outbox: count emitted: %w", err)
+	var row struct {
+		Emitted   int64
+		Delivered int64
+		Stuck     int64
 	}
-	if err := scope(gdb.Model(&Record{})).Where("delivered_at IS NOT NULL").Count(&totals.Delivered).Error; err != nil {
-		return StateTotals{}, fmt.Errorf("outbox: count delivered: %w", err)
-	}
-	totals.Pending = totals.Emitted - totals.Delivered
-
-	// Stuck records: undelivered and carrying at least one delivery flagged stuck.
-	// EXISTS keeps it a single scan of records with a correlated probe.
-	stuckProbe := "EXISTS (SELECT 1 FROM event_outbox_delivery d WHERE d.outbox_id = event_outbox.id AND d.stuck_since IS NOT NULL)"
-	if err := scope(gdb.Model(&Record{})).
-		Where("delivered_at IS NULL").
-		Where(stuckProbe).
-		Count(&totals.Stuck).Error; err != nil {
-		return StateTotals{}, fmt.Errorf("outbox: count stuck: %w", err)
+	if err := q.Scan(&row).Error; err != nil {
+		return StateTotals{}, fmt.Errorf("outbox: state totals: %w", err)
 	}
 
-	return totals, nil
+	return StateTotals{
+		Emitted:   row.Emitted,
+		Delivered: row.Delivered,
+		Pending:   row.Emitted - row.Delivered,
+		Stuck:     row.Stuck,
+	}, nil
 }
 
 // PerFQN returns the per-event-type breakdown, busiest feed first. A zero since

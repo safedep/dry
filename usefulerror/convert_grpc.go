@@ -191,24 +191,43 @@ func init() {
 	})
 }
 
+// maxErrorInfoAnyNesting bounds how many google.protobuf.Any layers we unwrap
+// when looking for an ErrorInfo detail. Servers that re-wrap a status while
+// propagating an error (e.g. control-tower serror.Add) can nest the detail one
+// Any layer deeper per wrap; the bound keeps hostile payloads from recursing.
+const maxErrorInfoAnyNesting = 8
+
 // getErrorInfoFromGrpcStatusDetails extracts the first ErrorInfo detail from a gRPC status, if present.
 func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo, bool) {
 	for _, d := range st.Details() {
-		switch det := d.(type) {
-		// When the underlying lib already deserialized
+		msg, ok := d.(proto.Message)
+		if !ok {
+			continue
+		}
+
+		if ei, ok := errorInfoFromDetail(msg); ok {
+			return ei, true
+		}
+	}
+
+	return nil, false
+}
+
+func errorInfoFromDetail(msg proto.Message) (*errdetails.ErrorInfo, bool) {
+	for range maxErrorInfoAnyNesting {
+		switch det := msg.(type) {
 		case *errdetails.ErrorInfo:
 			return det, true
 
-		// When the detail is of a generic type, we will try to unmarshal it to ErrorInfo
 		case *anypb.Any:
-			if det.GetTypeUrl() != "type.googleapis.com/google.rpc.ErrorInfo" {
-				continue
+			unpacked, err := det.UnmarshalNew()
+			if err != nil {
+				return nil, false
 			}
+			msg = unpacked
 
-			var ei errdetails.ErrorInfo
-			if err := proto.Unmarshal(det.GetValue(), &ei); err == nil {
-				return &ei, true
-			}
+		default:
+			return nil, false
 		}
 	}
 

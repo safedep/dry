@@ -230,6 +230,38 @@ func TestConvertGRPCToUsefulError_PermissionDenied_WithAnypbDetail(t *testing.T)
 	assert.Contains(t, result.AdditionalHelp(), "no access")
 }
 
+func TestConvertGRPCToUsefulError_PermissionDenied_WithNestedAnyDetail(t *testing.T) {
+	// Regression: control-tower's serror.Add used to re-pack already-packed
+	// Any details on every wrap. The entitlement error passed through two
+	// Add calls (service executor + API handler), so the ErrorInfo arrived
+	// nested two Any layers deep. Extraction must unwrap nested Any layers.
+	ei := &errdetails.ErrorInfo{
+		Reason: ErrAppEntitlementNotAvailable,
+		Domain: "safedep.io",
+		Metadata: map[string]string{
+			"feature": "some_feature",
+		},
+	}
+
+	packed, err := anypb.New(ei)
+	assert.NoError(t, err)
+
+	for depth := 1; depth <= 2; depth++ {
+		packed, err = anypb.New(packed)
+		assert.NoError(t, err)
+
+		st := status.New(codes.PermissionDenied, "no access")
+		stProto := st.Proto()
+		stProto.Details = append(stProto.Details, packed)
+
+		result, ok := AsUsefulError(status.FromProto(stProto).Err())
+		assert.True(t, ok)
+		assert.NotNil(t, result)
+		assert.Equal(t, ErrMissingEntitlements, result.Code(), "nesting depth %d", depth)
+		assert.Equal(t, "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing", result.Help())
+	}
+}
+
 func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_LimitReached(t *testing.T) {
 	// Build a gRPC status with ErrorInfo reason=quota_exceeded and metadata reason=limit_reached
 	st := status.New(codes.ResourceExhausted, "rate limit reached")

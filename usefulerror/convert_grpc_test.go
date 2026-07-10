@@ -262,6 +262,25 @@ func TestConvertGRPCToUsefulError_PermissionDenied_WithNestedAnyDetail(t *testin
 	}
 }
 
+func TestConvertGRPCToUsefulError_UnrelatedNestedDetailIsNotUnwrapped(t *testing.T) {
+	// A nested Any wrapping something other than ErrorInfo (or another Any)
+	// must not be decoded or classified as an entitlement failure.
+	retry, err := anypb.New(&errdetails.RetryInfo{})
+	assert.NoError(t, err)
+
+	nested, err := anypb.New(retry)
+	assert.NoError(t, err)
+
+	st := status.New(codes.PermissionDenied, "no access")
+	stProto := st.Proto()
+	stProto.Details = append(stProto.Details, nested)
+
+	result, ok := AsUsefulError(status.FromProto(stProto).Err())
+	assert.True(t, ok)
+	assert.NotNil(t, result)
+	assert.Equal(t, ErrAuthorizationFailed, result.Code())
+}
+
 func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_LimitReached(t *testing.T) {
 	// Build a gRPC status with ErrorInfo reason=quota_exceeded and metadata reason=limit_reached
 	st := status.New(codes.ResourceExhausted, "rate limit reached")

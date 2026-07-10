@@ -220,6 +220,12 @@ func errorInfoFromDetail(msg proto.Message) (*errdetails.ErrorInfo, bool) {
 			return det, true
 
 		case *anypb.Any:
+			// Only unmarshal the two types we can act on; status details are
+			// untrusted input, so skip decoding arbitrary message types.
+			if !det.MessageIs((*errdetails.ErrorInfo)(nil)) && !det.MessageIs((*anypb.Any)(nil)) {
+				return nil, false
+			}
+
 			unpacked, err := det.UnmarshalNew()
 			if err != nil {
 				return nil, false

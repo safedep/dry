@@ -257,7 +257,7 @@ func TestConvertGRPCToUsefulError_PermissionDenied_WithNestedAnyDetail(t *testin
 		result, ok := AsUsefulError(status.FromProto(stProto).Err())
 		assert.True(t, ok)
 		assert.NotNil(t, result)
-		assert.Equal(t, ErrMissingEntitlements, result.Code(), "nesting depth %d", depth)
+		assert.Equalf(t, ErrMissingEntitlements, result.Code(), "nesting depth %d", depth)
 		assert.Equal(t, "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing", result.Help())
 	}
 }

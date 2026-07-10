@@ -257,9 +257,27 @@ func TestConvertGRPCToUsefulError_PermissionDenied_WithNestedAnyDetail(t *testin
 		result, ok := AsUsefulError(status.FromProto(stProto).Err())
 		assert.True(t, ok)
 		assert.NotNil(t, result)
-		assert.Equalf(t, ErrMissingEntitlements, result.Code(), "nesting depth %d", depth)
+		assert.Equalf(t, ErrMissingEntitlements, result.Code(), "extra Any wrap layers: %d (total nesting %d)", depth, depth+1)
 		assert.Equal(t, "Access to this feature requires a SafeDep subscription. See https://safedep.io/pricing", result.Help())
 	}
+}
+
+func TestErrorInfoFromDetailNestingBound(t *testing.T) {
+	var msg proto.Message = &errdetails.ErrorInfo{Reason: ErrAppEntitlementNotAvailable}
+	for range maxErrorInfoAnyNesting {
+		packed, err := anypb.New(msg)
+		assert.NoError(t, err)
+		msg = packed
+	}
+
+	ei, ok := errorInfoFromDetail(msg)
+	assert.True(t, ok, "ErrorInfo at exactly maxErrorInfoAnyNesting layers must be found")
+	assert.Equal(t, ErrAppEntitlementNotAvailable, ei.GetReason())
+
+	over, err := anypb.New(msg)
+	assert.NoError(t, err)
+	_, ok = errorInfoFromDetail(over)
+	assert.False(t, ok, "ErrorInfo beyond maxErrorInfoAnyNesting layers must be rejected")
 }
 
 func TestConvertGRPCToUsefulError_UnrelatedNestedDetailIsNotUnwrapped(t *testing.T) {

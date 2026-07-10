@@ -215,27 +215,24 @@ func getErrorInfoFromGrpcStatusDetails(st *status.Status) (*errdetails.ErrorInfo
 
 func errorInfoFromDetail(msg proto.Message) (*errdetails.ErrorInfo, bool) {
 	for range maxErrorInfoAnyNesting {
-		switch det := msg.(type) {
-		case *errdetails.ErrorInfo:
-			return det, true
+		det, ok := msg.(*anypb.Any)
+		if !ok {
+			break
+		}
 
-		case *anypb.Any:
-			// Only unmarshal the two types we can act on; status details are
-			// untrusted input, so skip decoding arbitrary message types.
-			if !det.MessageIs((*errdetails.ErrorInfo)(nil)) && !det.MessageIs((*anypb.Any)(nil)) {
-				return nil, false
-			}
-
-			unpacked, err := det.UnmarshalNew()
-			if err != nil {
-				return nil, false
-			}
-			msg = unpacked
-
-		default:
+		// Only unmarshal the two types we can act on; status details are
+		// untrusted input, so skip decoding arbitrary message types.
+		if !det.MessageIs((*errdetails.ErrorInfo)(nil)) && !det.MessageIs((*anypb.Any)(nil)) {
 			return nil, false
 		}
+
+		unpacked, err := det.UnmarshalNew()
+		if err != nil {
+			return nil, false
+		}
+		msg = unpacked
 	}
 
-	return nil, false
+	ei, ok := msg.(*errdetails.ErrorInfo)
+	return ei, ok
 }

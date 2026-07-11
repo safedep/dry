@@ -47,6 +47,59 @@ func TestTableAgentModeUsesNoBorders(t *testing.T) {
 	assert.Contains(t, out, "2")
 }
 
+func TestTableTitleAndFooter(t *testing.T) {
+	output.SetMode(output.Plain)
+	defer output.SetMode(output.Rich)
+
+	out := New().
+		Title("Endpoints").
+		Headers("A").
+		Row("1").
+		Footer("1 endpoint").
+		Render()
+
+	lines := strings.Split(out, "\n")
+	assert.Equal(t, "Endpoints", lines[0])
+	assert.Equal(t, "1 endpoint", lines[len(lines)-1])
+	assert.Contains(t, out, "A")
+	assert.Contains(t, out, "1")
+}
+
+func TestTableEmptyMessageReplacesGrid(t *testing.T) {
+	output.SetMode(output.Plain)
+	defer output.SetMode(output.Rich)
+
+	out := New().
+		Headers("A", "B").
+		EmptyMessage("no rows yet").
+		Render()
+
+	assert.Equal(t, "no rows yet", out)
+}
+
+func TestTableEmptyMessageIgnoredWhenRowsPresent(t *testing.T) {
+	output.SetMode(output.Plain)
+	defer output.SetMode(output.Rich)
+
+	out := New().
+		Headers("A").
+		Row("1").
+		EmptyMessage("no rows yet").
+		Render()
+
+	assert.NotContains(t, out, "no rows yet")
+	assert.Contains(t, out, "1")
+}
+
+func TestTableWithoutDecorationUnchanged(t *testing.T) {
+	output.SetMode(output.Plain)
+	defer output.SetMode(output.Rich)
+
+	base := New().Headers("A").Row("1")
+	decorated := New().Headers("A").Row("1").Title("").Footer("")
+	assert.Equal(t, base.Render(), decorated.Render())
+}
+
 func TestTableStyleFuncInvoked(t *testing.T) {
 	output.SetMode(output.Rich)
 	defer output.SetMode(output.Rich)

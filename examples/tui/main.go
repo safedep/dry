@@ -73,6 +73,10 @@ Components (implemented):
   banner     — branded tool banner with version cleaning
   diff       — line-level unified diff with colored +/-
   table      — severity report with pre-styled Badge cells
+  panel      — titled key-value detail card
+  stat       — metric summary cards
+  steps      — numbered multi-stage flow announcer
+  section    — titled blocks, hints, empty states, humanized time
   spinner    — braille animation + Status/Stop/Fail
   progress   — two-tracker progress bars
   prompt     — interactive Prompt/Secret/Confirm/Select (requires TTY)
@@ -119,6 +123,14 @@ func runOne(name string) {
 		demoDiff()
 	case "table":
 		demoTable()
+	case "panel":
+		demoPanel()
+	case "stat":
+		demoStat()
+	case "steps":
+		demoSteps()
+	case "section":
+		demoSection()
 	case "spinner":
 		demoSpinner()
 	case "progress":

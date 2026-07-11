@@ -5,17 +5,23 @@
 package table
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 	lgtable "github.com/charmbracelet/lipgloss/table"
 
 	"github.com/safedep/dry/tui/output"
+	"github.com/safedep/dry/tui/style"
 )
 
 // Table is a fluent builder for styled tables.
 type Table struct {
-	headers []string
-	rows    [][]string
-	styler  func(row, col int) lipgloss.Style
+	headers  []string
+	rows     [][]string
+	styler   func(row, col int) lipgloss.Style
+	title    string
+	footer   string
+	emptyMsg string
 }
 
 // New returns an empty Table.
@@ -42,6 +48,27 @@ func (t *Table) Rows(rows ...[]string) *Table {
 	return t
 }
 
+// Title sets a heading line rendered above the table. Styled in Rich mode,
+// plain text otherwise.
+func (t *Table) Title(s string) *Table {
+	t.title = s
+	return t
+}
+
+// Footer sets a summary line rendered below the table (row counts,
+// next-page hints). Muted in Rich mode, plain text otherwise.
+func (t *Table) Footer(s string) *Table {
+	t.footer = s
+	return t
+}
+
+// EmptyMessage sets the text rendered in place of the table when it has no
+// data rows. Without it an empty table renders as a header-only grid.
+func (t *Table) EmptyMessage(s string) *Table {
+	t.emptyMsg = s
+	return t
+}
+
 // StyleFunc registers a callback that receives (row, col) and returns a
 // lipgloss.Style applied to that cell. Row lgtable.HeaderRow denotes headers;
 // data rows are 0-indexed. Matches the underlying lipgloss/table contract —
@@ -62,11 +89,28 @@ func (t *Table) StyleFunc(fn func(row, col int) lipgloss.Style) *Table {
 func (t *Table) Render() string {
 	mode := output.CurrentMode()
 
+	if len(t.rows) == 0 && t.emptyMsg != "" {
+		return t.decorate(style.Faint(t.emptyMsg))
+	}
+
 	lt := lgtable.New().Headers(t.headers...)
 	lt.Rows(t.rows...)
 	lt.Border(borderForMode(mode))
 	lt.StyleFunc(t.composeStyleFunc(mode))
-	return lt.Render()
+	return t.decorate(lt.Render())
+}
+
+// decorate wraps the rendered body with the optional title and footer.
+func (t *Table) decorate(body string) string {
+	parts := make([]string, 0, 3)
+	if t.title != "" {
+		parts = append(parts, style.Heading(t.title))
+	}
+	parts = append(parts, body)
+	if t.footer != "" {
+		parts = append(parts, style.Faint(t.footer))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // composeStyleFunc returns the final per-cell styler: a horizontal padding of

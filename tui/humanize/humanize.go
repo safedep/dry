@@ -49,10 +49,10 @@ func Duration(d time.Duration) string {
 		return fmt.Sprintf("%ds", int(d.Seconds()))
 	}
 	if d < time.Hour {
-		return fmt.Sprintf("%dm", int(d.Round(time.Minute).Minutes()))
+		return fmt.Sprintf("%dm", int(d.Truncate(time.Minute).Minutes()))
 	}
 	if d < 24*time.Hour {
-		d = d.Round(time.Minute)
+		d = d.Truncate(time.Minute)
 		h := int(d.Hours())
 		m := int(d.Minutes()) - h*60
 		if m == 0 {
@@ -60,7 +60,7 @@ func Duration(d time.Duration) string {
 		}
 		return fmt.Sprintf("%dh%dm", h, m)
 	}
-	d = d.Round(time.Hour)
+	d = d.Truncate(time.Hour)
 	days := int(d.Hours()) / 24
 	h := int(d.Hours()) % 24
 	if h == 0 {

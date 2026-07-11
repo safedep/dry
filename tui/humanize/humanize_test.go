@@ -47,6 +47,8 @@ func TestDuration(t *testing.T) {
 		{"hours and minutes", 90 * time.Minute, "1h30m"},
 		{"whole days", 168 * time.Hour, "7d"},
 		{"days and hours", 36 * time.Hour, "1d12h"},
+		{"truncates, never rounds up", 89*time.Minute + 40*time.Second, "1h29m"},
+		{"truncates sub-minute", 45*time.Minute + 40*time.Second, "45m"},
 	}
 
 	for _, tc := range cases {

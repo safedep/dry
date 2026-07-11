@@ -39,6 +39,36 @@ func Time(t, now time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
+// Duration returns a compact human duration: "45s", "30m", "1h30m", "7d",
+// "1d12h". Precision below the leading two units is dropped.
+func Duration(d time.Duration) string {
+	if d <= 0 {
+		return "0s"
+	}
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Round(time.Minute).Minutes()))
+	}
+	if d < 24*time.Hour {
+		d = d.Round(time.Minute)
+		h := int(d.Hours())
+		m := int(d.Minutes()) - h*60
+		if m == 0 {
+			return fmt.Sprintf("%dh", h)
+		}
+		return fmt.Sprintf("%dh%dm", h, m)
+	}
+	d = d.Round(time.Hour)
+	days := int(d.Hours()) / 24
+	h := int(d.Hours()) % 24
+	if h == 0 {
+		return fmt.Sprintf("%dd", days)
+	}
+	return fmt.Sprintf("%dd%dh", days, h)
+}
+
 func rel(n int, unit string, future bool) string {
 	if future {
 		return fmt.Sprintf("in %d%s", n, unit)

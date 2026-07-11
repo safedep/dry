@@ -33,3 +33,25 @@ func TestTime(t *testing.T) {
 		})
 	}
 }
+
+func TestDuration(t *testing.T) {
+	cases := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"zero", 0, "0s"},
+		{"seconds", 45 * time.Second, "45s"},
+		{"minutes", 30 * time.Minute, "30m"},
+		{"whole hours", 6 * time.Hour, "6h"},
+		{"hours and minutes", 90 * time.Minute, "1h30m"},
+		{"whole days", 168 * time.Hour, "7d"},
+		{"days and hours", 36 * time.Hour, "1d12h"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, Duration(tc.d))
+		})
+	}
+}

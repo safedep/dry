@@ -12,8 +12,9 @@ import (
 )
 
 func TestTableRendersHeadersAndRows(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Plain)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	out := New().
 		Headers("Package", "Version").
@@ -28,8 +29,9 @@ func TestTableRendersHeadersAndRows(t *testing.T) {
 }
 
 func TestTableAgentModeUsesNoBorders(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Agent)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	out := New().
 		Headers("A", "B").
@@ -48,8 +50,9 @@ func TestTableAgentModeUsesNoBorders(t *testing.T) {
 }
 
 func TestTableTitleAndFooter(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Plain)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	out := New().
 		Title("Endpoints").
@@ -66,8 +69,9 @@ func TestTableTitleAndFooter(t *testing.T) {
 }
 
 func TestTableEmptyMessageReplacesGrid(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Plain)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	out := New().
 		Headers("A", "B").
@@ -78,8 +82,9 @@ func TestTableEmptyMessageReplacesGrid(t *testing.T) {
 }
 
 func TestTableEmptyMessageIgnoredWhenRowsPresent(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Plain)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	out := New().
 		Headers("A").
@@ -92,8 +97,9 @@ func TestTableEmptyMessageIgnoredWhenRowsPresent(t *testing.T) {
 }
 
 func TestTableWithoutDecorationUnchanged(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Plain)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	base := New().Headers("A").Row("1")
 	decorated := New().Headers("A").Row("1").Title("").Footer("")
@@ -101,8 +107,9 @@ func TestTableWithoutDecorationUnchanged(t *testing.T) {
 }
 
 func TestTableStyleFuncInvoked(t *testing.T) {
+	prev := output.CurrentMode()
 	output.SetMode(output.Rich)
-	defer output.SetMode(output.Rich)
+	t.Cleanup(func() { output.SetMode(prev) })
 
 	called := false
 	out := New().

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -53,21 +55,58 @@ func TestPanelFieldIf(t *testing.T) {
 	assert.Contains(t, got, "Kept")
 }
 
-func TestPanelRichDrawsBorderAndTitle(t *testing.T) {
+func TestPanelRichEmbedsTitleInTopBorder(t *testing.T) {
 	withMode(t, output.Rich)
 
-	got := New("Endpoint").Field("Hostname", "dev-box").Render()
-	assert.Contains(t, got, "╭")
-	assert.Contains(t, got, "╰")
-	assert.Contains(t, got, "Endpoint")
+	got := ansi.Strip(New("Endpoint").Field("Hostname", "dev-box").Render())
+	lines := strings.Split(got, "\n")
+	assert.Contains(t, lines[0], "╭─ Endpoint ─")
 	assert.Contains(t, got, "dev-box")
+	assert.True(t, strings.HasPrefix(lines[len(lines)-1], "╰"))
 }
 
-func TestPanelRichSkipsTitleGapWithoutFields(t *testing.T) {
+func TestPanelRichHasVerticalPadding(t *testing.T) {
 	withMode(t, output.Rich)
 
-	got := New("Only Title").Render()
+	got := ansi.Strip(New("T").Field("A", "1").Render())
+	lines := strings.Split(got, "\n")
+	// top border, blank, row, blank, bottom border.
+	require.Len(t, lines, 5)
+	assert.Empty(t, strings.TrimSpace(strings.Trim(lines[1], "│")), "second line is a blank padding row")
+	assert.Empty(t, strings.TrimSpace(strings.Trim(lines[3], "│")), "fourth line is a blank padding row")
+	assert.Contains(t, lines[2], "A")
+}
+
+func TestPanelRichAllLinesSameWidth(t *testing.T) {
+	withMode(t, output.Rich)
+
+	got := New("Authentication").
+		Field("Status", "partially authenticated").
+		Field("Profile", "default").
+		Render()
+	lines := strings.Split(got, "\n")
+	w := lipgloss.Width(lines[0])
+	for i, l := range lines {
+		assert.Equal(t, w, lipgloss.Width(l), "line %d width", i)
+	}
+}
+
+func TestPanelRichTitleWiderThanRows(t *testing.T) {
+	withMode(t, output.Rich)
+
+	got := New("A Very Long Panel Title Indeed").Field("A", "1").Render()
+	lines := strings.Split(got, "\n")
+	w := lipgloss.Width(lines[0])
+	for i, l := range lines {
+		assert.Equal(t, w, lipgloss.Width(l), "line %d width", i)
+	}
+}
+
+func TestPanelRichTitleOnlyIsCompact(t *testing.T) {
+	withMode(t, output.Rich)
+
+	got := ansi.Strip(New("Only Title").Render())
 	assert.Contains(t, got, "Only Title")
-	// One content line inside the border: top border, title, bottom border.
-	assert.Len(t, strings.Split(got, "\n"), 3)
+	// Top border with title, bottom border.
+	assert.Len(t, strings.Split(got, "\n"), 2)
 }

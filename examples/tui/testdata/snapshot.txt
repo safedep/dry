@@ -9,6 +9,14 @@ Colors — semantic text helpers
 Badges — severity + semantic roles
 Icon set — Unicode / ASCII / Agent side-by-side
 Table — severity report with pre-styled Badge cells
+Panel — titled key-value detail card
+Stat — metric summary cards
+Steps — numbered multi-stage flow
+[INFO] Requesting device code
+[INFO] Waiting for browser approval
+[INFO] Saving credentials to keychain
+[OK] Authenticated as acme.safedep.io
+Section — titled blocks, hints, empty states
 Diff — naive unified diff with colored +/-
 Console — value-typed escape hatch
 [INFO] this goes to the global writer in the global mode
@@ -34,6 +42,28 @@ Arrow        ›          >          >
 │ minimist │ 1.2.0   │ [Critical] │
 │ left-pad │ 1.0.0   │ [Low]      │
 └──────────┴─────────┴────────────┘
+Endpoint dev-box-01
+ID:         01JXAMPLE9K3F
+Hostname:   dev-box-01.local
+OS/Arch:    darwin/arm64
+Status:     [active]
+Last sync:  5m ago
+Total endpoints: 42
+Active: 37
+Silent: 5
+Blocked installs: 3
+Guard events (last 7d)
+┌────────┬────────────────┬─────────┐
+│ Time   │ Package        │ Verdict │
+├────────┼────────────────┼─────────┤
+│ 2h ago │ left-pad@1.0.0 │ blocked │
+└────────┴────────────────┴─────────┘
+1 event across 1 tool run
+
+Inventory (last 7d)
+No inventory in the last 7d. Try a wider window with --since.
+
+> Drill in with `safedep endpoint activity list --invocation <id>`.
  line one
 -line two
 +line TWO
@@ -59,6 +89,14 @@ ERR: Error message
 Badges — severity + semantic roles
 Icon set — Unicode / ASCII / Agent side-by-side
 Table — severity report with pre-styled Badge cells
+Panel — titled key-value detail card
+Stat — metric summary cards
+Steps — numbered multi-stage flow
+INFO: Requesting device code
+INFO: Waiting for browser approval
+INFO: Saving credentials to keychain
+OK: Authenticated as acme.safedep.io
+Section — titled blocks, hints, empty states
 Diff — naive unified diff with colored +/-
 Console — value-typed escape hatch
 INFO: this goes to the global writer in the global mode
@@ -84,6 +122,28 @@ Arrow        ›          >          >
   minimist   1.2.0     [Critical]  
   left-pad   1.0.0     [Low]       
                                    
+Endpoint dev-box-01
+ID:         01JXAMPLE9K3F
+Hostname:   dev-box-01.local
+OS/Arch:    darwin/arm64
+Status:     [active]
+Last sync:  5m ago
+Total endpoints: 42
+Active: 37
+Silent: 5
+Blocked installs: 3
+Guard events (last 7d)
+                                     
+  Time     Package          Verdict  
+                                     
+  2h ago   left-pad@1.0.0   blocked  
+                                     
+1 event across 1 tool run
+
+Inventory (last 7d)
+No inventory in the last 7d. Try a wider window with --since.
+
+> Drill in with `safedep endpoint activity list --invocation <id>`.
  line one
 -line two
 +line TWO

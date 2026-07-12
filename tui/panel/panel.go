@@ -2,9 +2,10 @@
 //
 // Package panel renders a titled key-value detail card. It is the standard
 // presentation for "show one thing" command output (a credential profile,
-// an endpoint, a configuration). Rich mode draws a bordered card with
-// aligned muted labels; Plain and Agent modes degrade to aligned
-// label/value lines with no decoration.
+// an endpoint, a configuration). Rich mode draws a bordered card with the
+// title embedded in the top border, vertical breathing room, and aligned
+// muted labels; Plain and Agent modes degrade to aligned label/value lines
+// with no decoration.
 package panel
 
 import (
@@ -13,8 +14,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/safedep/dry/tui/output"
-	"github.com/safedep/dry/tui/style"
 	"github.com/safedep/dry/tui/theme"
+)
+
+// Layout constants for the Rich card. hpad is the space between the border
+// and content on each side. gutter separates the label column from values.
+const (
+	hpad   = 3
+	gutter = 3
 )
 
 type field struct {
@@ -73,26 +80,63 @@ func (p *Panel) renderBasic(labelW int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// renderRich draws the card manually rather than via lipgloss borders so
+// the title can live on the top border line. lipgloss v1 has no native
+// border-title support.
 func (p *Panel) renderRich(labelW int) string {
-	mutedC, _ := theme.Default().Palette().ColorByRole(theme.RoleMuted)
-	labelStyle := lipgloss.NewStyle().Foreground(mutedC)
+	pal := theme.Default().Palette()
+	mutedC, _ := pal.ColorByRole(theme.RoleMuted)
+	headingC, _ := pal.ColorByRole(theme.RoleHeading)
 
-	var lines []string
-	if p.title != "" {
-		lines = append(lines, style.Heading(p.title))
-		if len(p.fields) > 0 {
-			lines = append(lines, "")
+	borderStyle := lipgloss.NewStyle()
+	labelStyle := lipgloss.NewStyle()
+	titleStyle := lipgloss.NewStyle().Bold(true)
+	if output.IsColorEnabled() {
+		borderStyle = borderStyle.Foreground(mutedC)
+		labelStyle = labelStyle.Foreground(mutedC)
+		titleStyle = titleStyle.Foreground(headingC)
+	}
+
+	rows := make([]string, 0, len(p.fields))
+	contentW := 0
+	for _, f := range p.fields {
+		row := labelStyle.Render(pad(f.label, labelW)) + strings.Repeat(" ", gutter) + f.value
+		rows = append(rows, row)
+		if w := lipgloss.Width(row); w > contentW {
+			contentW = w
 		}
 	}
-	for _, f := range p.fields {
-		lines = append(lines, labelStyle.Render(pad(f.label, labelW))+"  "+f.value)
-	}
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(mutedC).
-		Padding(0, 2)
-	return box.Render(strings.Join(lines, "\n"))
+	// The top border must fit "─ title " plus trailing dashes even when
+	// the title is wider than every row.
+	titleW := lipgloss.Width(p.title)
+	if p.title != "" && titleW+5 > contentW+2*hpad {
+		contentW = titleW + 5 - 2*hpad
+	}
+	inner := contentW + 2*hpad
+
+	var b strings.Builder
+	b.WriteString(topBorder(p.title, inner, borderStyle, titleStyle))
+	if len(rows) > 0 {
+		blank := borderStyle.Render("│") + strings.Repeat(" ", inner) + borderStyle.Render("│")
+		b.WriteString("\n" + blank)
+		for _, row := range rows {
+			b.WriteString("\n" + borderStyle.Render("│") + strings.Repeat(" ", hpad) +
+				row + strings.Repeat(" ", inner-hpad-lipgloss.Width(row)) + borderStyle.Render("│"))
+		}
+		b.WriteString("\n" + blank)
+	}
+	b.WriteString("\n" + borderStyle.Render("╰"+strings.Repeat("─", inner)+"╯"))
+	return b.String()
+}
+
+func topBorder(title string, inner int, borderStyle, titleStyle lipgloss.Style) string {
+	if title == "" {
+		return borderStyle.Render("╭" + strings.Repeat("─", inner) + "╮")
+	}
+	fill := inner - lipgloss.Width(title) - 3
+	return borderStyle.Render("╭─ ") + titleStyle.Render(title) +
+		borderStyle.Render(" "+strings.Repeat("─", fill)+"╮")
 }
 
 func pad(s string, w int) string {

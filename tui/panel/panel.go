@@ -90,11 +90,11 @@ func (p *Panel) renderRich(labelW int) string {
 
 	borderStyle := lipgloss.NewStyle()
 	labelStyle := lipgloss.NewStyle()
-	titleStyle := lipgloss.NewStyle().Bold(true)
+	titleStyle := lipgloss.NewStyle()
 	if output.IsColorEnabled() {
 		borderStyle = borderStyle.Foreground(mutedC)
 		labelStyle = labelStyle.Foreground(mutedC)
-		titleStyle = titleStyle.Foreground(headingC)
+		titleStyle = titleStyle.Bold(true).Foreground(headingC)
 	}
 
 	rows := make([]string, 0, len(p.fields))

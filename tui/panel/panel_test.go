@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -57,7 +58,7 @@ func TestPanelFieldIf(t *testing.T) {
 func TestPanelRichEmbedsTitleInTopBorder(t *testing.T) {
 	withMode(t, output.Rich)
 
-	got := New("Endpoint").Field("Hostname", "dev-box").Render()
+	got := ansi.Strip(New("Endpoint").Field("Hostname", "dev-box").Render())
 	lines := strings.Split(got, "\n")
 	assert.Contains(t, lines[0], "╭─ Endpoint ─")
 	assert.Contains(t, got, "dev-box")
@@ -67,7 +68,7 @@ func TestPanelRichEmbedsTitleInTopBorder(t *testing.T) {
 func TestPanelRichHasVerticalPadding(t *testing.T) {
 	withMode(t, output.Rich)
 
-	got := New("T").Field("A", "1").Render()
+	got := ansi.Strip(New("T").Field("A", "1").Render())
 	lines := strings.Split(got, "\n")
 	// top border, blank, row, blank, bottom border.
 	require.Len(t, lines, 5)
@@ -104,7 +105,7 @@ func TestPanelRichTitleWiderThanRows(t *testing.T) {
 func TestPanelRichTitleOnlyIsCompact(t *testing.T) {
 	withMode(t, output.Rich)
 
-	got := New("Only Title").Render()
+	got := ansi.Strip(New("Only Title").Render())
 	assert.Contains(t, got, "Only Title")
 	// Top border with title, bottom border.
 	assert.Len(t, strings.Split(got, "\n"), 2)

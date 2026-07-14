@@ -165,7 +165,14 @@ func (p *prometheusMetricsProvider) NewHistogram(name, desc string,
 		editor(&histogramOpts)
 	}
 
+	h := prometheus.NewHistogram(histogramOpts)
+
+	// Register with the default registry like the Counter/Gauge/Vec
+	// constructors above; without this the histogram is created but never
+	// collected, so its _bucket/_sum/_count series are never scraped.
+	prometheus.MustRegister(h)
+
 	return &promHistogramReceiver{
-		histogram: prometheus.NewHistogram(histogramOpts),
+		histogram: h,
 	}
 }

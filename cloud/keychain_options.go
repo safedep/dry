@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"os"
 	"strings"
 
 	"github.com/safedep/dry/keychain"
@@ -18,11 +19,13 @@ const (
 type KeychainOption func(*keychainConfig)
 
 type keychainConfig struct {
-	appName                  string
-	profile                  string
-	keychain                 keychain.Keychain
-	insecureFileFallback     bool
-	insecureFileFallbackPath string
+	appName              string
+	profile              string
+	keychain             keychain.Keychain
+	insecureFileFallback bool
+	insecureFileOnly     bool
+	insecureFilePath     string
+	insecureFileMode     os.FileMode
 }
 
 // WithAppName overrides the default application name for the keychain.
@@ -65,7 +68,19 @@ func WithInsecureFileFallback() KeychainOption {
 func WithInsecureFileFallbackPath(path string) KeychainOption {
 	return func(c *keychainConfig) {
 		c.insecureFileFallback = true
-		c.insecureFileFallbackPath = path
+		c.insecureFilePath = path
+	}
+}
+
+// WithInsecureFileStore forces plaintext file storage at path with the
+// given mode, bypassing the OS keychain even when it is available. A zero
+// mode defaults to 0600. The caller must ensure path's directory exists
+// with appropriate permissions.
+func WithInsecureFileStore(path string, mode os.FileMode) KeychainOption {
+	return func(c *keychainConfig) {
+		c.insecureFileOnly = true
+		c.insecureFilePath = path
+		c.insecureFileMode = mode
 	}
 }
 

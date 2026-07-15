@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"os"
 	"testing"
 
 	"github.com/safedep/dry/keychain"
@@ -15,7 +16,7 @@ func TestBuildKeychainConfig(t *testing.T) {
 		assert.Equal(t, DefaultProfile, cfg.profile)
 		assert.Nil(t, cfg.keychain)
 		assert.False(t, cfg.insecureFileFallback)
-		assert.Empty(t, cfg.insecureFileFallbackPath)
+		assert.Empty(t, cfg.insecureFilePath)
 	})
 }
 
@@ -58,7 +59,7 @@ func TestBuildKeychainConfigWithOptions(t *testing.T) {
 	t.Run("with insecure file fallback", func(t *testing.T) {
 		cfg := buildKeychainConfig([]KeychainOption{WithInsecureFileFallback()})
 		assert.True(t, cfg.insecureFileFallback)
-		assert.Empty(t, cfg.insecureFileFallbackPath)
+		assert.Empty(t, cfg.insecureFilePath)
 	})
 
 	t.Run("with insecure file fallback path implies fallback", func(t *testing.T) {
@@ -66,7 +67,16 @@ func TestBuildKeychainConfigWithOptions(t *testing.T) {
 			WithInsecureFileFallbackPath("/tmp/creds.json"),
 		})
 		assert.True(t, cfg.insecureFileFallback)
-		assert.Equal(t, "/tmp/creds.json", cfg.insecureFileFallbackPath)
+		assert.Equal(t, "/tmp/creds.json", cfg.insecureFilePath)
+	})
+
+	t.Run("with insecure file store bypasses keychain", func(t *testing.T) {
+		cfg := buildKeychainConfig([]KeychainOption{
+			WithInsecureFileStore("/tmp/creds.json", 0o644),
+		})
+		assert.True(t, cfg.insecureFileOnly)
+		assert.Equal(t, "/tmp/creds.json", cfg.insecureFilePath)
+		assert.Equal(t, os.FileMode(0o644), cfg.insecureFileMode)
 	})
 }
 

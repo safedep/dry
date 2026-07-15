@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -241,5 +242,36 @@ func TestKeychainCredentialResolver_ChainIntegration(t *testing.T) {
 		assert.Equal(t, "sk-keychain-key", apiKey)
 		tenant, _ := creds.GetTenantDomain()
 		assert.Equal(t, "keychain-tenant", tenant)
+	})
+}
+
+func TestKeychainCredentialResolver_InsecureFileStore(t *testing.T) {
+	t.Run("store and resolver roundtrip through forced file", func(t *testing.T) {
+		filePath := t.TempDir() + "/creds.json"
+		opts := []KeychainOption{
+			WithAppName("safedep-test-" + t.Name()),
+			WithInsecureFileStore(filePath, 0o644),
+		}
+
+		store, err := NewKeychainCredentialStore(opts...)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, store.Close()) }()
+
+		require.NoError(t, store.SaveAPIKeyCredential("sk-file-key", "tenant-file"))
+
+		info, err := os.Stat(filePath)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+
+		resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, opts...)
+		require.NoError(t, err)
+		defer func() { require.NoError(t, resolver.Close()) }()
+
+		creds, err := resolver.Resolve()
+		require.NoError(t, err)
+
+		apiKey, err := creds.GetAPIKey()
+		require.NoError(t, err)
+		assert.Equal(t, "sk-file-key", apiKey)
 	})
 }

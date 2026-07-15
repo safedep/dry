@@ -15,7 +15,7 @@ func newTestFileProvider(t *testing.T) *fileProvider {
 	t.Helper()
 	tmpDir := t.TempDir()
 	filePath := filepath.Join(tmpDir, "test-app", "creds.json")
-	fp, err := newFileProvider("test-app", filePath)
+	fp, err := newFileProvider("test-app", filePath, 0)
 	require.NoError(t, err)
 	return fp
 }
@@ -144,7 +144,7 @@ func TestFileProviderFilePermissions(t *testing.T) {
 }
 
 func TestFileProviderDefaultPath(t *testing.T) {
-	fp, err := newFileProvider("myapp", "")
+	fp, err := newFileProvider("myapp", "", 0)
 	require.NoError(t, err)
 
 	configDir, err := localConfigDir()

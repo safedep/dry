@@ -2,6 +2,7 @@ package keychain
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -42,6 +43,77 @@ func TestNewWithInsecureFileFallback(t *testing.T) {
 
 	_, err = kc.Get(ctx, "token")
 	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestNewWithInsecureFileOnlyBypassesOSKeychain(t *testing.T) {
+	filePath := filepath.Join(t.TempDir(), "creds.json")
+
+	kc, err := New(Config{
+		AppName:          "test-app",
+		InsecureFileOnly: true,
+		FilePath:         filePath,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, kc.Close()) }()
+
+	ctx := context.Background()
+	require.NoError(t, kc.Set(ctx, "token", &Secret{Value: "force-file-secret"}))
+
+	secret, err := kc.Get(ctx, "token")
+	require.NoError(t, err)
+	assert.Equal(t, "force-file-secret", secret.Value)
+
+	// The secret must be in the file, proving the OS keychain was bypassed
+	// even on platforms where it is available.
+	data, err := os.ReadFile(filePath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "force-file-secret")
+}
+
+func TestFileMode(t *testing.T) {
+	t.Run("custom mode applied and preserved across rewrites", func(t *testing.T) {
+		filePath := filepath.Join(t.TempDir(), "creds.json")
+
+		kc, err := New(Config{
+			AppName:          "test-app",
+			InsecureFileOnly: true,
+			FilePath:         filePath,
+			FileMode:         0o644,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, kc.Close()) }()
+
+		ctx := context.Background()
+		require.NoError(t, kc.Set(ctx, "k1", &Secret{Value: "v1"}))
+
+		info, err := os.Stat(filePath)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+
+		require.NoError(t, kc.Delete(ctx, "k1"))
+
+		info, err = os.Stat(filePath)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+	})
+
+	t.Run("defaults to 0600", func(t *testing.T) {
+		filePath := filepath.Join(t.TempDir(), "creds.json")
+
+		kc, err := New(Config{
+			AppName:          "test-app",
+			InsecureFileOnly: true,
+			FilePath:         filePath,
+		})
+		require.NoError(t, err)
+		defer func() { assert.NoError(t, kc.Close()) }()
+
+		require.NoError(t, kc.Set(context.Background(), "k1", &Secret{Value: "v1"}))
+
+		info, err := os.Stat(filePath)
+		require.NoError(t, err)
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	})
 }
 
 func TestNewWithoutFallbackFailsOnUnsupportedPlatform(t *testing.T) {

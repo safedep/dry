@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 )
 
 var ErrNotFound = errors.New("keychain: secret not found")
@@ -23,9 +24,18 @@ type Config struct {
 	// when the OS keychain is unavailable.
 	InsecureFileFallback bool
 
+	// InsecureFileOnly uses plaintext JSON file storage directly,
+	// bypassing the OS keychain even when it is available. Takes
+	// precedence over InsecureFileFallback.
+	InsecureFileOnly bool
+
 	// FilePath overrides the default file path for the insecure
 	// file provider. Defaults to $HOME/.config/<AppName>/creds.json.
 	FilePath string
+
+	// FileMode sets the credential file permissions. Defaults to 0600.
+	// Ignored unless file storage is used.
+	FileMode os.FileMode
 }
 
 type Keychain interface {
@@ -51,16 +61,18 @@ func New(config Config) (Keychain, error) {
 		return nil, fmt.Errorf("keychain: AppName is required")
 	}
 
-	p, err := newKeyringProvider(config.AppName)
-	if err == nil {
-		return &keychainImpl{p: p}, nil
+	if !config.InsecureFileOnly {
+		p, err := newKeyringProvider(config.AppName)
+		if err == nil {
+			return &keychainImpl{p: p}, nil
+		}
+
+		if !config.InsecureFileFallback {
+			return nil, fmt.Errorf("keychain: OS keychain unavailable: %w", err)
+		}
 	}
 
-	if !config.InsecureFileFallback {
-		return nil, fmt.Errorf("keychain: OS keychain unavailable: %w", err)
-	}
-
-	fp, err := newFileProvider(config.AppName, config.FilePath)
+	fp, err := newFileProvider(config.AppName, config.FilePath, config.FileMode)
 	if err != nil {
 		return nil, fmt.Errorf("keychain: failed to create file provider: %w", err)
 	}

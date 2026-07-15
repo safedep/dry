@@ -25,9 +25,10 @@ type fileStore struct {
 type fileProvider struct {
 	mu       sync.RWMutex
 	filePath string
+	mode     os.FileMode
 }
 
-func newFileProvider(appName, filePath string) (*fileProvider, error) {
+func newFileProvider(appName, filePath string, mode os.FileMode) (*fileProvider, error) {
 	if filePath == "" {
 		configDir, err := localConfigDir()
 		if err != nil {
@@ -36,10 +37,15 @@ func newFileProvider(appName, filePath string) (*fileProvider, error) {
 		filePath = filepath.Join(configDir, appName, "creds.json")
 	}
 
+	if mode == 0 {
+		mode = filePermissions
+	}
+
 	log.Warnf("Using insecure plaintext credential storage at %s", filePath)
 
 	return &fileProvider{
 		filePath: filePath,
+		mode:     mode,
 	}, nil
 }
 
@@ -156,7 +162,7 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 		return fmt.Errorf("keychain: failed to close temp file: %w", err)
 	}
 
-	if err := os.Chmod(tmpPath, filePermissions); err != nil {
+	if err := os.Chmod(tmpPath, f.mode); err != nil {
 		return fmt.Errorf("keychain: failed to set file permissions: %w", err)
 	}
 

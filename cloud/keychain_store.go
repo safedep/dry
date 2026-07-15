@@ -113,7 +113,9 @@ func resolveKeychain(cfg keychainConfig) (keychain.Keychain, bool, error) {
 	kc, err := keychain.New(keychain.Config{
 		AppName:              cfg.appName,
 		InsecureFileFallback: cfg.insecureFileFallback,
-		FilePath:             cfg.insecureFileFallbackPath,
+		InsecureFileOnly:     cfg.insecureFileOnly,
+		FilePath:             cfg.insecureFilePath,
+		FileMode:             cfg.insecureFileMode,
 	})
 	if err != nil {
 		return nil, false, fmt.Errorf("cloud: failed to create keychain: %w", err)

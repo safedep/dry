@@ -28,13 +28,22 @@ func isValidToolName(name string) bool {
 
 // SyncClient handles reliable event sync to SafeDep Cloud.
 type SyncClient struct {
+	*eventWriter
+	transport EventTransport
+	identity  *controltowerv1.EndpointIdentity
+	config    *syncConfig
+	breaker   *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+}
+
+// EventEmitterClient creates ToolEvents and persists them to the local WAL.
+type EventEmitterClient struct {
+	*eventWriter
+}
+
+type eventWriter struct {
 	toolName    string
 	toolVersion string
-	transport   EventTransport
-	identity    *controltowerv1.EndpointIdentity
-	config      *syncConfig
 	store       *wal
-	breaker     *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
 }
 
 // NewSyncClient creates a new sync client.
@@ -48,38 +57,31 @@ type SyncClient struct {
 //   - identity: resolves endpoint identity (identifier + metadata) for sync requests.
 //   - opts: optional overrides (WithBatchSize, WithMaxPending, WithWALPath).
 func NewSyncClient(toolName string, toolVersion string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
-	if !isValidToolName(toolName) {
-		return nil, fmt.Errorf("endpointsync: invalid tool name %q: must be non-empty, alphanumeric with hyphens only", toolName)
+	writer, cfg, err := newEventWriter(toolName, toolVersion, opts...)
+	if err != nil {
+		return nil, err
 	}
-	if toolVersion == "" {
-		return nil, fmt.Errorf("endpointsync: tool version is required")
-	}
+
 	if transport == nil {
+		if closeErr := writer.Close(); closeErr != nil {
+			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
+		}
 		return nil, ErrMissingTransport
 	}
 	if identity == nil {
+		if closeErr := writer.Close(); closeErr != nil {
+			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
+		}
 		return nil, ErrMissingIdentity
 	}
 
 	endpointIdentity, err := identity.Resolve()
 	if err != nil {
+		if closeErr := writer.Close(); closeErr != nil {
+			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
+		}
 		return nil, fmt.Errorf("endpointsync: failed to resolve endpoint identity: %w", err)
 	}
-
-	cfg := defaultSyncConfig(toolName)
-	for _, opt := range opts {
-		opt(cfg)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(cfg.walPath), 0o755); err != nil {
-		return nil, fmt.Errorf("%w: failed to create WAL directory: %w", ErrWALOpen, err)
-	}
-
-	store, err := openWAL(cfg.walPath)
-	if err != nil {
-		return nil, err
-	}
-	store.maxPending = cfg.maxPending
 
 	breaker := gobreaker.NewCircuitBreaker[*servicev1.SyncEventsResponse](gobreaker.Settings{
 		Name:        fmt.Sprintf("endpointsync-%s", toolName),
@@ -94,28 +96,70 @@ func NewSyncClient(toolName string, toolVersion string, transport EventTransport
 	})
 
 	return &SyncClient{
-		toolName:    toolName,
-		toolVersion: toolVersion,
+		eventWriter: writer,
 		transport:   transport,
 		identity:    endpointIdentity,
 		config:      cfg,
-		store:       store,
 		breaker:     breaker,
 	}, nil
 }
 
+// NewEventEmitterClient creates a new emit-only client.
+//
+// The client validates tool metadata, opens the local WAL, and requires no
+// transport or endpoint identity. WithBatchSize is accepted because SyncOption
+// is shared with SyncClient, but it has no effect on emit-only behavior.
+func NewEventEmitterClient(toolName string, toolVersion string, opts ...SyncOption) (*EventEmitterClient, error) {
+	writer, _, err := newEventWriter(toolName, toolVersion, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &EventEmitterClient{eventWriter: writer}, nil
+}
+
+func newEventWriter(toolName string, toolVersion string, opts ...SyncOption) (*eventWriter, *syncConfig, error) {
+	if !isValidToolName(toolName) {
+		return nil, nil, fmt.Errorf("endpointsync: invalid tool name %q: must be non-empty, alphanumeric with hyphens only", toolName)
+	}
+	if toolVersion == "" {
+		return nil, nil, fmt.Errorf("endpointsync: tool version is required")
+	}
+
+	cfg := defaultSyncConfig(toolName)
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfg.walPath), 0o755); err != nil {
+		return nil, nil, fmt.Errorf("%w: failed to create WAL directory: %w", ErrWALOpen, err)
+	}
+
+	store, err := openWAL(cfg.walPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	store.maxPending = cfg.maxPending
+
+	return &eventWriter{
+		toolName:    toolName,
+		toolVersion: toolVersion,
+		store:       store,
+	}, cfg, nil
+}
+
 // NewEvent creates a ToolEvent with pre-filled fields.
-func (c *SyncClient) NewEvent() (*servicev1.ToolEvent, error) {
+func (w *eventWriter) NewEvent() (*servicev1.ToolEvent, error) {
 	return &servicev1.ToolEvent{
 		EventId:     uuid.New().String(),
-		ToolName:    c.toolName,
-		ToolVersion: c.toolVersion,
+		ToolName:    w.toolName,
+		ToolVersion: w.toolVersion,
 		Timestamp:   timestamppb.Now(),
 	}, nil
 }
 
 // Emit persists a ToolEvent to the local WAL.
-func (c *SyncClient) Emit(ctx context.Context, event *servicev1.ToolEvent) error {
+func (w *eventWriter) Emit(ctx context.Context, event *servicev1.ToolEvent) error {
 	if event == nil {
 		return fmt.Errorf("endpointsync: event must not be nil")
 	}
@@ -132,7 +176,12 @@ func (c *SyncClient) Emit(ctx context.Context, event *servicev1.ToolEvent) error
 		return fmt.Errorf("endpointsync: failed to marshal event: %w", err)
 	}
 
-	return c.store.insert(event.GetEventId(), payload)
+	return w.store.insert(event.GetEventId(), payload)
+}
+
+// Close releases the WAL.
+func (w *eventWriter) Close() error {
+	return w.store.close()
 }
 
 // Sync delivers pending events from the WAL to the server.
@@ -245,7 +294,7 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 // Close releases resources.
 func (c *SyncClient) Close() error {
 	var errs []error
-	if err := c.store.close(); err != nil {
+	if err := c.eventWriter.Close(); err != nil {
 		errs = append(errs, fmt.Errorf("failed to close WAL: %w", err))
 	}
 	if c.transport != nil {

@@ -57,30 +57,21 @@ type eventWriter struct {
 //   - identity: resolves endpoint identity (identifier + metadata) for sync requests.
 //   - opts: optional overrides (WithBatchSize, WithMaxPending, WithWALPath).
 func NewSyncClient(toolName string, toolVersion string, transport EventTransport, identity EndpointIdentityResolver, opts ...SyncOption) (*SyncClient, error) {
-	writer, cfg, err := newEventWriter(toolName, toolVersion, opts...)
-	if err != nil {
-		return nil, err
-	}
-
 	if transport == nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
-		}
 		return nil, ErrMissingTransport
 	}
 	if identity == nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
-		}
 		return nil, ErrMissingIdentity
 	}
 
 	endpointIdentity, err := identity.Resolve()
 	if err != nil {
-		if closeErr := writer.Close(); closeErr != nil {
-			log.Warnf("endpointsync: failed to close WAL after client setup error: %v", closeErr)
-		}
 		return nil, fmt.Errorf("endpointsync: failed to resolve endpoint identity: %w", err)
+	}
+
+	writer, cfg, err := newEventWriter(toolName, toolVersion, opts...)
+	if err != nil {
+		return nil, err
 	}
 
 	breaker := gobreaker.NewCircuitBreaker[*servicev1.SyncEventsResponse](gobreaker.Settings{

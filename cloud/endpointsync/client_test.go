@@ -45,6 +45,33 @@ func TestNewSyncClient(t *testing.T) {
 	})
 }
 
+func TestNewEventEmitterClient(t *testing.T) {
+	t.Run("valid config creates client without transport or identity", func(t *testing.T) {
+		client, err := NewEventEmitterClient("test-tool", "1.0.0",
+			WithWALPath(filepath.Join(t.TempDir(), "test.db")),
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		require.NoError(t, client.Close())
+	})
+
+	t.Run("invalid tool name returns error", func(t *testing.T) {
+		_, err := NewEventEmitterClient("../test", "1.0.0",
+			WithWALPath(filepath.Join(t.TempDir(), "test.db")),
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "endpointsync: invalid tool name")
+	})
+
+	t.Run("empty tool version returns error", func(t *testing.T) {
+		_, err := NewEventEmitterClient("test-tool", "",
+			WithWALPath(filepath.Join(t.TempDir(), "test.db")),
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "endpointsync: tool version is required")
+	})
+}
+
 func TestNewEvent(t *testing.T) {
 	client := newTestClient(t, &mockTransport{})
 
@@ -58,6 +85,68 @@ func TestNewEvent(t *testing.T) {
 
 	event2, _ := client.NewEvent()
 	assert.NotEqual(t, event.GetEventId(), event2.GetEventId())
+}
+
+func TestEventEmitterClientNewEvent(t *testing.T) {
+	client, err := NewEventEmitterClient("test-tool", "1.0.0",
+		WithWALPath(filepath.Join(t.TempDir(), "test.db")),
+	)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	event, err := client.NewEvent()
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, event.GetEventId())
+	assert.Equal(t, "test-tool", event.GetToolName())
+	assert.Equal(t, "1.0.0", event.GetToolVersion())
+	assert.NotNil(t, event.GetTimestamp())
+
+	event2, err := client.NewEvent()
+	require.NoError(t, err)
+	assert.NotEqual(t, event.GetEventId(), event2.GetEventId())
+}
+
+func TestEventEmitterClientEmitPersistsToWAL(t *testing.T) {
+	walPath := filepath.Join(t.TempDir(), "test.db")
+	emitter, err := NewEventEmitterClient("test-tool", "1.0.0", WithWALPath(walPath))
+	require.NoError(t, err)
+
+	event, err := emitter.NewEvent()
+	require.NoError(t, err)
+	event.PmgEvent = &controltowerv1.PmgEvent{
+		EventType: controltowerv1.PmgEventType_PMG_EVENT_TYPE_SESSION_SUMMARY,
+		SessionSummary: &controltowerv1.PmgSessionSummary{
+			TotalAnalyzed: 1,
+		},
+	}
+	require.NoError(t, emitter.Emit(context.Background(), event))
+	require.NoError(t, emitter.Close())
+
+	var uploaded []*servicev1.ToolEvent
+	transport := &mockTransport{
+		sendFunc: func(ctx context.Context, req *servicev1.SyncEventsRequest) (*servicev1.SyncEventsResponse, error) {
+			uploaded = append(uploaded, req.GetEvents()...)
+			ids := make([]string, 0, len(req.GetEvents()))
+			for _, e := range req.GetEvents() {
+				ids = append(ids, e.GetEventId())
+			}
+			return &servicev1.SyncEventsResponse{ConfirmedEventIds: ids}, nil
+		},
+	}
+
+	syncClient, err := NewSyncClient("test-tool", "1.0.0", transport,
+		NewEndpointIdentityResolver(WithEndpointID("test-endpoint")),
+		WithWALPath(walPath),
+	)
+	require.NoError(t, err)
+	defer func() { _ = syncClient.Close() }()
+
+	synced, err := syncClient.Sync(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, synced)
+	require.Len(t, uploaded, 1)
+	assert.Equal(t, event.GetEventId(), uploaded[0].GetEventId())
 }
 
 func TestEmitAndSync(t *testing.T) {
@@ -436,6 +525,34 @@ func TestEmitWALFull(t *testing.T) {
 	}
 
 	event, _ := client.NewEvent()
+	event.PmgEvent = &controltowerv1.PmgEvent{
+		EventType:      controltowerv1.PmgEventType_PMG_EVENT_TYPE_SESSION_SUMMARY,
+		SessionSummary: &controltowerv1.PmgSessionSummary{},
+	}
+	err = client.Emit(context.Background(), event)
+	assert.ErrorIs(t, err, ErrWALFull)
+}
+
+func TestEventEmitterClientEmitWALFull(t *testing.T) {
+	client, err := NewEventEmitterClient("test", "1.0.0",
+		WithWALPath(filepath.Join(t.TempDir(), "test.db")),
+		WithMaxPending(2),
+	)
+	require.NoError(t, err)
+	defer func() { _ = client.Close() }()
+
+	for i := 0; i < 2; i++ {
+		event, err := client.NewEvent()
+		require.NoError(t, err)
+		event.PmgEvent = &controltowerv1.PmgEvent{
+			EventType:      controltowerv1.PmgEventType_PMG_EVENT_TYPE_SESSION_SUMMARY,
+			SessionSummary: &controltowerv1.PmgSessionSummary{},
+		}
+		require.NoError(t, client.Emit(context.Background(), event))
+	}
+
+	event, err := client.NewEvent()
+	require.NoError(t, err)
 	event.PmgEvent = &controltowerv1.PmgEvent{
 		EventType:      controltowerv1.PmgEventType_PMG_EVENT_TYPE_SESSION_SUMMARY,
 		SessionSummary: &controltowerv1.PmgSessionSummary{},

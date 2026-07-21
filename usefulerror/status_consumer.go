@@ -117,13 +117,34 @@ func detailAsType[T proto.Message](msg proto.Message) (T, bool) {
 // typedReasonOf reads the reason strictly from the typed ErrorDetail. It never
 // falls back to ErrorInfo so that the UsefulError conversion path stays
 // behavior-compatible with legacy statuses that carry only an ErrorInfo.
+//
+// ok is false unless the reason is actionable: it must be neither UNSPECIFIED
+// nor a numeric value absent from this build's generated enum (which happens
+// when a newer server sends a reason this client does not yet know). Callers
+// then fall back to the canonical code.
 func typedReasonOf(err error) (ErrorReason, bool) {
 	detail, ok := DetailAs[*errorv1.ErrorDetail](err)
 	if !ok {
 		return errorv1.ErrorReason_ERROR_REASON_UNSPECIFIED, false
 	}
 
-	return detail.GetReason(), true
+	reason := detail.GetReason()
+	if !isActionableReason(reason) {
+		return errorv1.ErrorReason_ERROR_REASON_UNSPECIFIED, false
+	}
+
+	return reason, true
+}
+
+// isActionableReason reports whether a reason is safe to act on: it is defined
+// (present in the generated enum) and is not the UNSPECIFIED sentinel.
+func isActionableReason(reason ErrorReason) bool {
+	if reason == errorv1.ErrorReason_ERROR_REASON_UNSPECIFIED {
+		return false
+	}
+
+	_, known := errorv1.ErrorReason_name[int32(reason)]
+	return known
 }
 
 func grpcStatusOf(err error) (*status.Status, bool) {
@@ -181,7 +202,7 @@ func lookupReasonPresentation(reason ErrorReason) (ReasonPresentation, bool) {
 // converters) when no typed reason or presentation is available.
 func convertFromTypedReason(err error) (UsefulError, bool) {
 	reason, ok := typedReasonOf(err)
-	if !ok || reason == errorv1.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	if !ok {
 		return nil, false
 	}
 

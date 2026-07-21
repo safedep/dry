@@ -113,6 +113,38 @@ func TestReasonOf_UnknownIsFallback(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestReasonOf_UnspecifiedTypedReasonIsFallback(t *testing.T) {
+	// A typed ErrorDetail carrying UNSPECIFIED means "no business reason". It
+	// must report ok=false so consumers fall back to the canonical code.
+	st := status.New(codes.Internal, "boom")
+	stProto := st.Proto()
+	detail, err := anypb.New(errorv1.ErrorDetail_builder{
+		Reason: errorv1.ErrorReason_ERROR_REASON_UNSPECIFIED,
+	}.Build())
+	require.NoError(t, err)
+	stProto.Details = append(stProto.Details, detail)
+
+	_, ok := ReasonOf(status.FromProto(stProto).Err())
+	assert.False(t, ok)
+}
+
+func TestReasonOf_UnknownNumericReasonIsFallback(t *testing.T) {
+	// A reason value from a newer API that this build's enum does not define
+	// must report ok=false rather than surface an unrecognized reason.
+	unknownReason := errorv1.ErrorReason(999999)
+	_, defined := errorv1.ErrorReason_name[int32(unknownReason)]
+	require.False(t, defined, "test value must be absent from the generated enum")
+
+	st := status.New(codes.Internal, "boom")
+	stProto := st.Proto()
+	detail, err := anypb.New(errorv1.ErrorDetail_builder{Reason: unknownReason}.Build())
+	require.NoError(t, err)
+	stProto.Details = append(stProto.Details, detail)
+
+	_, ok := ReasonOf(status.FromProto(stProto).Err())
+	assert.False(t, ok)
+}
+
 func TestDetailAs_UnwrapsNestedAny(t *testing.T) {
 	// Mirror the control-tower double-wrap: an ErrorDetail nested two Any layers
 	// deep must still be extractable.

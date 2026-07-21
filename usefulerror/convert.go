@@ -45,6 +45,14 @@ func convertToUsefulError(err error) (UsefulError, bool) {
 		}
 	}
 
+	// A typed business reason is more specific than the broad gRPC code, so it
+	// is resolved ahead of the generic per-code converters below. It only fires
+	// when a typed ErrorDetail is present, leaving legacy code-only and
+	// ErrorInfo-only statuses to the converters unchanged.
+	if usefulErr, ok := convertFromTypedReason(err); ok {
+		return usefulErr, true
+	}
+
 	for _, converterFunc := range internalErrorConverterRegistry {
 		usefulErr, ok := converterFunc(err)
 		if ok {

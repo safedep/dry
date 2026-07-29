@@ -132,3 +132,85 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 		return purl.Name
 	}
 }
+
+// EcosystemToPurlType maps a PackageVersion ecosystem to its canonical Package
+// URL type. It is the build-side counterpart of purlMapEcosystem, but not a
+// strict inverse: purlMapEcosystem collapses several purl types and aliases
+// onto one ecosystem (e.g. "golang"/"go", "pypi"/"pip", and both a bare
+// "github" and "actions" onto GITHUB_ACTIONS), and this helper maps both
+// ECOSYSTEM_GITHUB_ACTIONS and ECOSYSTEM_GITHUB_REPOSITORY to the "github"
+// type — so a round-trip through both is not guaranteed to be lossless.
+// Ecosystems with no canonical purl type (including ECOSYSTEM_UNSPECIFIED)
+// return an error so callers never fabricate a purl.
+func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
+	switch ecosystem {
+	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
+		return packageurl.TypeMaven, nil
+	case packagev1.Ecosystem_ECOSYSTEM_GO:
+		return packageurl.TypeGolang, nil
+	case packagev1.Ecosystem_ECOSYSTEM_NPM:
+		return packageurl.TypeNPM, nil
+	case packagev1.Ecosystem_ECOSYSTEM_NUGET:
+		return packageurl.TypeNuget, nil
+	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
+		return packageurl.TypePyPi, nil
+	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:
+		return packageurl.TypeGem, nil
+	case packagev1.Ecosystem_ECOSYSTEM_CARGO:
+		return packageurl.TypeCargo, nil
+	case packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
+		return packageurl.TypeComposer, nil
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
+		return packageurl.TypeGithub, nil
+	case packagev1.Ecosystem_ECOSYSTEM_VSCODE:
+		return "vscode", nil
+	case packagev1.Ecosystem_ECOSYSTEM_OPENVSX:
+		return "openvsx", nil
+	default:
+		return "", fmt.Errorf("no purl type for ecosystem: %s", ecosystem)
+	}
+}
+
+// Purl builds a canonical Package URL string for a PackageVersion. It is the
+// inverse of NewPurlPackageVersion: the ecosystem selects the purl type and the
+// package name is split back into purl namespace/name using the same
+// per-ecosystem convention purlMapName encodes (npm "@scope/name", maven
+// "group:artifact", go/github "owner/repo"). It returns an error for an
+// ecosystem with no purl type or an empty name rather than emitting a malformed
+// purl.
+func Purl(pv *packagev1.PackageVersion) (string, error) {
+	pkg := pv.GetPackage()
+	name := pkg.GetName()
+	if name == "" {
+		return "", fmt.Errorf("cannot build purl: empty package name")
+	}
+
+	purlType, err := EcosystemToPurlType(pkg.GetEcosystem())
+	if err != nil {
+		return "", err
+	}
+
+	namespace, shortName := purlSplitName(pkg.GetEcosystem(), name)
+	return packageurl.NewPackageURL(purlType, namespace, shortName, pv.GetVersion(), nil, "").ToString(), nil
+}
+
+// purlSplitName is the inverse of purlMapName: it splits a safedep package name
+// back into the purl namespace and name for the ecosystem's convention. A name
+// with no namespace separator yields an empty namespace.
+func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) {
+	switch ecosystem {
+	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
+		if i := strings.LastIndex(name, ":"); i >= 0 {
+			return name[:i], name[i+1:]
+		}
+	case packagev1.Ecosystem_ECOSYSTEM_GO,
+		packagev1.Ecosystem_ECOSYSTEM_NPM,
+		packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			return name[:i], name[i+1:]
+		}
+	}
+	return "", name
+}

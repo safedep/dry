@@ -260,6 +260,8 @@ func TestEcosystemToPurlType(t *testing.T) {
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, packageurl.TypeComposer, false},
 		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packageurl.TypeGithub, false},
 		{"github repository", packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, packageurl.TypeGithub, false},
+		{"vscode", packagev1.Ecosystem_ECOSYSTEM_VSCODE, "vscode", false},
+		{"openvsx", packagev1.Ecosystem_ECOSYSTEM_OPENVSX, "openvsx", false},
 		{"unspecified errors", packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "", true},
 	}
 
@@ -297,6 +299,12 @@ func TestPurl(t *testing.T) {
 		// ":" (round-trips NewPurlPackageVersion) not "/".
 		{"maven", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "1.20"), "pkg:maven/org.apache.commons/compress@1.20", false},
 		{"go", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/golang/protobuf", "v1.4.2"), "pkg:golang/github.com/golang/protobuf@v1.4.2", false},
+		// GitHub Actions names are "owner/action"; GitHub repositories "owner/repo".
+		// Both split the namespace on "/" and render under the "github" purl type.
+		{"github actions", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"), "pkg:github/actions/checkout@v4", false},
+		{"github repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"), "pkg:github/safedep/vet@v1.0.0", false},
+		// VSCode/OpenVSX have no namespace convention here, so the name is used verbatim.
+		{"vscode", pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"), "pkg:vscode/ms-python.python@2024.0.0", false},
 		{"no version", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", ""), "pkg:pypi/requests", false},
 		{"unmapped ecosystem errors", pv(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "", true},
 		{"empty name errors", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "", "1"), "", true},

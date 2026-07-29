@@ -134,9 +134,14 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 }
 
 // EcosystemToPurlType maps a PackageVersion ecosystem to its canonical Package
-// URL type. It is the inverse of the type mapping applied by
-// NewPurlPackageVersion. Ecosystems with no canonical purl type (including
-// ECOSYSTEM_UNSPECIFIED) return an error so callers never fabricate a purl.
+// URL type. It is the build-side counterpart of purlMapEcosystem, but not a
+// strict inverse: purlMapEcosystem collapses several purl types and aliases
+// onto one ecosystem (e.g. "golang"/"go", "pypi"/"pip", and both a bare
+// "github" and "actions" onto GITHUB_ACTIONS), and this helper maps both
+// ECOSYSTEM_GITHUB_ACTIONS and ECOSYSTEM_GITHUB_REPOSITORY to the "github"
+// type — so a round-trip through both is not guaranteed to be lossless.
+// Ecosystems with no canonical purl type (including ECOSYSTEM_UNSPECIFIED)
+// return an error so callers never fabricate a purl.
 func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:

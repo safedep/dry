@@ -2,7 +2,10 @@
 // general purpose storage system.
 package storage
 
-import "io"
+import (
+	"io"
+	"time"
+)
 
 // Storage is a simple storage interface with read and write operations.
 // This interface should be extended to support more capable contracts
@@ -17,4 +20,20 @@ type StorageWriter interface {
 	Storage
 
 	Writer(key string) (io.WriteCloser, error)
+}
+
+// PresignedStorage is a Storage that can mint short-TTL pre-signed download
+// URLs for its objects, letting callers hand out time-limited read access
+// without proxying bytes or exposing storage keys. Not every backend supports
+// this (the local filesystem driver does not); S3 is the first implementation.
+type PresignedStorage interface {
+	Storage
+
+	// PresignedGetURL returns a pre-signed URL that grants read access to the
+	// object at key for ttl, together with the (UTC) time the URL expires. key
+	// must be non-empty and ttl must be positive. Pre-signing does NOT verify
+	// that the object exists — a missing key still yields a URL, which then
+	// 404s on use — so callers that need an existence guarantee must check
+	// separately.
+	PresignedGetURL(key string, ttl time.Duration) (url string, expiresAt time.Time, err error)
 }

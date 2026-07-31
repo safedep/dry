@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"context"
 	"io"
 	"time"
 )
@@ -31,9 +32,10 @@ type PresignedStorage interface {
 
 	// PresignedGetURL returns a pre-signed URL that grants read access to the
 	// object at key for ttl, together with the (UTC) time the URL expires. key
-	// must be non-empty and ttl must be positive. Pre-signing does NOT verify
-	// that the object exists — a missing key still yields a URL, which then
-	// 404s on use — so callers that need an existence guarantee must check
-	// separately.
-	PresignedGetURL(key string, ttl time.Duration) (url string, expiresAt time.Time, err error)
+	// must be non-empty and ttl must be positive. ctx bounds the signing call
+	// (credential-provider / KMS round-trips can block), so callers can cancel
+	// or apply a deadline. Pre-signing does NOT verify that the object exists —
+	// a missing key still yields a URL, which then 404s on use — so callers that
+	// need an existence guarantee must check separately.
+	PresignedGetURL(ctx context.Context, key string, ttl time.Duration) (url string, expiresAt time.Time, err error)
 }

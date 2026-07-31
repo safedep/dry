@@ -87,7 +87,7 @@ func TestS3StorageDriverPresignedGetURL(t *testing.T) {
 
 	t.Run("mints a signed URL carrying the key and ttl", func(t *testing.T) {
 		notBefore := time.Now()
-		url, expiresAt, err := driver.PresignedGetURL("/snapshots/2026-07-31/reports.jsonl.gz", 5*time.Minute)
+		url, expiresAt, err := driver.PresignedGetURL(context.Background(), "/snapshots/2026-07-31/reports.jsonl.gz", 5*time.Minute)
 		require.NoError(t, err)
 
 		assert.Contains(t, url, "snap-bucket")
@@ -98,13 +98,44 @@ func TestS3StorageDriverPresignedGetURL(t *testing.T) {
 	})
 
 	t.Run("rejects a non-positive ttl", func(t *testing.T) {
-		_, _, err := driver.PresignedGetURL("k", 0)
+		_, _, err := driver.PresignedGetURL(context.Background(), "k", 0)
 		assert.Error(t, err)
 	})
 
 	t.Run("rejects an empty key", func(t *testing.T) {
-		_, _, err := driver.PresignedGetURL("///", time.Minute)
+		_, _, err := driver.PresignedGetURL(context.Background(), "///", time.Minute)
 		assert.Error(t, err)
+	})
+
+	// Regression guard for the ctx parameter: signing with static credentials
+	// is a purely local computation that never consults the context, so
+	// cancellation only bites where the SDK does I/O — the credential provider.
+	// A context-aware provider proves the caller's context is actually threaded
+	// into the presign call; if a future change swapped it back for a background
+	// context, the provider would never observe the cancellation and this would
+	// fail.
+	t.Run("propagates a cancelled context to the credential provider", func(t *testing.T) {
+		ctxClient := s3.New(s3.Options{
+			Region: "us-east-1",
+			Credentials: aws.CredentialsProviderFunc(func(ctx context.Context) (aws.Credentials, error) {
+				if err := ctx.Err(); err != nil {
+					return aws.Credentials{}, err
+				}
+				return aws.Credentials{AccessKeyID: "AKIAEXAMPLE", SecretAccessKey: "secretEXAMPLE"}, nil
+			}),
+		})
+		ctxDriver, err := NewS3StorageDriver(
+			S3StorageDriverConfig{BucketName: "snap-bucket"},
+			WithS3Client(ctxClient),
+		)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, _, err = ctxDriver.PresignedGetURL(ctx, "snapshots/reports.jsonl.gz", time.Minute)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
 	})
 }
 

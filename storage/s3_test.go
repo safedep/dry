@@ -87,7 +87,7 @@ func TestS3StorageDriverPresignedGetURL(t *testing.T) {
 
 	t.Run("mints a signed URL carrying the key and ttl", func(t *testing.T) {
 		notBefore := time.Now()
-		url, expiresAt, err := driver.PresignedGetURL("/snapshots/2026-07-31/reports.jsonl.gz", 5*time.Minute)
+		url, expiresAt, err := driver.PresignedGetURL(context.Background(), "/snapshots/2026-07-31/reports.jsonl.gz", 5*time.Minute)
 		require.NoError(t, err)
 
 		assert.Contains(t, url, "snap-bucket")
@@ -98,12 +98,12 @@ func TestS3StorageDriverPresignedGetURL(t *testing.T) {
 	})
 
 	t.Run("rejects a non-positive ttl", func(t *testing.T) {
-		_, _, err := driver.PresignedGetURL("k", 0)
+		_, _, err := driver.PresignedGetURL(context.Background(), "k", 0)
 		assert.Error(t, err)
 	})
 
 	t.Run("rejects an empty key", func(t *testing.T) {
-		_, _, err := driver.PresignedGetURL("///", time.Minute)
+		_, _, err := driver.PresignedGetURL(context.Background(), "///", time.Minute)
 		assert.Error(t, err)
 	})
 }

@@ -209,11 +209,13 @@ func (w *s3Writer) Close() error {
 }
 
 // PresignedGetURL returns a pre-signed S3 GET URL for the object at key, valid
-// for ttl, and the time at which the URL expires (ttl from now). Pre-signing is
-// a local operation — no network round-trip — and does NOT verify that the
-// object exists: an absent key yields a URL that 404s on use, so callers that
-// need existence guarantees must check separately.
-func (d *s3StorageDriver) PresignedGetURL(key string, ttl time.Duration) (string, time.Time, error) {
+// for ttl, and the time at which the URL expires (ttl from now). ctx bounds the
+// signing call so a caller can cancel or deadline it. Pre-signing is normally a
+// local operation — no network round-trip — but the SDK may consult the
+// credential-provider chain / KMS; it does NOT verify that the object exists: an
+// absent key yields a URL that 404s on use, so callers that need existence
+// guarantees must check separately.
+func (d *s3StorageDriver) PresignedGetURL(ctx context.Context, key string, ttl time.Duration) (string, time.Time, error) {
 	if ttl <= 0 {
 		return "", time.Time{}, fmt.Errorf("s3 storage adapter: presign ttl must be positive")
 	}
@@ -223,7 +225,7 @@ func (d *s3StorageDriver) PresignedGetURL(key string, ttl time.Duration) (string
 		return "", time.Time{}, fmt.Errorf("s3 storage adapter: failed to prefix key: %w", err)
 	}
 
-	req, err := s3.NewPresignClient(d.client).PresignGetObject(d.ctx, &s3.GetObjectInput{
+	req, err := s3.NewPresignClient(d.client).PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(d.config.BucketName),
 		Key:    aws.String(keyName),
 	}, s3.WithPresignExpires(ttl))

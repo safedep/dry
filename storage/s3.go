@@ -231,7 +231,7 @@ func (d *s3StorageDriver) PresignedGetURL(key string, ttl time.Duration) (string
 		return "", time.Time{}, fmt.Errorf("s3 storage adapter: failed to presign get object: %w", err)
 	}
 
-	return req.URL, time.Now().Add(ttl), nil
+	return req.URL, time.Now().UTC().Add(ttl), nil
 }
 
 func (d *s3StorageDriver) prefix(key string) (string, error) {

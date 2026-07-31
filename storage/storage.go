@@ -30,7 +30,10 @@ type PresignedStorage interface {
 	Storage
 
 	// PresignedGetURL returns a pre-signed URL that grants read access to the
-	// object at key for ttl, together with the time the URL expires. ttl must
-	// be positive.
+	// object at key for ttl, together with the (UTC) time the URL expires. key
+	// must be non-empty and ttl must be positive. Pre-signing does NOT verify
+	// that the object exists — a missing key still yields a URL, which then
+	// 404s on use — so callers that need an existence guarantee must check
+	// separately.
 	PresignedGetURL(key string, ttl time.Duration) (url string, expiresAt time.Time, err error)
 }

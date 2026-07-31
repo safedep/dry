@@ -9,9 +9,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/oklog/ulid/v2"
 	"github.com/stretchr/testify/assert"
@@ -67,6 +69,43 @@ func TestNewS3StorageDriverRequiresBucket(t *testing.T) {
 	_, err := NewS3StorageDriver(S3StorageDriverConfig{})
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, "bucket name is required")
+}
+
+// TestS3StorageDriverPresignedGetURL exercises pre-signing offline: SigV4
+// query-signing is a local computation, so static credentials + a region are
+// enough — no S3 endpoint needed.
+func TestS3StorageDriverPresignedGetURL(t *testing.T) {
+	client := s3.New(s3.Options{
+		Region:      "us-east-1",
+		Credentials: credentials.NewStaticCredentialsProvider("AKIAEXAMPLE", "secretEXAMPLE", ""),
+	})
+	driver, err := NewS3StorageDriver(
+		S3StorageDriverConfig{BucketName: "snap-bucket"},
+		WithS3Client(client),
+	)
+	require.NoError(t, err)
+
+	t.Run("mints a signed URL carrying the key and ttl", func(t *testing.T) {
+		notBefore := time.Now()
+		url, expiresAt, err := driver.PresignedGetURL("/snapshots/2026-07-31/reports.jsonl.gz", 5*time.Minute)
+		require.NoError(t, err)
+
+		assert.Contains(t, url, "snap-bucket")
+		assert.Contains(t, url, "snapshots/2026-07-31/reports.jsonl.gz")
+		assert.Contains(t, url, "X-Amz-Signature=")
+		assert.Contains(t, url, "X-Amz-Expires=300")
+		assert.WithinDuration(t, notBefore.Add(5*time.Minute), expiresAt, 2*time.Second)
+	})
+
+	t.Run("rejects a non-positive ttl", func(t *testing.T) {
+		_, _, err := driver.PresignedGetURL("k", 0)
+		assert.Error(t, err)
+	})
+
+	t.Run("rejects an empty key", func(t *testing.T) {
+		_, _, err := driver.PresignedGetURL("///", time.Minute)
+		assert.Error(t, err)
+	})
 }
 
 // TestS3StorageDriver_Integration exercises Put/Get/Writer against a real

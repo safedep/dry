@@ -76,25 +76,26 @@ default:
 
 ## Rendering an error for the CLI
 
-`AsUsefulError` turns an error into a `UsefulError` with a code, a human message,
-and help text. When the error carries a typed reason, the presentation comes
-from a registered `ReasonPresentation`. When it does not, the generic per code
-converters handle it.
+`tui/errors.ErrorExit` renders a `UsefulError` as a code badge, human message,
+recovery action, and optional reference URL. Normal output hides diagnostic
+details. Verbose output includes them. When the error carries a typed reason,
+the presentation comes from a registered `ReasonPresentation`. When it does
+not, the generic per code converters handle it.
 
 ```go
-if useful, ok := usefulerror.AsUsefulError(err); ok {
-    fmt.Println(useful.HumanError())
-    fmt.Println(useful.Help())
-}
+import tuierrors "github.com/safedep/dry/tui/errors"
+
+tuierrors.ErrorExit(err)
 ```
 
 Applications can register their own presentation or override a default.
 
 ```go
 usefulerror.RegisterReason(errorv1.ErrorReason_ERROR_REASON_PROJECT_NOT_SCANNABLE, usefulerror.ReasonPresentation{
-    Code:       usefulerror.ErrBadRequest,
-    HumanError: "Project not scannable",
-    Help:       "Refresh the project source and retry.",
+    Code:         usefulerror.ErrBadRequest,
+    HumanError:   "Project not scannable",
+    Help:         "Grant the SafeDep GitHub App access to this repository, wait for project sync, then retry.",
+    ReferenceURL: "https://docs.safedep.io/governance/integrations/github",
 })
 ```
 

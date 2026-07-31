@@ -18,6 +18,8 @@ func TestConvertGRPCToUsefulError(t *testing.T) {
 		input             error
 		expectedCode      string
 		expectedHuman     string
+		expectedHelp      string
+		expectedReference string
 		expectConversion  bool
 		additionalHelpSub string // substring expected to be present in AdditionalHelp (optional)
 	}{
@@ -89,6 +91,8 @@ func TestConvertGRPCToUsefulError(t *testing.T) {
 			input:             status.Errorf(codes.Internal, "panic"),
 			expectedCode:      ErrInternalServerError,
 			expectedHuman:     "Internal server error",
+			expectedHelp:      "Retry the operation. If the error continues, contact SafeDep support.",
+			expectedReference: "https://docs.safedep.io/community",
 			expectConversion:  true,
 			additionalHelpSub: "panic",
 		},
@@ -133,6 +137,12 @@ func TestConvertGRPCToUsefulError(t *testing.T) {
 			assert.NotNil(t, result)
 			assert.Equal(t, tt.expectedCode, result.Code(), "unexpected code")
 			assert.Equal(t, tt.expectedHuman, result.HumanError(), "unexpected human error")
+			if tt.expectedHelp != "" {
+				assert.Equal(t, tt.expectedHelp, result.Help(), "unexpected help")
+			}
+			if tt.expectedReference != "" {
+				assert.Equal(t, tt.expectedReference, result.ReferenceURL(), "unexpected reference URL")
+			}
 
 			if tt.additionalHelpSub != "" {
 				// AdditionalHelp may be the gRPC status message; ensure substring present.
@@ -195,7 +205,8 @@ func TestConvertGRPCToUsefulError_ResourceExhausted_WithDetails_FeatureNotAvaila
 	assert.NotNil(t, result)
 	assert.Equal(t, ErrMissingEntitlements, result.Code())
 	assert.Equal(t, "Feature unavailable", result.HumanError())
-	assert.Equal(t, "Feature not available for your subscription tier.", result.Help())
+	assert.Equal(t, "Enable this feature for your subscription or upgrade your plan, then retry.", result.Help())
+	assert.Equal(t, "https://safedep.io/pricing", result.ReferenceURL())
 	assert.Contains(t, result.AdditionalHelp(), "quota exceeded")
 }
 

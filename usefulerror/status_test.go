@@ -188,7 +188,14 @@ func TestAsUsefulError_TypedReasonBeatsGenericCodeConverter(t *testing.T) {
 
 	useful, ok := AsUsefulError(err)
 	require.True(t, ok)
+	assert.Equal(t, ErrBadRequest, useful.Code())
 	assert.Equal(t, "Project not scannable", useful.HumanError())
+	assert.Equal(t,
+		"Grant the SafeDep GitHub App access to this repository, wait for project sync, then retry.",
+		useful.Help())
+	assert.Equal(t,
+		"https://docs.safedep.io/governance/integrations/github",
+		useful.ReferenceURL())
 }
 
 func TestAsUsefulError_UnregisteredReasonFallsBackToCode(t *testing.T) {

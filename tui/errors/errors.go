@@ -8,9 +8,15 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/safedep/dry/tui/icon"
 	"github.com/safedep/dry/tui/output"
 	"github.com/safedep/dry/tui/style"
+	"github.com/safedep/dry/tui/theme"
+	"github.com/safedep/dry/usefulerror"
 )
+
+const unavailableHelpText = "No additional help is available for this error."
 
 // ErrorExit prints the error (verbosity-aware) and exits with code 1.
 func ErrorExit(err error) {
@@ -28,6 +34,11 @@ func ErrorExitWithCode(err error, code int) {
 }
 
 func printError(err error) {
+	if usefulErr, ok := usefulerror.AsUsefulError(err); ok {
+		printUsefulError(usefulErr)
+		return
+	}
+
 	line := style.Error(err.Error())
 	_, _ = fmt.Fprintln(output.Stderr(), line)
 	if output.CurrentVerbosity() >= output.Verbose {
@@ -35,6 +46,44 @@ func printError(err error) {
 			_, _ = fmt.Fprintln(output.Stderr(), style.Faint("  caused by: "+cause.Error()))
 		})
 	}
+}
+
+func printUsefulError(err usefulerror.UsefulError) {
+	summary := fmt.Sprintf("%s %s",
+		style.Badge(theme.RoleCritical, err.Code()),
+		errorText(err.HumanError()))
+	_, _ = fmt.Fprintln(output.Stderr(), summary)
+
+	if help := err.Help(); help != "" && help != unavailableHelpText {
+		printUsefulErrorHint(help)
+	}
+	if referenceURL := err.ReferenceURL(); referenceURL != "" {
+		printUsefulErrorHint("Learn more: " + referenceURL)
+	}
+
+	if output.CurrentVerbosity() < output.Verbose {
+		return
+	}
+	if additionalHelp := err.AdditionalHelp(); additionalHelp != "" && additionalHelp != unavailableHelpText {
+		printUsefulErrorHint(additionalHelp)
+	}
+	if originalError := err.Error(); originalError != "" && originalError != err.HumanError() {
+		_, _ = fmt.Fprintln(output.Stderr(), style.Faint("  caused by: "+originalError))
+	}
+}
+
+func printUsefulErrorHint(message string) {
+	arrow, _ := theme.Default().Icons().Get(icon.KeyArrow)
+	prefix := arrow.Resolve(output.CurrentMode())
+	_, _ = fmt.Fprintln(output.Stderr(), style.Faint(prefix+" "+message))
+}
+
+func errorText(message string) string {
+	if output.CurrentMode() != output.Rich || !output.IsColorEnabled() {
+		return message
+	}
+	color, _ := theme.Default().Palette().ColorByRole(theme.RoleError)
+	return lipgloss.NewStyle().Bold(true).Foreground(color).Render(message)
 }
 
 // walkCauses traverses the error's wrap chain depth-first, invoking fn for

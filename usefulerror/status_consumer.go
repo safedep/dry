@@ -273,8 +273,9 @@ func init() {
 	})
 
 	RegisterReason(errorv1.ErrorReason_ERROR_REASON_PROJECT_NOT_SCANNABLE, ReasonPresentation{
-		Code:       ErrBadRequest,
-		HumanError: "Project not scannable",
-		Help:       "The project has no supported, usable source. Refresh the project source and retry.",
+		Code:         ErrBadRequest,
+		HumanError:   "Project not scannable",
+		Help:         "Grant the SafeDep GitHub App access to this repository, wait for project sync, then retry.",
+		ReferenceURL: "https://docs.safedep.io/governance/integrations/github",
 	})
 }

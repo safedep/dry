@@ -98,6 +98,7 @@ func init() {
 			help := "Reduce request frequency or increase your quota."
 			code := ErrQuotaExceeded
 			humanError := "Quota exceeded"
+			referenceURL := ""
 
 			if errInfo, ok := getErrorInfoFromGrpcStatusDetails(st); ok {
 				switch errInfo.Reason {
@@ -108,9 +109,10 @@ func init() {
 						help = "Feature quota limit exceeded. Upgrade your plan for higher limit"
 						code = ErrRateLimitExceeded
 					case ErrAppQuotaReasonFeatureNotAvailable:
-						help = "Feature not available for your subscription tier."
+						help = "Enable this feature for your subscription or upgrade your plan, then retry."
 						code = ErrMissingEntitlements
 						humanError = "Feature unavailable"
+						referenceURL = "https://safedep.io/pricing"
 					}
 				}
 			}
@@ -119,6 +121,7 @@ func init() {
 				WithCode(code).
 				WithHumanError(humanError).
 				WithHelp(help).
+				WithReferenceURL(referenceURL).
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}
@@ -157,7 +160,8 @@ func init() {
 			return NewUsefulError().
 				WithCode(ErrInternalServerError).
 				WithHumanError("Internal server error").
-				WithHelp("An internal error occurred while processing the request.").
+				WithHelp("Retry the operation. If the error continues, contact SafeDep support.").
+				WithReferenceURL("https://docs.safedep.io/community").
 				WithAdditionalHelp(st.Message()).
 				Wrap(err), true
 		}

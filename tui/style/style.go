@@ -70,6 +70,8 @@ func Badge(r theme.Role, text string) string {
 // Callers pass the semantic role (RoleCritical); we return the bg role (RoleBgCritical).
 func badgeBgFor(r theme.Role) theme.Role {
 	switch r {
+	case theme.RoleError:
+		return theme.RoleBgCritical
 	case theme.RoleCritical:
 		return theme.RoleBgCritical
 	case theme.RoleHigh:

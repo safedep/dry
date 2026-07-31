@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/safedep/dry/tui/output"
+	"github.com/safedep/dry/tui/theme"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStyleStripsColorInPlainMode(t *testing.T) {
@@ -37,4 +37,8 @@ func TestStyleRichEmitsAnsiUnlessNoColor(t *testing.T) {
 	got := Success("done")
 	// In Rich we expect the unicode icon at least.
 	assert.True(t, strings.Contains(got, "✓"))
+}
+
+func TestErrorBadgeUsesDarkBackground(t *testing.T) {
+	assert.Equal(t, theme.RoleBgCritical, badgeBgFor(theme.RoleError))
 }

@@ -9,8 +9,8 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/safedep/dry/tui/icon"
 	"github.com/safedep/dry/tui/output"
+	"github.com/safedep/dry/tui/section"
 	"github.com/safedep/dry/tui/style"
 	"github.com/safedep/dry/tui/theme"
 	"github.com/safedep/dry/usefulerror"
@@ -50,7 +50,7 @@ func printError(err error) {
 
 func printUsefulError(err usefulerror.UsefulError) {
 	summary := fmt.Sprintf("%s %s",
-		style.Badge(theme.RoleCritical, err.Code()),
+		style.Badge(theme.RoleError, err.Code()),
 		errorText(err.HumanError()))
 	_, _ = fmt.Fprintln(output.Stderr(), summary)
 
@@ -73,9 +73,7 @@ func printUsefulError(err usefulerror.UsefulError) {
 }
 
 func printUsefulErrorHint(message string) {
-	arrow, _ := theme.Default().Icons().Get(icon.KeyArrow)
-	prefix := arrow.Resolve(output.CurrentMode())
-	_, _ = fmt.Fprintln(output.Stderr(), style.Faint(prefix+" "+message))
+	_, _ = fmt.Fprintln(output.Stderr(), section.Hint(message))
 }
 
 func errorText(message string) string {

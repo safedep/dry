@@ -30,6 +30,9 @@ type PostgreSqlAdapterConfig struct {
 	// This is an optional pointer to the SqlAdapterConfig struct.
 	// If not supplied, we will use the defaultSqlAdapterConfig.
 	SqlAdapterConfig *SqlAdapterConfig
+
+	// GormLog configures query logging via the log package. Nil uses DefaultGormLogConfig.
+	GormLog *GormLogConfig
 }
 
 type PostgreSqlAdapter struct {
@@ -63,6 +66,7 @@ func NewPostgreSqlAdapter(config PostgreSqlAdapterConfig) (SqlDataAdapter, error
 		// https://gorm.io/docs/connecting_to_the_database.html#PostgreSQL
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
 			TranslateError: config.TranslateError,
+			Logger:         resolveGormLogger(config.GormLog),
 		})
 		if err != nil {
 			log.Debugf("[%d/%d] Failed to connect to PostgreSQL server: %v",

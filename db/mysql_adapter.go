@@ -27,6 +27,9 @@ type MySqlAdapterConfig struct {
 	Username string
 	Password string
 	Database string
+
+	// GormLog configures query logging via the log package. Nil uses DefaultGormLogConfig.
+	GormLog *GormLogConfig
 }
 
 func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
@@ -46,7 +49,9 @@ func NewMySqlAdapter(config MySqlAdapterConfig) (SqlDataAdapter, error) {
 		Count: 30,
 		Sleep: 1 * time.Second,
 	}, func(arg retry.RetryFuncArg) error {
-		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		db, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+			Logger: resolveGormLogger(config.GormLog),
+		})
 		if err != nil {
 			log.Debugf("[%d/%d] Failed to connect to MySQL server: %v",
 				arg.Current, arg.Total, err)

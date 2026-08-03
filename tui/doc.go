@@ -14,6 +14,6 @@
 //   - output.CurrentVerbosity() / output.SetVerbosity(...) — Silent/Normal/Verbose
 //
 // Components live in subpackages: banner, diff, table, spinner, progress,
-// prompt. Each is composable with the top-level helpers; none require touching
-// the theme API for the default SafeDep look.
+// meter, prompt. Each is composable with the top-level helpers; none require
+// touching the theme API for the default SafeDep look.
 package tui

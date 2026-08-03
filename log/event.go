@@ -207,6 +207,21 @@ func (e *Event) Err(err error) {
 	e.level = slog.LevelError
 }
 
+// ErrLevel records an error on the event and sets its level to the given
+// level. Unlike Err, it does not force the level to error, so an entry-point
+// wrapper can classify an expected error (e.g. a gRPC NotFound) below error.
+// Later Err or ErrLevel calls overwrite earlier ones. No-op if e is nil or
+// err is nil.
+func (e *Event) ErrLevel(err error, level slog.Level) {
+	if e == nil || err == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.attrs["error"] = err.Error()
+	e.level = level
+}
+
 // Set records an attribute on the event bound to ctx. No-op if no event.
 func Set(ctx context.Context, key string, value any) {
 	if ev := fromContext(ctx); ev != nil {
@@ -233,6 +248,16 @@ func Counter(ctx context.Context, key string, delta int64) {
 func Err(ctx context.Context, err error) {
 	if ev := fromContext(ctx); ev != nil {
 		ev.Err(err)
+	}
+}
+
+// ErrLevel records an error and sets the event level to the given level,
+// without the unconditional error promotion of Err. Use it at an entry
+// point that classifies expected errors (e.g. a gRPC NotFound) below error.
+// No-op if no event or if err is nil.
+func ErrLevel(ctx context.Context, err error, level slog.Level) {
+	if ev := fromContext(ctx); ev != nil {
+		ev.ErrLevel(err, level)
 	}
 }
 

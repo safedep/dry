@@ -145,7 +145,7 @@ Canonical events work best when they capture *everything you'd want to know abou
 
 - **Always:** `request_id` (or equivalent correlation key), inputs that shape the response (path, method, key params), outcome (status, error class), and a duration.
 - **Often useful:** counts of expensive work (`db.queries`, `external_calls`, `cache.hits`/`cache.misses`), feature flags consumed, auth/tenant identity, downstream service latencies.
-- **Errors:** call `log.Err(ctx, err)` for known failure modes — it sets the canonical line's level to `error` and adds the `error` attribute. Don't `log.Errorf` separately; that emits a second line.
+- **Errors:** call `log.Err(ctx, err)` for known failure modes — it sets the canonical line's level to `error` and adds the `error` attribute. Don't `log.Errorf` separately; that emits a second line. For expected outcomes that should not read as faults (e.g. a gRPC `NotFound` on a lookup, or a `PermissionDenied` from an entitlement check), use `log.ErrLevel(ctx, err, level)` — it records the same `error` attribute but sets the level you pass instead of forcing `error`, so entry-point wrappers can classify by status code.
 - **Counters over repeated calls.** Use `log.Counter(ctx, "db.queries", 1)` in a loop, not `Set` (which overwrites and isn't atomic).
 
 ### What NOT to record

@@ -7,12 +7,14 @@
 // normal command output.
 //
 // Rich mode draws an aligned fill (█) over a track (░) per line; Plain and Agent
-// degrade to one "label: value/max (pct)" line each. A bar is monochrome unless
-// Warn is set, matching the house style where color signals only trouble.
+// degrade to one "label: value/max (pct)" line each. The bar fill is monochrome
+// unless Warn is set — color on the fill signals only trouble. Labels use the
+// muted role like the sibling panel and stat components.
 package meter
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -66,21 +68,23 @@ func renderRich(bars []Bar) string {
 	mutedC, _ := pal.ColorByRole(theme.RoleMuted)
 	labelStyle := lipgloss.NewStyle().Foreground(mutedC)
 
-	// Uniform label column so bars line up across rows.
+	// Uniform label column so bars line up across rows. Width is cell-aware
+	// (lipgloss), and lipgloss pads to that width the same way, so labels with
+	// double-width runes still align — fmt's code-point padding would not.
 	labelW := 0
 	for _, bar := range bars {
 		if w := lipgloss.Width(bar.Label); w > labelW {
 			labelW = w
 		}
 	}
+	labelStyle = labelStyle.Width(labelW)
 
 	var b strings.Builder
 	for i, bar := range bars {
 		if i > 0 {
 			b.WriteByte('\n')
 		}
-		label := labelStyle.Render(fmt.Sprintf("%-*s", labelW, bar.Label))
-		fmt.Fprintf(&b, "%s  %s  %s", label, renderTrack(bar), bar.ValueText)
+		fmt.Fprintf(&b, "%s  %s  %s", labelStyle.Render(bar.Label), renderTrack(bar), bar.ValueText)
 	}
 	return b.String()
 }
@@ -105,8 +109,9 @@ func warnRole(bar Bar) theme.Role {
 	return theme.RoleWarning
 }
 
-// fillCells is the number of filled cells for value out of max over width,
-// clamped to [0, width]. A non-positive max is an empty track.
+// fillCells is the number of filled cells for value out of max over width. A
+// non-positive max is an empty track; a full bar renders only at value >= max,
+// so a sub-max value is capped at width-1 even when rounding would reach width.
 func fillCells(value, max, width int64) int {
 	if max <= 0 || value <= 0 {
 		return 0
@@ -114,15 +119,28 @@ func fillCells(value, max, width int64) int {
 	if value >= max {
 		return int(width)
 	}
-	// Round to the nearest cell so a bar reaches full only at value == max.
-	cells := (value*width + max/2) / max
-	if cells > width {
-		cells = width
+
+	// Nearest-cell rounding, guarding value*width against int64 overflow for very
+	// large values by falling back to float division.
+	var cells int64
+	if value <= (math.MaxInt64-max/2)/width {
+		cells = (value*width + max/2) / max
+	} else {
+		cells = int64(float64(value) / float64(max) * float64(width))
+	}
+
+	// value < max here, so a full bar would be misleading.
+	if cells >= width {
+		cells = width - 1
+	}
+	if cells < 0 {
+		cells = 0
 	}
 	return int(cells)
 }
 
-// percent is value/max as an integer percentage, clamped to [0, 100].
+// percent is value/max as an integer percentage, clamped to [0, 100]. value*100
+// is guarded against int64 overflow the same way as fillCells.
 func percent(value, max int64) int {
 	if max <= 0 || value <= 0 {
 		return 0
@@ -130,5 +148,8 @@ func percent(value, max int64) int {
 	if value >= max {
 		return 100
 	}
-	return int((value * 100) / max)
+	if value <= math.MaxInt64/100 {
+		return int((value * 100) / max)
+	}
+	return int(float64(value) / float64(max) * 100)
 }

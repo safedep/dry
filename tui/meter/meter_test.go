@@ -1,6 +1,7 @@
 package meter
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -79,10 +80,12 @@ func TestFillCells(t *testing.T) {
 		{100, 100, 26},
 		{150, 100, 26}, // clamp over-max
 		{50, 100, 13},
-		{1, 100, 0},  // rounds down to empty
-		{2, 100, 1},  // rounds up to one cell
-		{10, 0, 0},   // non-positive max => empty
-		{-5, 100, 0}, // non-positive value => empty
+		{1, 100, 0},                            // rounds down to empty
+		{2, 100, 1},                            // rounds up to one cell
+		{99, 100, 25},                          // sub-max never renders as full (would round to 26)
+		{10, 0, 0},                             // non-positive max => empty
+		{-5, 100, 0},                           // non-positive value => empty
+		{math.MaxInt64 - 1, math.MaxInt64, 25}, // huge sub-max value: no overflow, capped below full
 	}
 	for _, c := range cases {
 		assert.Equalf(t, c.want, fillCells(c.value, c.max, richBarWidth),
@@ -96,4 +99,8 @@ func TestPercent(t *testing.T) {
 	assert.Equal(t, 100, percent(100, 100))
 	assert.Equal(t, 100, percent(150, 100)) // clamp
 	assert.Equal(t, 0, percent(10, 0))      // non-positive max
+	// Huge sub-max value must not overflow value*100 into a wrong/negative result.
+	huge := percent(math.MaxInt64-1, math.MaxInt64)
+	assert.GreaterOrEqual(t, huge, 99)
+	assert.LessOrEqual(t, huge, 100)
 }

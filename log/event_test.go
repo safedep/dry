@@ -86,6 +86,36 @@ func TestEvent_Err_SetsErrorAttrAndLevel(t *testing.T) {
 	assert.Equal(t, slog.LevelError, ev.level)
 }
 
+func TestEvent_ErrLevel_SetsErrorAttrAndGivenLevel(t *testing.T) {
+	ctx, end := BeginEvent(context.Background(), "x")
+	defer end()
+
+	ErrLevel(ctx, errors.New("boom"), slog.LevelWarn)
+	ev := FromContext(ctx)
+
+	ev.mu.Lock()
+	defer ev.mu.Unlock()
+	assert.Equal(t, "boom", ev.attrs["error"])
+	assert.Equal(t, slog.LevelWarn, ev.level)
+}
+
+func TestEvent_ErrLevel_DoesNotForceError(t *testing.T) {
+	var buf bytes.Buffer
+	prev := globalLogger
+	defer func() { globalLogger = prev }()
+	globalLogger = newSlogTestLogger(t, &buf)
+
+	ctx, end := BeginEvent(context.Background(), "http.request")
+	ErrLevel(ctx, errors.New("resource not found"), slog.LevelInfo)
+	end()
+
+	var got map[string]any
+	err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &got)
+	assert.NoError(t, err)
+	assert.Equal(t, "INFO", got["level"])
+	assert.Equal(t, "resource not found", got["error"])
+}
+
 func TestEvent_Helpers_NoopWhenNoEvent(t *testing.T) {
 	ctx := context.Background()
 	// Must not panic.
@@ -93,6 +123,7 @@ func TestEvent_Helpers_NoopWhenNoEvent(t *testing.T) {
 	SetAttrs(ctx, map[string]any{"a": 1})
 	Counter(ctx, "c", 1)
 	Err(ctx, errors.New("x"))
+	ErrLevel(ctx, errors.New("x"), slog.LevelWarn)
 }
 
 func TestBeginEvent_EmitsOneRecordOnEnd(t *testing.T) {

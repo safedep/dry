@@ -57,6 +57,11 @@ func WithPermanentClassifier(f func(error) bool) RetryOption {
 // budget is exhausted. If dlq is nil, or the dead-letter Store fails, the record
 // is retried instead of skipped — the feed never drops data it could not first
 // persist.
+//
+// The returned ErrorHandler is stateful (it closes over the last record's
+// fingerprint and attempt count) and is NOT safe for concurrent use: create one
+// per Consume call. Consume invokes its handler single-threaded, so a per-feed
+// policy needs no locking; sharing one across feeds would race and mix budgets.
 func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 	cfg := retryConfig{maxAttempts: DefaultMaxAttempts}
 	for _, o := range opts {
@@ -77,7 +82,7 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 			attempts = 1
 		}
 
-		permanent := cfg.permanent != nil && cfg.permanent(rootCause(cause))
+		permanent := cause != nil && cfg.permanent != nil && cfg.permanent(rootCause(cause))
 		if !permanent && attempts < cfg.maxAttempts {
 			return Retry
 		}
@@ -91,7 +96,7 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 
 		if err := dlq.Store(ctx, DeadLetterRecord{
 			Payload:  d.Payload,
-			Error:    cause.Error(),
+			Error:    errString(cause),
 			Attempts: attempts,
 		}); err != nil {
 			log.Warnf("inbox: dead-letter store failed (record will be retried): %v", err)
@@ -103,6 +108,15 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 		log.Debugf("inbox: dead-lettered record after %d attempt(s): %v", attempts, cause)
 		return Skip
 	}
+}
+
+// errString is cause.Error() guarded against a nil error. Consume always passes a
+// non-nil cause today; this keeps the exported policy panic-safe against misuse.
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 // rootCause unwraps err to the deepest error in its chain, so a classifier sees

@@ -66,6 +66,9 @@ func Replay[T proto.Message](
 	var res ReplayResult
 	afterID := f.AfterID
 	for {
+		if err := ctx.Err(); err != nil {
+			return res, err
+		}
 		page := f
 		page.AfterID = afterID
 		rows, err := reader.List(ctx, page)
@@ -76,6 +79,12 @@ func Replay[T proto.Message](
 			return res, nil
 		}
 		for i := range rows {
+			// Stop before touching the next buffered row once the caller cancels:
+			// otherwise a context-unaware handler runs side effects past the cancel
+			// while the context-aware delete fails and re-parks the row.
+			if err := ctx.Err(); err != nil {
+				return res, err
+			}
 			row := rows[i]
 			// Advance the cursor past every row we touch, including failures, so a
 			// permanently-failing record is not re-listed on the next page — that

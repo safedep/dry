@@ -164,6 +164,57 @@ func TestReplay_DrainsAllPages(t *testing.T) {
 	assert.Equal(t, int64(0), n)
 }
 
+func TestReplay_AlreadyCancelledContextDoesNothing(t *testing.T) {
+	adapter := newTestAdapter(t)
+	seedDeadLetter(t, adapter, "consumer-a", inbox.DeadLetterRecord{Payload: eventBytes(t, "e1"), EventID: "e1"})
+	reader := newDeadLetterReader(t, adapter, "consumer-a")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	called := false
+	handler := func(_ context.Context, _ *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+		called = true
+		return nil
+	}
+
+	res, err := inbox.Replay(ctx, reader, newObservation, handler, inbox.DeadLetterFilter{})
+	require.ErrorIs(t, err, context.Canceled)
+	assert.False(t, called, "no handler runs under an already-cancelled context")
+	assert.Equal(t, 0, res.Succeeded)
+
+	n, err := reader.Count(t.Context(), inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "the record stays parked")
+}
+
+// Cancelling mid-drain stops before the next buffered row: a context-unaware
+// handler must not keep running side effects after the caller cancels.
+func TestReplay_StopsMidPageOnCancellation(t *testing.T) {
+	adapter := newTestAdapter(t)
+	seedDeadLetter(t, adapter, "consumer-a",
+		inbox.DeadLetterRecord{Payload: eventBytes(t, "e1"), EventID: "e1"},
+		inbox.DeadLetterRecord{Payload: eventBytes(t, "e2"), EventID: "e2"},
+		inbox.DeadLetterRecord{Payload: eventBytes(t, "e3"), EventID: "e3"},
+	)
+	reader := newDeadLetterReader(t, adapter, "consumer-a")
+
+	// Default limit pulls all three into one page, so the per-row guard — not a
+	// List error on the next page — is what stops the loop.
+	ctx, cancel := context.WithCancel(t.Context())
+	count := 0
+	handler := func(_ context.Context, _ *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+		count++
+		cancel()
+		return nil
+	}
+
+	res, err := inbox.Replay(ctx, reader, newObservation, handler, inbox.DeadLetterFilter{})
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, count, "handler runs for the cancelling row, then the loop stops")
+	assert.Len(t, res.Outcomes, 1, "no outcome recorded for the skipped rows")
+}
+
 // A permanently-failing record between good ones must not stall the drain: Replay
 // advances past it (rather than re-listing it forever) and still clears the rest.
 func TestReplay_AdvancesPastPersistentFailure(t *testing.T) {

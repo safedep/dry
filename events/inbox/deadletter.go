@@ -66,10 +66,10 @@ type gormDeadLetter struct {
 
 var _ DeadLetterQueue = &gormDeadLetter{}
 
-// NewGormDeadLetter builds a consumer-scoped DeadLetterQueue over the consumer's
-// SQL adapter. The consumer name is bound here so Store stays keyless, mirroring
-// NewGormDedup.
-func NewGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (DeadLetterQueue, error) {
+// newGormDeadLetter builds the consumer-scoped gorm store both the write
+// (DeadLetterQueue) and read (DeadLetterReader) sides share, so their validation
+// stays in one place.
+func newGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (*gormDeadLetter, error) {
 	if adapter == nil {
 		return nil, fmt.Errorf("inbox: dead-letter queue: adapter is required")
 	}
@@ -82,6 +82,13 @@ func NewGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (DeadLett
 		return nil, fmt.Errorf("inbox: dead-letter queue: %w", err)
 	}
 	return &gormDeadLetter{db: gdb, consumerName: consumerName}, nil
+}
+
+// NewGormDeadLetter builds a consumer-scoped DeadLetterQueue over the consumer's
+// SQL adapter. The consumer name is bound here so Store stays keyless, mirroring
+// NewGormDedup.
+func NewGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (DeadLetterQueue, error) {
+	return newGormDeadLetter(adapter, consumerName)
 }
 
 func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error {

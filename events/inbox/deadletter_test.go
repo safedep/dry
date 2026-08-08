@@ -2,6 +2,7 @@ package inbox_test
 
 import (
 	"testing"
+	"unicode/utf8"
 
 	"github.com/safedep/dry/events/inbox"
 	"github.com/stretchr/testify/assert"
@@ -79,6 +80,39 @@ func TestGormDeadLetter_DistinctPayloadsAndConsumersCoexist(t *testing.T) {
 	var count int64
 	require.NoError(t, gdb.Model(&inbox.DeadLetter{}).Count(&count).Error)
 	assert.Equal(t, int64(3), count)
+}
+
+func TestGormDeadLetter_RejectsEmptyPayload(t *testing.T) {
+	q, err := inbox.NewGormDeadLetter(newTestAdapter(t), "consumer-a")
+	require.NoError(t, err)
+
+	require.Error(t, q.Store(t.Context(), inbox.DeadLetterRecord{Payload: nil, Error: "e"}),
+		"payload is the record and the dedup key; nil must be rejected, not stored under a constant hash")
+}
+
+func TestGormDeadLetter_SanitizesTextColumns(t *testing.T) {
+	adapter := newTestAdapter(t)
+	q, err := inbox.NewGormDeadLetter(adapter, "consumer-a")
+	require.NoError(t, err)
+
+	// The error string carries the very poison that failed the handler: a NUL and
+	// an invalid UTF-8 byte. Postgres would reject those in a text column, sinking
+	// the dead-letter insert — so they must be stripped before persistence.
+	require.NoError(t, q.Store(t.Context(), inbox.DeadLetterRecord{
+		Payload: []byte("raw\x00bytes"),
+		Error:   "bad\x00utf\xff8",
+	}))
+
+	gdb, err := adapter.GetDB()
+	require.NoError(t, err)
+	var row inbox.DeadLetter
+	require.NoError(t, gdb.First(&row).Error)
+
+	assert.NotContains(t, row.Error, "\x00")
+	assert.True(t, utf8.ValidString(row.Error), "error column must be valid UTF-8")
+	assert.Equal(t, "badutf8", row.Error)
+	// Payload is bytea: stored verbatim, NUL and all — the lossless replay source.
+	assert.Equal(t, []byte("raw\x00bytes"), row.Payload)
 }
 
 // Migrate is idempotent — a second call over the same DB must not error.

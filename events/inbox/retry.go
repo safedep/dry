@@ -2,12 +2,14 @@ package inbox
 
 import (
 	"context"
+	"errors"
 
 	"github.com/safedep/dry/log"
 )
 
-// DefaultMaxAttempts is the retry budget NewRetryPolicy uses when the caller does
-// not set one: a record is retried this many times before it is dead-lettered.
+// DefaultMaxAttempts is the delivery budget NewRetryPolicy uses when the caller
+// does not set one: the total number of failed deliveries a record gets — the
+// last of which dead-letters it — so it is retried DefaultMaxAttempts-1 times.
 const DefaultMaxAttempts = 4
 
 type retryConfig struct {
@@ -18,9 +20,9 @@ type retryConfig struct {
 // RetryOption configures NewRetryPolicy.
 type RetryOption func(*retryConfig)
 
-// WithMaxAttempts sets the retry budget before a record is dead-lettered. Values
-// below 1 are ignored (the default stands), so a record is always tried at least
-// once.
+// WithMaxAttempts sets the total number of failed deliveries a record gets before
+// it is dead-lettered (so retries = n-1). Values below 1 are ignored (the default
+// stands), so a record is always tried at least once.
 func WithMaxAttempts(n int) RetryOption {
 	return func(c *retryConfig) {
 		if n >= 1 {
@@ -33,7 +35,9 @@ func WithMaxAttempts(n int) RetryOption {
 // whether an error is permanent (a poison record that will never succeed). When
 // it returns true the record is dead-lettered immediately, skipping the retry
 // budget. This is the seam for transport- or storage-specific knowledge (e.g. a
-// Postgres data-exception SQLSTATE) so the generic policy stays free of it.
+// Postgres data-exception SQLSTATE) so the generic policy stays free of it. The
+// predicate receives the unwrapped root cause (Consume wraps handler/decode
+// errors), so both typed (errors.As) and message-based checks work.
 func WithPermanentClassifier(f func(error) bool) RetryOption {
 	return func(c *retryConfig) { c.permanent = f }
 }
@@ -73,7 +77,7 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 			attempts = 1
 		}
 
-		permanent := cfg.permanent != nil && cfg.permanent(cause)
+		permanent := cfg.permanent != nil && cfg.permanent(rootCause(cause))
 		if !permanent && attempts < cfg.maxAttempts {
 			return Retry
 		}
@@ -94,7 +98,22 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 			return Retry
 		}
 
-		log.Warnf("inbox: dead-lettered record after %d attempt(s): %v", attempts, cause)
+		// Debug, not Warn: dispose already logs a Warn when it acts on Skip, so a
+		// Warn here would double-log every dead-lettered record.
+		log.Debugf("inbox: dead-lettered record after %d attempt(s): %v", attempts, cause)
 		return Skip
+	}
+}
+
+// rootCause unwraps err to the deepest error in its chain, so a classifier sees
+// the underlying transport/storage error rather than Consume's "handler: %w" /
+// "decode: %w" wrapper.
+func rootCause(err error) error {
+	for {
+		u := errors.Unwrap(err)
+		if u == nil {
+			return err
+		}
+		err = u
 	}
 }

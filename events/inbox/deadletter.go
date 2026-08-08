@@ -2,9 +2,10 @@ package inbox
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"hash/fnv"
-	"strconv"
+	"strings"
 	"time"
 
 	"github.com/safedep/dry/db"
@@ -81,15 +82,24 @@ func NewGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (DeadLett
 }
 
 func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error {
+	if len(rec.Payload) == 0 {
+		// Payload is the record we must not lose and the dedup key; an empty one is
+		// a caller bug, not a record to persist under a constant "empty" hash.
+		return fmt.Errorf("inbox: dead-letter store: payload is required")
+	}
 	row := DeadLetter{
 		ConsumerName: q.consumerName,
 		PayloadHash:  payloadFingerprint(rec.Payload),
-		Feed:         rec.Feed,
-		EventID:      rec.EventID,
+		Feed:         sanitizeForText(rec.Feed),
+		EventID:      sanitizeForText(rec.EventID),
 		Payload:      rec.Payload,
-		Error:        rec.Error,
-		Attempts:     rec.Attempts,
-		FailedAt:     time.Now(),
+		// The error string can itself carry a NUL or invalid UTF-8 (the very poison
+		// that triggered the failure), which Postgres would reject — sinking the
+		// dead-letter insert and defeating the whole point. Sanitize the text
+		// columns; the raw bytes stay untouched in Payload.
+		Error:    sanitizeForText(rec.Error),
+		Attempts: rec.Attempts,
+		FailedAt: time.Now(),
 	}
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
 	// dead-letter is a no-op rather than a duplicate row or an error.
@@ -104,9 +114,20 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 
 // payloadFingerprint is a stable content key over a raw record. Redeliveries of
 // the same bytes fingerprint identically, which backs both the retry policy's
-// consecutive-failure counter and the dead-letter table's dedup key.
+// consecutive-failure counter and the dead-letter table's dedup key. SHA-256 (not
+// a 64-bit hash) so a collision can't make a distinct poison record dedup away as
+// "already stored" and get skipped — that would be silent data loss.
 func payloadFingerprint(payload []byte) string {
-	h := fnv.New64a()
-	_, _ = h.Write(payload)
-	return strconv.FormatUint(h.Sum64(), 16)
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+// sanitizeForText makes a diagnostic string safe for a Postgres text column,
+// which rejects NUL (0x00) and invalid UTF-8. Only the human-readable columns are
+// coerced; the raw record is preserved verbatim in the bytea payload column.
+func sanitizeForText(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "")
 }

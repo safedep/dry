@@ -3,6 +3,7 @@ package inbox_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
@@ -56,6 +57,21 @@ func TestRetryPolicy_PermanentClassifierDeadLettersImmediately(t *testing.T) {
 	assert.Equal(t, inbox.Skip, policy(t.Context(), delivery("p"), errors.New("permanent")))
 	require.Len(t, dlq.stored, 1, "permanent error skips the retry budget")
 	assert.Equal(t, 1, dlq.stored[0].Attempts)
+}
+
+func TestRetryPolicy_ClassifierSeesUnwrappedRootCause(t *testing.T) {
+	dlq := &fakeDLQ{}
+	// A message-equality classifier only works if it receives the root cause, not
+	// Consume's wrapped "handler: ..." chain.
+	permanent := func(err error) bool { return err.Error() == "permanent-root" }
+	policy := inbox.NewRetryPolicy(dlq, inbox.WithMaxAttempts(5), inbox.WithPermanentClassifier(permanent))
+
+	wrapped := fmt.Errorf("handler: %w", fmt.Errorf("save investigation: %w", errors.New("permanent-root")))
+	assert.Equal(t, inbox.Skip, policy(t.Context(), delivery("p"), wrapped),
+		"classifier must see the unwrapped root cause and dead-letter immediately")
+	require.Len(t, dlq.stored, 1)
+	// The stored diagnostic keeps the full wrapped chain for triage.
+	assert.Contains(t, dlq.stored[0].Error, "handler:")
 }
 
 func TestRetryPolicy_TransientErrorRetriesUnderClassifier(t *testing.T) {

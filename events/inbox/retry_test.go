@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
@@ -151,6 +152,7 @@ func TestConsume_RetryPolicyDeadLettersPoisonRecord(t *testing.T) {
 	dlq := &fakeDLQ{}
 	err := inbox.Consume(t.Context(), src, newObservation, handler,
 		inbox.WithErrorHandler(inbox.NewRetryPolicy(dlq, inbox.WithMaxAttempts(3))),
+		inbox.WithRedeliveryBackoff(time.Millisecond, 2*time.Millisecond),
 	)
 	require.ErrorIs(t, err, context.Canceled)
 

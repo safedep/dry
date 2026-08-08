@@ -69,7 +69,7 @@ type fakeDedup struct{ marked map[string]bool }
 func newFakeDedup() *fakeDedup { return &fakeDedup{marked: map[string]bool{}} }
 
 func (f *fakeDedup) Seen(_ context.Context, id string) (bool, error) { return f.marked[id], nil }
-func (f *fakeDedup) Mark(_ context.Context, id string) error        { f.marked[id] = true; return nil }
+func (f *fakeDedup) Mark(_ context.Context, id string) error         { f.marked[id] = true; return nil }
 
 func TestConsume_HandleThenAck(t *testing.T) {
 	src := &fakeSource{steps: []step{
@@ -184,6 +184,27 @@ func TestConsume_DedupSkipsDuplicateEventID(t *testing.T) {
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, 1, calls, "duplicate event_id must not re-run the handler")
 	assert.Equal(t, 2, src.acks, "both the original and the skipped duplicate advance")
+}
+
+func TestConsume_RedeliveryBackoffPacesRepeatedFailures(t *testing.T) {
+	// The same record failing three times: the first redelivery is immediate,
+	// the next two wait 20ms and 40ms. Only the lower bound is asserted — timers
+	// never fire early, so this cannot flake on a slow machine.
+	payload := eventBytes(t, "evt-poison")
+	src := &fakeSource{steps: []step{{payload: payload}, {payload: payload}, {payload: payload}}}
+
+	handler := func(_ context.Context, _ *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+		return errors.New("boom")
+	}
+
+	start := time.Now()
+	err := inbox.Consume(t.Context(), src, newObservation, handler,
+		inbox.WithRedeliveryBackoff(20*time.Millisecond, 80*time.Millisecond))
+	elapsed := time.Since(start)
+
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 3, src.nacks)
+	assert.GreaterOrEqual(t, elapsed, 60*time.Millisecond, "second and third redeliveries are paced")
 }
 
 func TestConsume_Validation(t *testing.T) {

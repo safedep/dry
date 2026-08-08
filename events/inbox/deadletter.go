@@ -38,9 +38,12 @@ type DeadLetter struct {
 
 func (DeadLetter) TableName() string { return "event_inbox_dead_letter" }
 
-// DeadLetterRecord is the input to DeadLetterQueue.Store. Payload is required and
-// is the source of truth; EventID and Feed are optional context populated only
-// when the caller has decoded the envelope.
+// DeadLetterRecord is the input to DeadLetterQueue.Store. Payload is the raw
+// record and the source of truth; EventID and Feed are optional context populated
+// only when the caller has decoded the envelope. An empty payload is accepted on
+// purpose: a zero-length poison record (e.g. one whose envelope won't decode)
+// must still be dead-letterable, or the feed it blocks could never advance — the
+// exact stall this package exists to prevent.
 type DeadLetterRecord struct {
 	Payload  []byte
 	Error    string
@@ -82,11 +85,9 @@ func NewGormDeadLetter(adapter db.SqlDataAdapter, consumerName string) (DeadLett
 }
 
 func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error {
-	if len(rec.Payload) == 0 {
-		// Payload is the record we must not lose and the dedup key; an empty one is
-		// a caller bug, not a record to persist under a constant "empty" hash.
-		return fmt.Errorf("inbox: dead-letter store: payload is required")
-	}
+	// An empty payload is stored, not rejected: SHA-256 of empty is still a stable
+	// dedup key, and refusing it would make the retry policy loop forever on a
+	// zero-length poison record (Store error -> Retry) — reintroducing the stall.
 	row := DeadLetter{
 		ConsumerName: q.consumerName,
 		PayloadHash:  payloadFingerprint(rec.Payload),

@@ -82,12 +82,23 @@ func TestGormDeadLetter_DistinctPayloadsAndConsumersCoexist(t *testing.T) {
 	assert.Equal(t, int64(3), count)
 }
 
-func TestGormDeadLetter_RejectsEmptyPayload(t *testing.T) {
-	q, err := inbox.NewGormDeadLetter(newTestAdapter(t), "consumer-a")
+func TestGormDeadLetter_StoresEmptyPayload(t *testing.T) {
+	adapter := newTestAdapter(t)
+	q, err := inbox.NewGormDeadLetter(adapter, "consumer-a")
 	require.NoError(t, err)
 
-	require.Error(t, q.Store(t.Context(), inbox.DeadLetterRecord{Payload: nil, Error: "e"}),
-		"payload is the record and the dedup key; nil must be rejected, not stored under a constant hash")
+	// A zero-length poison record must be dead-letterable: rejecting it would make
+	// the retry policy loop forever (Store error -> Retry), the exact stall this
+	// package prevents.
+	require.NoError(t, q.Store(t.Context(), inbox.DeadLetterRecord{Payload: nil, Error: "no envelope"}))
+
+	gdb, err := adapter.GetDB()
+	require.NoError(t, err)
+	var rows []inbox.DeadLetter
+	require.NoError(t, gdb.Find(&rows).Error)
+	require.Len(t, rows, 1)
+	assert.NotEmpty(t, rows[0].PayloadHash, "empty payload still gets a stable dedup key")
+	assert.Equal(t, "no envelope", rows[0].Error)
 }
 
 func TestGormDeadLetter_SanitizesTextColumns(t *testing.T) {

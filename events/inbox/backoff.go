@@ -30,8 +30,9 @@ func (b *redeliveryBackoff) next(key string) time.Duration {
 	switch {
 	case b.delay == 0:
 		b.delay = b.base
-	case b.delay >= b.max/2:
-		// Doubling would overshoot the cap (or overflow the duration).
+	case b.delay > b.max/2:
+		// Doubling would overshoot the cap (or overflow the duration). The strict
+		// comparison lets delay == max/2 double to exactly max.
 		b.delay = b.max
 	default:
 		b.delay *= 2

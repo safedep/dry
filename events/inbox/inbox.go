@@ -55,6 +55,18 @@ type Delivery struct {
 	Payload []byte
 	Ack     func() error
 	Nack    func() error
+
+	// fp memoizes fingerprint(); a failing record's fingerprint is needed by both
+	// the retry policy and the redelivery backoff.
+	fp string
+}
+
+// fingerprint returns payloadFingerprint(Payload), computed once per Delivery.
+func (d *Delivery) fingerprint() string {
+	if d.fp == "" {
+		d.fp = payloadFingerprint(d.Payload)
+	}
+	return d.fp
 }
 
 // Disposition is the error policy's verdict for a failed record.
@@ -205,9 +217,11 @@ func Consume[T proto.Message](ctx context.Context, source Source, newEvent func(
 
 		// The record was not acked and redelivers as the very next Receive. Pace
 		// consecutive redeliveries of the same record so a poison record cannot
-		// spin the reopen loop at full speed.
-		if delay := backoff.next(payloadFingerprint(d.Payload)); delay > 0 {
-			log.Debugf("inbox: pacing redelivery by %s", delay)
+		// spin the reopen loop at full speed. Warn (not debug) so an operator can
+		// see the backoff is engaged and at what delay without redeploying; the
+		// fingerprint prefix correlates with the dead-letter row's PayloadHash.
+		if delay := backoff.next(d.fingerprint()); delay > 0 {
+			log.Warnf("inbox: pacing redelivery of record %s by %s", shortFingerprint(d.fingerprint()), delay)
 			if !sleepCtx(ctx, delay) {
 				return ctx.Err()
 			}

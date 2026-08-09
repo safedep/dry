@@ -8,6 +8,11 @@ import "time"
 // same record then wait base, 2*base, ... capped at max. A different record or
 // a reset clears the escalation.
 //
+// Like NewRetryPolicy, this assumes the Source redelivers a Nack'd record as
+// the very next Receive (the sequential S2 model), so a consecutive-hit counter
+// over the last-seen fingerprint suffices. A Source that interleaves other
+// records before redelivering would reset the key each time and escape pacing.
+//
 // This bounds poison-record read amplification at the source: on S2 every
 // redelivery reopens a streaming read session at the stalled cursor and the
 // server re-pushes the backlog behind it, so unpaced retries of a permanently

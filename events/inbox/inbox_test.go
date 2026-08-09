@@ -207,6 +207,36 @@ func TestConsume_RedeliveryBackoffPacesRepeatedFailures(t *testing.T) {
 	assert.GreaterOrEqual(t, elapsed, 60*time.Millisecond, "second and third redeliveries are paced")
 }
 
+func TestConsume_AckFailurePacesRedelivery(t *testing.T) {
+	// The handler succeeds but the ack (cursor advance) fails, so the record
+	// redelivers: the same pacing must apply, or a cursor-store outage spins the
+	// tight reopen cycle a poison record does. Three deliveries of one record
+	// sleep 0, 20ms and 40ms; only the lower bound is asserted.
+	payload := eventBytes(t, "evt-ack-fail")
+	src := &fakeSource{steps: []step{
+		{payload: payload, ackErr: errors.New("cursor store down")},
+		{payload: payload, ackErr: errors.New("cursor store down")},
+		{payload: payload, ackErr: errors.New("cursor store down")},
+	}}
+
+	calls := 0
+	handler := func(_ context.Context, _ *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+		calls++
+		return nil
+	}
+
+	start := time.Now()
+	err := inbox.Consume(t.Context(), src, newObservation, handler,
+		inbox.WithRedeliveryBackoff(20*time.Millisecond, 80*time.Millisecond))
+	elapsed := time.Since(start)
+
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 3, calls, "the handler re-runs on each redelivery")
+	assert.Equal(t, 3, src.acks, "each attempt tries to ack")
+	assert.Equal(t, 0, src.nacks, "an ack failure is not a Nack")
+	assert.GreaterOrEqual(t, elapsed, 60*time.Millisecond, "ack-failure redeliveries are paced")
+}
+
 func TestConsume_Validation(t *testing.T) {
 	handler := func(_ context.Context, _ *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
 		return nil

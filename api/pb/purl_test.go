@@ -61,6 +61,20 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "6.1.3",
 		},
 		{
+			name:          "gitlab repository",
+			purl:          "pkg:gitlab/inkscape/inkscape@1.2",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
+			wantName:      "inkscape/inkscape",
+			wantVersion:   "1.2",
+		},
+		{
+			name:          "bitbucket repository",
+			purl:          "pkg:bitbucket/birkenfeld/pygments-main@244fd47",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY,
+			wantName:      "birkenfeld/pygments-main",
+			wantVersion:   "244fd47",
+		},
+		{
 			name:          "vscode extensions - vscode",
 			purl:          "pkg:vscode/pub.ext@1.0.0",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_VSCODE,
@@ -260,6 +274,8 @@ func TestEcosystemToPurlType(t *testing.T) {
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, packageurl.TypeComposer, false},
 		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packageurl.TypeGithub, false},
 		{"github repository", packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, packageurl.TypeGithub, false},
+		{"gitlab repository", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, packageurl.TypeGitlab, false},
+		{"bitbucket repository", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, packageurl.TypeBitbucket, false},
 		{"vscode", packagev1.Ecosystem_ECOSYSTEM_VSCODE, "vscode", false},
 		{"openvsx", packagev1.Ecosystem_ECOSYSTEM_OPENVSX, "openvsx", false},
 		{"unspecified errors", packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "", true},
@@ -303,6 +319,10 @@ func TestPurl(t *testing.T) {
 		// Both split the namespace on "/" and render under the "github" purl type.
 		{"github actions", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"), "pkg:github/actions/checkout@v4", false},
 		{"github repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"), "pkg:github/safedep/vet@v1.0.0", false},
+		// GitLab/Bitbucket repositories are "owner/repo"; split the namespace on
+		// "/" and render under the "gitlab"/"bitbucket" purl types.
+		{"gitlab repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "inkscape/inkscape", "1.2"), "pkg:gitlab/inkscape/inkscape@1.2", false},
+		{"bitbucket repository", pv(packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "birkenfeld/pygments-main", "244fd47"), "pkg:bitbucket/birkenfeld/pygments-main@244fd47", false},
 		// VSCode/OpenVSX have no namespace convention here, so the name is used verbatim.
 		{"vscode", pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"), "pkg:vscode/ms-python.python@2024.0.0", false},
 		{"no version", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", ""), "pkg:pypi/requests", false},

@@ -106,6 +106,10 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 		return packagev1.Ecosystem_ECOSYSTEM_PACKAGIST
 	case packageurl.TypeGithub, "actions":
 		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
+	case packageurl.TypeGitlab:
+		return packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY
+	case packageurl.TypeBitbucket:
+		return packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY
 	// https://github.com/package-url/purl-spec/issues/287
 	case "vscode", "vsix", "vsx":
 		return packagev1.Ecosystem_ECOSYSTEM_VSCODE
@@ -126,7 +130,9 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 		return purl.Namespace + "/" + purl.Name
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
 		return purl.Namespace + ":" + purl.Name
-	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
+		packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY:
 		return purl.Namespace + "/" + purl.Name
 	default:
 		return purl.Name
@@ -163,6 +169,10 @@ func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		return packageurl.TypeGithub, nil
+	case packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:
+		return packageurl.TypeGitlab, nil
+	case packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY:
+		return packageurl.TypeBitbucket, nil
 	case packagev1.Ecosystem_ECOSYSTEM_VSCODE:
 		return "vscode", nil
 	case packagev1.Ecosystem_ECOSYSTEM_OPENVSX:
@@ -207,7 +217,9 @@ func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) 
 	case packagev1.Ecosystem_ECOSYSTEM_GO,
 		packagev1.Ecosystem_ECOSYSTEM_NPM,
 		packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
-		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
+		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
+		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
+		packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY:
 		if i := strings.LastIndex(name, "/"); i >= 0 {
 			return name[:i], name[i+1:]
 		}

@@ -323,9 +323,6 @@ func (c *SyncClient) CheckIn(ctx context.Context) error {
 		return c.transport.CheckIn(ctx, req)
 	})
 	if err != nil {
-		if status.Code(err) == codes.Unimplemented {
-			return fmt.Errorf("endpointsync: check-in not supported by server: %w", err)
-		}
 		return fmt.Errorf("endpointsync: check-in failed: %w", err)
 	}
 

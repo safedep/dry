@@ -309,6 +309,10 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 // An Unimplemented error means an older server: the caller should treat
 // it as a soft failure.
 func (c *SyncClient) CheckIn(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("endpointsync: check-in cancelled: %w", err)
+	}
+
 	req := &servicev1.CheckInRequest{
 		Endpoint:    c.identity,
 		ToolName:    c.toolName,
@@ -319,6 +323,9 @@ func (c *SyncClient) CheckIn(ctx context.Context) error {
 		return c.transport.CheckIn(ctx, req)
 	})
 	if err != nil {
+		if status.Code(err) == codes.Unimplemented {
+			return fmt.Errorf("endpointsync: check-in not supported by server: %w", err)
+		}
 		return fmt.Errorf("endpointsync: check-in failed: %w", err)
 	}
 

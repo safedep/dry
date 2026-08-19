@@ -14,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/safedep/dry/log"
 	gobreaker "github.com/sony/gobreaker/v2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -29,10 +31,11 @@ func isValidToolName(name string) bool {
 // SyncClient handles reliable event sync to SafeDep Cloud.
 type SyncClient struct {
 	*eventWriter
-	transport EventTransport
-	identity  *controltowerv1.EndpointIdentity
-	config    *syncConfig
-	breaker   *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+	transport      EventTransport
+	identity       *controltowerv1.EndpointIdentity
+	config         *syncConfig
+	breaker        *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+	checkInBreaker *gobreaker.CircuitBreaker[*servicev1.CheckInResponse]
 }
 
 // EventEmitterClient creates ToolEvents and persists them to the local WAL.
@@ -86,12 +89,31 @@ func NewSyncClient(toolName string, toolVersion string, transport EventTransport
 		},
 	})
 
+	// CheckIn gets its own breaker so a failing check-in path can never
+	// block event sync. Unimplemented is not a failure: it means an older
+	// server that does not know the RPC yet.
+	checkInBreaker := gobreaker.NewCircuitBreaker[*servicev1.CheckInResponse](gobreaker.Settings{
+		Name:        fmt.Sprintf("endpointsync-checkin-%s", toolName),
+		MaxRequests: 1,
+		Timeout:     5 * time.Minute,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+		IsSuccessful: func(err error) bool {
+			return err == nil || status.Code(err) == codes.Unimplemented
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			log.Infof("Circuit breaker %s: %s -> %s", name, from, to)
+		},
+	})
+
 	return &SyncClient{
-		eventWriter: writer,
-		transport:   transport,
-		identity:    endpointIdentity,
-		config:      cfg,
-		breaker:     breaker,
+		eventWriter:    writer,
+		transport:      transport,
+		identity:       endpointIdentity,
+		config:         cfg,
+		breaker:        breaker,
+		checkInBreaker: checkInBreaker,
 	}, nil
 }
 
@@ -280,6 +302,31 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 			return totalSynced, nil
 		}
 	}
+}
+
+// CheckIn reports endpoint presence to the server without events. The
+// caller decides when to call it; this client holds no cooldown state.
+// An Unimplemented error means an older server: the caller should treat
+// it as a soft failure.
+func (c *SyncClient) CheckIn(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("endpointsync: check-in cancelled: %w", err)
+	}
+
+	req := &servicev1.CheckInRequest{
+		Endpoint:    c.identity,
+		ToolName:    c.toolName,
+		ToolVersion: c.toolVersion,
+	}
+
+	_, err := c.checkInBreaker.Execute(func() (*servicev1.CheckInResponse, error) {
+		return c.transport.CheckIn(ctx, req)
+	})
+	if err != nil {
+		return fmt.Errorf("endpointsync: check-in failed: %w", err)
+	}
+
+	return nil
 }
 
 // Close releases resources.

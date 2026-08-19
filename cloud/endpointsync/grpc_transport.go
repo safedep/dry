@@ -24,6 +24,10 @@ func (t *grpcTransport) Send(ctx context.Context, req *servicev1.SyncEventsReque
 	return t.client.SyncEvents(ctx, req)
 }
 
+func (t *grpcTransport) CheckIn(ctx context.Context, req *servicev1.CheckInRequest) (*servicev1.CheckInResponse, error) {
+	return t.client.CheckIn(ctx, req)
+}
+
 func (t *grpcTransport) Close() error {
 	return nil // Connection lifecycle managed by cloud.Client
 }

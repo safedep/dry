@@ -342,3 +342,57 @@ func TestPurl(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalPackageName(t *testing.T) {
+	const (
+		flask         = "flask"
+		zopeInterface = "zope-interface"
+	)
+
+	cases := []struct {
+		name      string
+		ecosystem packagev1.Ecosystem
+		raw       string
+		want      string
+	}{
+		// PEP 503: lower case, and every run of - _ . folds to one hyphen.
+		{"pypi upper case", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask", flask},
+		{"pypi already canonical", packagev1.Ecosystem_ECOSYSTEM_PYPI, "flask", flask},
+		{"pypi dot", packagev1.Ecosystem_ECOSYSTEM_PYPI, "zope.interface", zopeInterface},
+		{"pypi hyphen", packagev1.Ecosystem_ECOSYSTEM_PYPI, "zope-interface", zopeInterface},
+		{"pypi underscore", packagev1.Ecosystem_ECOSYSTEM_PYPI, "zope_interface", zopeInterface},
+		{"pypi mixed run", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Zope._-.Interface", zopeInterface},
+		{"pypi trailing separator", packagev1.Ecosystem_ECOSYSTEM_PYPI, "name.", "name-"},
+		{"pypi empty", packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""},
+
+		// Lower case only. A separator is part of the name.
+		{"npm upper case", packagev1.Ecosystem_ECOSYSTEM_NPM, "Express", "express"},
+		{"npm scoped", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "@vue/reactivity"},
+		{"npm keeps dot", packagev1.Ecosystem_ECOSYSTEM_NPM, "socket.io", "socket.io"},
+		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "nokogiri"},
+		{"cargo keeps underscore", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "serde_json"},
+		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog", "monolog/monolog"},
+
+		// No rule: the raw name survives, case and all.
+		{"maven", packagev1.Ecosystem_ECOSYSTEM_MAVEN, "com.google.Guava", "com.google.Guava"},
+		{"go", packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/safedep/Vet", "github.com/safedep/Vet"},
+		{"nuget", packagev1.Ecosystem_ECOSYSTEM_NUGET, "Newtonsoft.Json", "Newtonsoft.Json"},
+		{"vscode", packagev1.Ecosystem_ECOSYSTEM_VSCODE, "Publisher.Extension", "Publisher.Extension"},
+		{"unspecified", packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "Whatever", "Whatever"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.want, CanonicalPackageName(test.ecosystem, test.raw))
+		})
+	}
+
+	// A second write of one package must land on the row the first created, so
+	// the rule has to be stable under repetition.
+	t.Run("idempotent", func(t *testing.T) {
+		for _, test := range cases {
+			once := CanonicalPackageName(test.ecosystem, test.raw)
+			assert.Equal(t, once, CanonicalPackageName(test.ecosystem, once), test.name)
+		}
+	})
+}

@@ -77,17 +77,20 @@ func dedupKeyHash(rule string, parts []string) []byte {
 }
 
 // carrierWithRepeatCount rewrites a held-back event with the count of raw
-// events it stands for. The carrier keeps its own event_id and timestamp,
-// so server-side idempotency on event_id holds across retries.
+// events it stands for. It sets only repeat_count and keeps every other
+// DedupContext field, so a future field set by the emitting tool survives
+// the rewrite. The carrier keeps its own event_id and timestamp, so
+// server-side idempotency on event_id holds across retries.
 func carrierWithRepeatCount(carrier []byte, suppressed int64) (string, []byte, error) {
 	var te servicev1.ToolEvent
 	if err := proto.Unmarshal(carrier, &te); err != nil {
 		return "", nil, fmt.Errorf("endpointsync: failed to unmarshal carrier event: %w", err)
 	}
 
-	te.DedupContext = &servicev1.DedupContext{
-		RepeatCount: uint64(suppressed),
+	if te.GetDedupContext() == nil {
+		te.DedupContext = &servicev1.DedupContext{}
 	}
+	te.DedupContext.RepeatCount = uint64(suppressed)
 
 	payload, err := proto.Marshal(&te)
 	if err != nil {

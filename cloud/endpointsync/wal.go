@@ -115,7 +115,18 @@ func initSchema(db *sql.DB) error {
 //	    "20260410090000": "CREATE INDEX IF NOT EXISTS idx_events_source ON events(source);",
 //	}
 var migrations = map[string]string{
-	// No migrations yet. Base schema is created by initSchema.
+	// Dedup state, one row per open dedup window. The row holds the count
+	// of held-back events and the last held-back event as the carrier.
+	// The row count is bounded by distinct active keys, not event volume.
+	"20260901000000": `
+		CREATE TABLE IF NOT EXISTS dedup_state (
+			key_hash BLOB NOT NULL PRIMARY KEY,
+			rule TEXT NOT NULL,
+			window_start INTEGER NOT NULL,
+			suppressed INTEGER NOT NULL DEFAULT 0,
+			carrier BLOB
+		) WITHOUT ROWID;
+	`,
 }
 
 // migrateSchema applies any migrations from the migrations map that have
@@ -183,7 +194,166 @@ func (w *wal) insert(eventID string, payload []byte) error {
 		}
 	}()
 
-	// Ensure wal_meta row exists (defensive: initSchema should have created it)
+	if err := w.txInsertEvents(tx, walEvent{eventID: eventID, payload: payload}); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+// carrierFlushFunc rewrites a held-back event with its repeat count before
+// the WAL persists it. It runs inside the WAL transaction, so a flush and
+// its state reset commit together.
+type carrierFlushFunc func(carrier []byte, suppressed int64) (eventID string, payload []byte, err error)
+
+// dedupEmit runs the dedup decision for one claimed event in one
+// transaction. The pending queue and the dedup state never disagree:
+// a crash rolls back the whole branch.
+func (w *wal) dedupEmit(eventID string, payload []byte, keyHash []byte, rule string, nowMs int64, windowMs int64, flush carrierFlushFunc) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	tx, err := w.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			log.Warnf("endpointsync: tx rollback: %v", err)
+		}
+	}()
+
+	var windowStart, suppressed int64
+	var carrier []byte
+	err = tx.QueryRow(
+		"SELECT window_start, suppressed, carrier FROM dedup_state WHERE key_hash = ?",
+		keyHash,
+	).Scan(&windowStart, &suppressed, &carrier)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		if err := w.txInsertEvents(tx, walEvent{eventID: eventID, payload: payload}); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(
+			"INSERT INTO dedup_state (key_hash, rule, window_start, suppressed, carrier) VALUES (?, ?, ?, 0, NULL)",
+			keyHash, rule, nowMs,
+		); err != nil {
+			return fmt.Errorf("failed to open dedup window: %w", err)
+		}
+		return tx.Commit()
+
+	case err != nil:
+		return fmt.Errorf("failed to read dedup state: %w", err)
+	}
+
+	// A clock that steps backward counts as in-window: nowMs below
+	// windowStart also satisfies this check. Expiring on a backward step
+	// would turn a clock jump into an emit storm.
+	if nowMs < windowStart+windowMs {
+		if _, err := tx.Exec(
+			"UPDATE dedup_state SET suppressed = suppressed + 1, carrier = ? WHERE key_hash = ?",
+			payload, keyHash,
+		); err != nil {
+			return fmt.Errorf("failed to count held-back event: %w", err)
+		}
+		return tx.Commit()
+	}
+
+	inserts := []walEvent{{eventID: eventID, payload: payload}}
+	if suppressed > 0 && carrier != nil {
+		carrierID, carrierPayload, err := flush(carrier, suppressed)
+		if err != nil {
+			return err
+		}
+		inserts = append([]walEvent{{eventID: carrierID, payload: carrierPayload}}, inserts...)
+	}
+	if err := w.txInsertEvents(tx, inserts...); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(
+		"UPDATE dedup_state SET window_start = ?, suppressed = 0, carrier = NULL WHERE key_hash = ?",
+		nowMs, keyHash,
+	); err != nil {
+		return fmt.Errorf("failed to reset dedup window: %w", err)
+	}
+	return tx.Commit()
+}
+
+// dedupSweep flushes every dedup window that expired judges as closed, and
+// deletes its row. A carrier leaves dedup_state only when its insert
+// succeeds: on a full queue the row stays for the next sweep.
+func (w *wal) dedupSweep(expired func(rule string, windowStart int64) bool, flush carrierFlushFunc) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	tx, err := w.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			log.Warnf("endpointsync: tx rollback: %v", err)
+		}
+	}()
+
+	rows, err := tx.Query("SELECT key_hash, rule, window_start, suppressed, carrier FROM dedup_state")
+	if err != nil {
+		return fmt.Errorf("failed to read dedup state: %w", err)
+	}
+
+	type stateRow struct {
+		keyHash     []byte
+		rule        string
+		windowStart int64
+		suppressed  int64
+		carrier     []byte
+	}
+	var states []stateRow
+	for rows.Next() {
+		var s stateRow
+		if err := rows.Scan(&s.keyHash, &s.rule, &s.windowStart, &s.suppressed, &s.carrier); err != nil {
+			if closeErr := rows.Close(); closeErr != nil {
+				log.Warnf("endpointsync: rows close: %v", closeErr)
+			}
+			return fmt.Errorf("failed to scan dedup state: %w", err)
+		}
+		states = append(states, s)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to read dedup state: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("failed to close dedup state rows: %w", err)
+	}
+
+	for _, s := range states {
+		if !expired(s.rule, s.windowStart) {
+			continue
+		}
+		if s.suppressed > 0 && s.carrier != nil {
+			carrierID, carrierPayload, err := flush(s.carrier, s.suppressed)
+			if err != nil {
+				return err
+			}
+			if err := w.txInsertEvents(tx, walEvent{eventID: carrierID, payload: carrierPayload}); err != nil {
+				if errors.Is(err, ErrWALFull) {
+					continue
+				}
+				return err
+			}
+		}
+		if _, err := tx.Exec("DELETE FROM dedup_state WHERE key_hash = ?", s.keyHash); err != nil {
+			return fmt.Errorf("failed to delete dedup state: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// txInsertEvents inserts events and maintains pending_count inside the
+// caller's transaction. It enforces the maxPending bound for the whole
+// group, so a partial group never commits.
+func (w *wal) txInsertEvents(tx *sql.Tx, events ...walEvent) error {
 	if _, err := tx.Exec(
 		"INSERT OR IGNORE INTO wal_meta (id, pending_count) VALUES (1, 0)",
 	); err != nil {
@@ -194,25 +364,26 @@ func (w *wal) insert(eventID string, payload []byte) error {
 	if err := tx.QueryRow("SELECT pending_count FROM wal_meta WHERE id = 1").Scan(&count); err != nil {
 		return fmt.Errorf("failed to read pending count: %w", err)
 	}
-
-	if count >= w.maxPending {
+	if count+len(events) > w.maxPending {
 		return ErrWALFull
 	}
 
-	if _, err := tx.Exec(
-		"INSERT INTO events (event_id, payload, status) VALUES (?, ?, ?)",
-		eventID, payload, statusPending,
-	); err != nil {
-		return fmt.Errorf("failed to insert event: %w", err)
+	for _, e := range events {
+		if _, err := tx.Exec(
+			"INSERT INTO events (event_id, payload, status) VALUES (?, ?, ?)",
+			e.eventID, e.payload, statusPending,
+		); err != nil {
+			return fmt.Errorf("failed to insert event: %w", err)
+		}
 	}
 
 	if _, err := tx.Exec(
-		"UPDATE wal_meta SET pending_count = pending_count + 1 WHERE id = 1",
+		"UPDATE wal_meta SET pending_count = pending_count + ? WHERE id = 1",
+		len(events),
 	); err != nil {
 		return fmt.Errorf("failed to update pending count: %w", err)
 	}
-
-	return tx.Commit()
+	return nil
 }
 
 func (w *wal) readPending(limit int) ([]walEvent, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/safedep/dry/log"
@@ -54,7 +55,11 @@ func openWAL(path string) (*wal, error) {
 	// reads first and writes later fails with SQLITE_BUSY_SNAPSHOT when
 	// another process commits in between, and the busy handler never
 	// runs mid-transaction.
-	db, err := sql.Open("sqlite", path+"?_txlock=immediate")
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	db, err := sql.Open("sqlite", path+separator+"_txlock=immediate")
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrWALOpen, err)
 	}
@@ -260,19 +265,6 @@ func (w *wal) dedupEmit(eventID string, payload []byte, keyHash []byte, rule str
 		}
 	}()
 
-	// The suppress branch never touches the events table, so it must
-	// reject a reused event id itself to keep the WAL's uniqueness
-	// contract. Without this, the duplicate surfaces later as an
-	// unflushable carrier.
-	var one int
-	err = tx.QueryRow("SELECT 1 FROM events WHERE event_id = ?", eventID).Scan(&one)
-	if err == nil {
-		return fmt.Errorf("endpointsync: duplicate event id %s", eventID)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to check event id: %w", err)
-	}
-
 	// The hot path: one conditional update covers the in-window
 	// suppress, with no carrier read. A window whose start lies in the
 	// future (the clock stepped back, or the window opened under a
@@ -295,6 +287,19 @@ func (w *wal) dedupEmit(eventID string, payload []byte, keyHash []byte, rule str
 		return fmt.Errorf("failed to read rows affected: %w", err)
 	}
 	if affected == 1 {
+		// The suppress branch never touches the events table, so it must
+		// reject a reused event id itself to keep the WAL's uniqueness
+		// contract. The branches that insert rely on the UNIQUE
+		// constraint. Without this, the duplicate surfaces later as an
+		// unflushable carrier. The rollback discards the count above.
+		var one int
+		err = tx.QueryRow("SELECT 1 FROM events WHERE event_id = ?", eventID).Scan(&one)
+		if err == nil {
+			return fmt.Errorf("endpointsync: duplicate event id %s", eventID)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to check event id: %w", err)
+		}
 		return tx.Commit()
 	}
 

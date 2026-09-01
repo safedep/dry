@@ -179,8 +179,9 @@ client, err := endpointsync.NewEventEmitterClient("pmg", "1.2.3",
   ok=true claims the event. Events that match no rule sync unchanged.
 - Client construction fails on an empty or duplicate rule name, a nil key
   function, or a window below one millisecond.
-- `Sync()` and `Close()` flush closed windows. A row whose rule is no longer
-  declared flushes at once, so a rule change never drops a count.
+- `Sync()` and `Close()` flush closed windows. Each state row records its
+  own expiry, so any client that opens the WAL flushes it on time, and a
+  removed rule's count delivers at that recorded expiry.
 - Design: `safedep/control-tower`
   `docs/specs/2026-09-01-client-side-event-dedup-design.md`.
 

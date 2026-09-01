@@ -233,6 +233,155 @@ func TestDedupClockStepBackward(t *testing.T) {
 
 	pending := pendingToolEvents(t, client.eventWriter)
 	assert.Len(t, pending, 1, "a backward clock step counts as in-window")
+
+	var suppressed int64
+	require.NoError(t, client.store.db.QueryRow("SELECT suppressed FROM dedup_state").Scan(&suppressed))
+	assert.Equal(t, int64(1), suppressed, "the event is counted, not lost")
+}
+
+func TestDedupForwardClockSkewRebasesOnEmit(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+
+	base := time.Now()
+	current := base.Add(30 * 24 * time.Hour)
+	client.now = func() time.Time { return current }
+
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	// The clock corrects backward by 30 days. The next event rebases the
+	// window onto the current clock instead of suppressing for a month.
+	current = base
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	current = base.Add(16 * time.Minute)
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	pending := pendingToolEvents(t, client.eventWriter)
+	require.Len(t, pending, 3, "first event, carrier, and the next window's first event")
+
+	var repeats []uint64
+	for _, e := range pending {
+		if dc := e.GetDedupContext(); dc != nil {
+			repeats = append(repeats, dc.GetRepeatCount())
+		}
+	}
+	assert.Equal(t, []uint64{1}, repeats)
+}
+
+func TestDedupForwardClockSkewSweepFlushes(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+
+	base := time.Now()
+	current := base.Add(30 * 24 * time.Hour)
+	client.now = func() time.Time { return current }
+
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	// The sweep cannot rebase, so a window opened under a future clock
+	// counts as expired and its carrier delivers.
+	current = base
+	require.NoError(t, client.sweepDedup())
+
+	pending := pendingToolEvents(t, client.eventWriter)
+	require.Len(t, pending, 2)
+
+	var stateRows int
+	require.NoError(t, client.store.db.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&stateRows))
+	assert.Zero(t, stateRows)
+}
+
+func TestDedupDoubleCloseReturnsNil(t *testing.T) {
+	plain := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, plain.Close())
+	require.NoError(t, plain.Close())
+
+	ruled := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	require.NoError(t, ruled.Close())
+	require.NoError(t, ruled.Close())
+}
+
+func TestDedupDuplicateEventIDRejected(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+
+	first := hostObsEvent(t, client, "evil.example.com", "GET")
+	require.NoError(t, client.Emit(context.Background(), first))
+
+	duplicate := hostObsEvent(t, client, "evil.example.com", "GET")
+	duplicate.EventId = first.GetEventId()
+	err := client.Emit(context.Background(), duplicate)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate event id")
+
+	pending := pendingToolEvents(t, client.eventWriter)
+	assert.Len(t, pending, 1, "the duplicate is not counted or stored")
+}
+
+func TestDedupPoisonCarrierRecovers(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+
+	current := time.Now()
+	client.now = func() time.Time { return current }
+
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+	_, err := client.store.db.Exec("UPDATE dedup_state SET carrier = ?", []byte{0xff})
+	require.NoError(t, err)
+
+	// The emit path drops the poison carrier and keeps the key flowing.
+	current = current.Add(16 * time.Minute)
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+	assert.Len(t, pendingToolEvents(t, client.eventWriter), 2)
+
+	// The sweep path drops a poison carrier and deletes the row.
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "other.example.com", "GET")))
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "other.example.com", "GET")))
+	_, err = client.store.db.Exec("UPDATE dedup_state SET carrier = ? WHERE suppressed > 0", []byte{0xff})
+	require.NoError(t, err)
+
+	current = current.Add(16 * time.Minute)
+	require.NoError(t, client.sweepDedup())
+
+	var stateRows int
+	require.NoError(t, client.store.db.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&stateRows))
+	assert.Zero(t, stateRows, "the sweep never wedges on a poison row")
+	assert.Len(t, pendingToolEvents(t, client.eventWriter), 3)
+	requirePendingCountInvariant(t, client.eventWriter)
+}
+
+func TestDedupExpiryOneFreeSlotPrefersLiveEvent(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)),
+		WithMaxPending(2),
+	)
+	defer func() { _ = client.Close() }()
+
+	current := time.Now()
+	client.now = func() time.Time { return current }
+
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	// One free slot: the live event takes it and the carrier stays in
+	// the state row for the next sweep.
+	current = current.Add(16 * time.Minute)
+	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
+
+	assert.Len(t, pendingToolEvents(t, client.eventWriter), 2)
+
+	var suppressed int64
+	require.NoError(t, client.store.db.QueryRow("SELECT suppressed FROM dedup_state").Scan(&suppressed))
+	assert.Equal(t, int64(1), suppressed, "the kept count waits for the next sweep")
+	requirePendingCountInvariant(t, client.eventWriter)
 }
 
 func TestDedupUnmatchedEventPassesThrough(t *testing.T) {
@@ -333,19 +482,34 @@ func TestDedupSweepOnCloseAndReopen(t *testing.T) {
 	assert.Equal(t, []uint64{1}, repeats)
 }
 
-func TestDedupRemovedRuleFlushesOnSweep(t *testing.T) {
+func TestDedupRowExpiryIndependentOfClientRules(t *testing.T) {
 	walPath := filepath.Join(t.TempDir(), "test.db")
+	current := time.Now()
 
 	client := newDedupEmitter(t, walPath, WithDedupRules(hostObservationRule(15*time.Minute)))
+	client.now = func() time.Time { return current }
 	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
 	require.NoError(t, client.Emit(context.Background(), hostObsEvent(t, client, "evil.example.com", "GET")))
 	require.NoError(t, client.Close())
 
-	// The window is still open, so the row survives the first Close.
-	reopened := newDedupEmitter(t, walPath)
-	require.NoError(t, reopened.Close())
+	// A client with no rules never collapses another client's open
+	// window: the row carries its own expiry.
+	mid := newDedupEmitter(t, walPath)
+	mid.now = func() time.Time { return current }
+	require.NoError(t, mid.Close())
 
-	// The reopened client declared no rules, so its Close flushed the row.
+	check := newDedupEmitter(t, walPath)
+	var stateRows int
+	require.NoError(t, check.store.db.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&stateRows))
+	require.NoError(t, check.Close())
+	require.Equal(t, 1, stateRows, "the open window survived the rule-less sweep")
+
+	// After the recorded expiry, any client flushes the count, so a
+	// removed rule never strands it.
+	late := newDedupEmitter(t, walPath)
+	late.now = func() time.Time { return current.Add(16 * time.Minute) }
+	require.NoError(t, late.Close())
+
 	verify := newDedupEmitter(t, walPath)
 	defer func() { _ = verify.Close() }()
 
@@ -358,7 +522,7 @@ func TestDedupRemovedRuleFlushesOnSweep(t *testing.T) {
 			repeats = append(repeats, dc.GetRepeatCount())
 		}
 	}
-	assert.Equal(t, []uint64{1}, repeats, "a removed rule never strands a count")
+	assert.Equal(t, []uint64{1}, repeats, "the count delivers at the recorded expiry")
 }
 
 func TestDedupSweepPagesThroughManyKeys(t *testing.T) {

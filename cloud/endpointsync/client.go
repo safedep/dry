@@ -212,30 +212,18 @@ func (w *eventWriter) Emit(ctx context.Context, event *servicev1.ToolEvent) erro
 			rule.Name,
 			w.now().UnixMilli(),
 			rule.Window.Milliseconds(),
-			carrierWithRepeatCount,
 		)
 	}
 
 	return w.store.insert(event.GetEventId(), payload)
 }
 
-// sweepDedup flushes every closed dedup window. A row whose rule is no
-// longer declared flushes at once, so a rule change between runs never
-// strands a count.
+// sweepDedup flushes every dedup window whose recorded expiry has
+// passed. The row carries its own expiry, so a client with different
+// rules, or none, never collapses another client's open windows, and a
+// removed rule's count still delivers at its recorded expiry.
 func (w *eventWriter) sweepDedup() error {
-	windows := make(map[string]int64, len(w.rules))
-	for _, r := range w.rules {
-		windows[r.Name] = r.Window.Milliseconds()
-	}
-	nowMs := w.now().UnixMilli()
-
-	return w.store.dedupSweep(func(rule string, windowStart int64) bool {
-		windowMs, active := windows[rule]
-		if !active {
-			return true
-		}
-		return nowMs >= windowStart+windowMs
-	}, carrierWithRepeatCount)
+	return w.store.dedupSweep(w.now().UnixMilli())
 }
 
 // Close flushes closed dedup windows and releases the WAL.

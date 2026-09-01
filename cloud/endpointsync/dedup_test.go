@@ -2,6 +2,7 @@ package endpointsync
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -358,6 +359,49 @@ func TestDedupRemovedRuleFlushesOnSweep(t *testing.T) {
 		}
 	}
 	assert.Equal(t, []uint64{1}, repeats, "a removed rule never strands a count")
+}
+
+func TestDedupSweepPagesThroughManyKeys(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+
+	current := time.Now()
+	client.now = func() time.Time { return current }
+
+	keys := dedupSweepBatch + 500
+	for i := range keys {
+		event := hostObsEvent(t, client, fmt.Sprintf("host-%d.example.com", i), "GET")
+		require.NoError(t, client.Emit(context.Background(), event))
+	}
+
+	current = current.Add(16 * time.Minute)
+	require.NoError(t, client.sweepDedup())
+
+	var stateRows int
+	require.NoError(t, client.store.db.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&stateRows))
+	assert.Zero(t, stateRows, "the sweep pages through every state row")
+	requirePendingCountInvariant(t, client.eventWriter)
+}
+
+func TestDedupKeyCapDeliversDirectly(t *testing.T) {
+	client := newDedupEmitter(t, filepath.Join(t.TempDir(), "test.db"),
+		WithDedupRules(hostObservationRule(15*time.Minute)))
+	defer func() { _ = client.Close() }()
+	client.store.maxDedupKeys = 2
+
+	for i := range 4 {
+		event := hostObsEvent(t, client, fmt.Sprintf("host-%d.example.com", i), "GET")
+		require.NoError(t, client.Emit(context.Background(), event))
+	}
+
+	var stateRows int
+	require.NoError(t, client.store.db.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&stateRows))
+	assert.Equal(t, 2, stateRows, "the cap stops state growth")
+
+	pending := pendingToolEvents(t, client.eventWriter)
+	assert.Len(t, pending, 4, "an event past the cap delivers directly")
+	requirePendingCountInvariant(t, client.eventWriter)
 }
 
 func TestDedupWALFullKeepsState(t *testing.T) {

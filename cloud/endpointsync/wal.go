@@ -14,6 +14,16 @@ import (
 const (
 	defaultMaxPending = 100000
 
+	// defaultMaxDedupKeys bounds the dedup_state table. At the cap a new
+	// key skips dedup and its events deliver directly, so a
+	// high-cardinality key source degrades to no dedup, never to
+	// unbounded growth. No count is ever lost.
+	defaultMaxDedupKeys = 10000
+
+	// dedupSweepBatch bounds the sweep's memory to one page of state
+	// rows.
+	dedupSweepBatch = 1000
+
 	statusPending   = "pending"
 	statusDelivered = "delivered"
 )
@@ -24,9 +34,10 @@ type walEvent struct {
 }
 
 type wal struct {
-	mu         sync.Mutex
-	db         *sql.DB
-	maxPending int
+	mu           sync.Mutex
+	db           *sql.DB
+	maxPending   int
+	maxDedupKeys int
 }
 
 func openWAL(path string) (*wal, error) {
@@ -68,8 +79,9 @@ func openWAL(path string) (*wal, error) {
 	}
 
 	return &wal{
-		db:         db,
-		maxPending: defaultMaxPending,
+		db:           db,
+		maxPending:   defaultMaxPending,
+		maxDedupKeys: defaultMaxDedupKeys,
 	}, nil
 }
 
@@ -234,11 +246,20 @@ func (w *wal) dedupEmit(eventID string, payload []byte, keyHash []byte, rule str
 		if err := w.txInsertEvents(tx, walEvent{eventID: eventID, payload: payload}); err != nil {
 			return err
 		}
-		if _, err := tx.Exec(
-			"INSERT INTO dedup_state (key_hash, rule, window_start, suppressed, carrier) VALUES (?, ?, ?, 0, NULL)",
-			keyHash, rule, nowMs,
-		); err != nil {
-			return fmt.Errorf("failed to open dedup window: %w", err)
+
+		// At the key cap the event delivers with no window, so the state
+		// table never grows without bound.
+		var keys int
+		if err := tx.QueryRow("SELECT COUNT(*) FROM dedup_state").Scan(&keys); err != nil {
+			return fmt.Errorf("failed to count dedup keys: %w", err)
+		}
+		if keys < w.maxDedupKeys {
+			if _, err := tx.Exec(
+				"INSERT INTO dedup_state (key_hash, rule, window_start, suppressed, carrier) VALUES (?, ?, ?, 0, NULL)",
+				keyHash, rule, nowMs,
+			); err != nil {
+				return fmt.Errorf("failed to open dedup window: %w", err)
+			}
 		}
 		return tx.Commit()
 
@@ -296,11 +317,6 @@ func (w *wal) dedupSweep(expired func(rule string, windowStart int64) bool, flus
 		}
 	}()
 
-	rows, err := tx.Query("SELECT key_hash, rule, window_start, suppressed, carrier FROM dedup_state")
-	if err != nil {
-		return fmt.Errorf("failed to read dedup state: %w", err)
-	}
-
 	type stateRow struct {
 		keyHash     []byte
 		rule        string
@@ -308,42 +324,63 @@ func (w *wal) dedupSweep(expired func(rule string, windowStart int64) bool, flus
 		suppressed  int64
 		carrier     []byte
 	}
-	var states []stateRow
-	for rows.Next() {
-		var s stateRow
-		if err := rows.Scan(&s.keyHash, &s.rule, &s.windowStart, &s.suppressed, &s.carrier); err != nil {
-			if closeErr := rows.Close(); closeErr != nil {
-				log.Warnf("endpointsync: rows close: %v", closeErr)
-			}
-			return fmt.Errorf("failed to scan dedup state: %w", err)
-		}
-		states = append(states, s)
-	}
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("failed to read dedup state: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return fmt.Errorf("failed to close dedup state rows: %w", err)
-	}
 
-	for _, s := range states {
-		if !expired(s.rule, s.windowStart) {
-			continue
+	// The scan pages by primary key, so the sweep buffers at most one
+	// page of state rows no matter how large the table is. The single
+	// connection cannot run statements while a cursor is open, so each
+	// page is read fully before it is processed.
+	after := []byte{}
+	for {
+		rows, err := tx.Query(
+			"SELECT key_hash, rule, window_start, suppressed, carrier FROM dedup_state WHERE key_hash > ? ORDER BY key_hash LIMIT ?",
+			after, dedupSweepBatch,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to read dedup state: %w", err)
 		}
-		if s.suppressed > 0 && s.carrier != nil {
-			carrierID, carrierPayload, err := flush(s.carrier, s.suppressed)
-			if err != nil {
-				return err
-			}
-			if err := w.txInsertEvents(tx, walEvent{eventID: carrierID, payload: carrierPayload}); err != nil {
-				if errors.Is(err, ErrWALFull) {
-					continue
+
+		states := make([]stateRow, 0, dedupSweepBatch)
+		for rows.Next() {
+			var s stateRow
+			if err := rows.Scan(&s.keyHash, &s.rule, &s.windowStart, &s.suppressed, &s.carrier); err != nil {
+				if closeErr := rows.Close(); closeErr != nil {
+					log.Warnf("endpointsync: rows close: %v", closeErr)
 				}
-				return err
+				return fmt.Errorf("failed to scan dedup state: %w", err)
 			}
+			states = append(states, s)
 		}
-		if _, err := tx.Exec("DELETE FROM dedup_state WHERE key_hash = ?", s.keyHash); err != nil {
-			return fmt.Errorf("failed to delete dedup state: %w", err)
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("failed to read dedup state: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("failed to close dedup state rows: %w", err)
+		}
+
+		if len(states) == 0 {
+			break
+		}
+		after = states[len(states)-1].keyHash
+
+		for _, s := range states {
+			if !expired(s.rule, s.windowStart) {
+				continue
+			}
+			if s.suppressed > 0 && s.carrier != nil {
+				carrierID, carrierPayload, err := flush(s.carrier, s.suppressed)
+				if err != nil {
+					return err
+				}
+				if err := w.txInsertEvents(tx, walEvent{eventID: carrierID, payload: carrierPayload}); err != nil {
+					if errors.Is(err, ErrWALFull) {
+						continue
+					}
+					return err
+				}
+			}
+			if _, err := tx.Exec("DELETE FROM dedup_state WHERE key_hash = ?", s.keyHash); err != nil {
+				return fmt.Errorf("failed to delete dedup state: %w", err)
+			}
 		}
 	}
 

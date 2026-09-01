@@ -47,8 +47,10 @@ func validateDedupRules(rules []DedupRule) error {
 		if r.Key == nil {
 			return fmt.Errorf("endpointsync: dedup rule %q requires a key function", r.Name)
 		}
-		if r.Window <= 0 {
-			return fmt.Errorf("endpointsync: dedup rule %q requires a window above zero", r.Name)
+		// The window is stored at millisecond granularity. A smaller
+		// window would truncate to zero and expire at once.
+		if r.Window < time.Millisecond {
+			return fmt.Errorf("endpointsync: dedup rule %q requires a window of at least one millisecond", r.Name)
 		}
 	}
 	return nil

@@ -177,7 +177,7 @@ client, err := endpointsync.NewEventEmitterClient("pmg", "1.2.3",
 - Rules are evaluated in declaration order. The first rule that returns
   ok=true claims the event. Events that match no rule sync unchanged.
 - Client construction fails on an empty or duplicate rule name, a nil key
-  function, or a window of zero or less.
+  function, or a window below one millisecond.
 - `Sync()` and `Close()` flush closed windows. A row whose rule is no longer
   declared flushes at once, so a rule change never drops a count.
 - Design: `safedep/control-tower`

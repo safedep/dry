@@ -104,12 +104,17 @@ func TestDedupRuleValidation(t *testing.T) {
 		{
 			name:    "zero window",
 			rules:   []DedupRule{{Name: "a", Key: validKey, Window: 0}},
-			wantErr: "requires a window above zero",
+			wantErr: "requires a window of at least one millisecond",
 		},
 		{
 			name:    "negative window",
 			rules:   []DedupRule{{Name: "a", Key: validKey, Window: -time.Minute}},
-			wantErr: "requires a window above zero",
+			wantErr: "requires a window of at least one millisecond",
+		},
+		{
+			name:    "sub-millisecond window",
+			rules:   []DedupRule{{Name: "a", Key: validKey, Window: 500 * time.Microsecond}},
+			wantErr: "requires a window of at least one millisecond",
 		},
 	}
 

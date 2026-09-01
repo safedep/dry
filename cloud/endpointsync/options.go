@@ -63,8 +63,8 @@ func WithWALPath(path string) SyncOption {
 
 // WithDedupRules declares the event dedup rules for this client. Client
 // construction fails on an empty or duplicate rule name, a nil key
-// function, or a window of zero or less. Events that match no rule sync
-// unchanged.
+// function, or a window below one millisecond. Events that match no rule
+// sync unchanged.
 func WithDedupRules(rules ...DedupRule) SyncOption {
 	return func(c *syncConfig) {
 		c.dedupRules = append(c.dedupRules, rules...)

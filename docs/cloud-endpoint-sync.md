@@ -152,9 +152,10 @@ if err != nil {
 ## Event Dedup
 
 A tool can declare event dedup rules. Identical events collapse inside a time
-window, before the WAL. The first event of a window persists at once. Later
-events with an equal key are counted, and the last one delivers the count as
-`DedupContext.repeat_count` when the window closes. Totals stay exact:
+window, before the WAL. The sync client persists the first event of a window
+at once. Later events with an equal key are counted, and the last one
+delivers the count as `DedupContext.repeat_count` when the window closes.
+Totals stay exact:
 `SUM(repeat_count)`, with an absent `DedupContext` as one, equals the raw
 event count.
 

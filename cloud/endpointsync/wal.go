@@ -303,13 +303,35 @@ func (w *wal) dedupEmit(eventID string, payload []byte, keyHash []byte, rule str
 // dedupSweep flushes every dedup window that expired judges as closed, and
 // deletes its row. A carrier leaves dedup_state only when its insert
 // succeeds: on a full queue the row stays for the next sweep.
+//
+// The sweep pages by primary key and commits one transaction per page, so
+// it buffers at most one page of rows and never holds the write lock for
+// long. The sweep is idempotent per row, so a crash between pages leaves
+// the remaining rows for the next sweep.
 func (w *wal) dedupSweep(expired func(rule string, windowStart int64) bool, flush carrierFlushFunc) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	after := []byte{}
+	for {
+		count, last, err := w.sweepPage(after, expired, flush)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		after = last
+	}
+}
+
+// sweepPage processes one page of dedup_state rows in its own transaction.
+// The single connection cannot run statements while a cursor is open, so
+// the page is read fully before it is processed.
+func (w *wal) sweepPage(after []byte, expired func(rule string, windowStart int64) bool, flush carrierFlushFunc) (int, []byte, error) {
 	tx, err := w.db.Begin()
 	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
+		return 0, nil, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
@@ -325,66 +347,61 @@ func (w *wal) dedupSweep(expired func(rule string, windowStart int64) bool, flus
 		carrier     []byte
 	}
 
-	// The scan pages by primary key, so the sweep buffers at most one
-	// page of state rows no matter how large the table is. The single
-	// connection cannot run statements while a cursor is open, so each
-	// page is read fully before it is processed.
-	after := []byte{}
-	for {
-		rows, err := tx.Query(
-			"SELECT key_hash, rule, window_start, suppressed, carrier FROM dedup_state WHERE key_hash > ? ORDER BY key_hash LIMIT ?",
-			after, dedupSweepBatch,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to read dedup state: %w", err)
-		}
+	rows, err := tx.Query(
+		"SELECT key_hash, rule, window_start, suppressed, carrier FROM dedup_state WHERE key_hash > ? ORDER BY key_hash LIMIT ?",
+		after, dedupSweepBatch,
+	)
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to read dedup state: %w", err)
+	}
 
-		states := make([]stateRow, 0, dedupSweepBatch)
-		for rows.Next() {
-			var s stateRow
-			if err := rows.Scan(&s.keyHash, &s.rule, &s.windowStart, &s.suppressed, &s.carrier); err != nil {
-				if closeErr := rows.Close(); closeErr != nil {
-					log.Warnf("endpointsync: rows close: %v", closeErr)
-				}
-				return fmt.Errorf("failed to scan dedup state: %w", err)
+	states := make([]stateRow, 0, dedupSweepBatch)
+	for rows.Next() {
+		var s stateRow
+		if err := rows.Scan(&s.keyHash, &s.rule, &s.windowStart, &s.suppressed, &s.carrier); err != nil {
+			if closeErr := rows.Close(); closeErr != nil {
+				log.Warnf("endpointsync: rows close: %v", closeErr)
 			}
-			states = append(states, s)
+			return 0, nil, fmt.Errorf("failed to scan dedup state: %w", err)
 		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("failed to read dedup state: %w", err)
-		}
-		if err := rows.Close(); err != nil {
-			return fmt.Errorf("failed to close dedup state rows: %w", err)
-		}
+		states = append(states, s)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, fmt.Errorf("failed to read dedup state: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, nil, fmt.Errorf("failed to close dedup state rows: %w", err)
+	}
 
-		if len(states) == 0 {
-			break
-		}
-		after = states[len(states)-1].keyHash
+	if len(states) == 0 {
+		return 0, nil, nil
+	}
 
-		for _, s := range states {
-			if !expired(s.rule, s.windowStart) {
-				continue
+	for _, s := range states {
+		if !expired(s.rule, s.windowStart) {
+			continue
+		}
+		if s.suppressed > 0 && s.carrier != nil {
+			carrierID, carrierPayload, err := flush(s.carrier, s.suppressed)
+			if err != nil {
+				return 0, nil, err
 			}
-			if s.suppressed > 0 && s.carrier != nil {
-				carrierID, carrierPayload, err := flush(s.carrier, s.suppressed)
-				if err != nil {
-					return err
+			if err := w.txInsertEvents(tx, walEvent{eventID: carrierID, payload: carrierPayload}); err != nil {
+				if errors.Is(err, ErrWALFull) {
+					continue
 				}
-				if err := w.txInsertEvents(tx, walEvent{eventID: carrierID, payload: carrierPayload}); err != nil {
-					if errors.Is(err, ErrWALFull) {
-						continue
-					}
-					return err
-				}
+				return 0, nil, err
 			}
-			if _, err := tx.Exec("DELETE FROM dedup_state WHERE key_hash = ?", s.keyHash); err != nil {
-				return fmt.Errorf("failed to delete dedup state: %w", err)
-			}
+		}
+		if _, err := tx.Exec("DELETE FROM dedup_state WHERE key_hash = ?", s.keyHash); err != nil {
+			return 0, nil, fmt.Errorf("failed to delete dedup state: %w", err)
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, nil, fmt.Errorf("failed to commit sweep page: %w", err)
+	}
+	return len(states), states[len(states)-1].keyHash, nil
 }
 
 // txInsertEvents inserts events and maintains pending_count inside the

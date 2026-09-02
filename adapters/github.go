@@ -5,6 +5,7 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -291,10 +292,22 @@ func (g *GithubClient) ResolveCommitSHA(ctx context.Context, owner, repo, ref st
 		ref = repository.GetDefaultBranch()
 	}
 
-	commit, _, err := g.Client.Repositories.GetCommit(ctx, owner, repo, ref, nil)
+	commit, _, err := g.Client.Repositories.GetCommit(ctx, owner, repo, escapeRef(ref), nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve ref %q of %s/%s: %w", ref, owner, repo, err)
 	}
 
 	return commit.GetSHA(), nil
+}
+
+// escapeRef makes a ref safe to place in the request path. go-github pastes
+// it in verbatim, so a ref with a reserved character such as # or ? is cut
+// short or rejected. Slashes stay, because the API accepts them in a ref.
+func escapeRef(ref string) string {
+	segments := strings.Split(ref, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+
+	return strings.Join(segments, "/")
 }

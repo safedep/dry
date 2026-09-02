@@ -15,7 +15,7 @@ func TlsConfigFromEnvironment(serverName string) (tls.Config, error) {
 
 	caCertPool := x509.NewCertPool()
 	if !caCertPool.AppendCertsFromPEM(caCert) {
-		return tls.Config{}, errors.New("no certificate found in APP_SERVICE_TLS_ROOT_CA")
+		return tls.Config{}, errors.New("failed to parse a certificate from APP_SERVICE_TLS_ROOT_CA")
 	}
 
 	cert, err := tls.LoadX509KeyPair(os.Getenv("APP_SERVICE_TLS_CERT"),

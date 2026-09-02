@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -31,10 +32,26 @@ func newTestGithubClient(t *testing.T) (*GithubClient, *atomic.Int32) {
 	}
 
 	handle("GET /api/v3/repos/safedep/dry", map[string]string{"default_branch": "trunk"})
-	handle("GET /api/v3/repos/safedep/dry/commits/trunk", map[string]string{"sha": testBranchSHA})
-	handle("GET /api/v3/repos/safedep/dry/commits/main", map[string]string{"sha": testBranchSHA})
-	handle("GET /api/v3/repos/safedep/dry/commits/v1.0.0", map[string]string{"sha": testTagSHA})
-	handle("GET /api/v3/repos/safedep/dry/commits/release/1.0", map[string]string{"sha": testTagSHA})
+
+	// Keyed by the decoded ref, so the test proves reserved characters
+	// survive the round trip through the request path.
+	commits := map[string]string{
+		"trunk":       testBranchSHA,
+		"main":        testBranchSHA,
+		"v1.0.0":      testTagSHA,
+		"release/1.0": testTagSHA,
+		"release#1":   testTagSHA,
+		"hot fix?":    testTagSHA,
+	}
+	mux.HandleFunc("GET /api/v3/repos/safedep/dry/commits/", func(w http.ResponseWriter, r *http.Request) {
+		ref := strings.TrimPrefix(r.URL.Path, "/api/v3/repos/safedep/dry/commits/")
+		sha, ok := commits[ref]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]string{"sha": sha}))
+	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -62,6 +79,8 @@ func TestGithubClientResolveCommitSHA(t *testing.T) {
 		{name: "branch", ref: "main", wantSHA: testBranchSHA, wantRequests: 1},
 		{name: "tag", ref: "v1.0.0", wantSHA: testTagSHA, wantRequests: 1},
 		{name: "branch with slash", ref: "release/1.0", wantSHA: testTagSHA, wantRequests: 1},
+		{name: "tag with hash", ref: "release#1", wantSHA: testTagSHA, wantRequests: 1},
+		{name: "branch with space and question mark", ref: "hot fix?", wantSHA: testTagSHA, wantRequests: 1},
 		{name: "empty ref uses default branch", ref: "", wantSHA: testBranchSHA, wantRequests: 2},
 		{name: "sha1 passes through", ref: testTagSHA, wantSHA: testTagSHA},
 		{name: "upper case sha1 passes through", ref: "FEDCBA9876543210FEDCBA9876543210FEDCBA98", wantSHA: "FEDCBA9876543210FEDCBA9876543210FEDCBA98"},

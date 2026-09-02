@@ -1,11 +1,14 @@
 package adapters
 
 import (
+	"context"
 	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -260,4 +263,38 @@ func (g *GitHubAppClient) AuthenticatedAppClient() (*github.Client, error) {
 	appClient := github.NewClient(httpClient)
 
 	return appClient, nil
+}
+
+var commitSHARegexp = regexp.MustCompile(`^([a-f0-9]{40}|[a-f0-9]{64})$`)
+
+// IsCommitSHA reports whether s is a full SHA-1 or SHA-256 git object id.
+func IsCommitSHA(s string) bool {
+	return commitSHARegexp.MatchString(strings.ToLower(s))
+}
+
+// ResolveCommitSHA resolves a branch, tag or commit ref of a GitHub repository
+// to the full commit SHA it points to. A full SHA is returned as is, without a
+// network call. An empty ref resolves to the default branch of the repository.
+// Callers use this to pin a mutable ref so a scan or a lock keeps pointing at
+// the same code after the ref moves.
+func (g *GithubClient) ResolveCommitSHA(ctx context.Context, owner, repo, ref string) (string, error) {
+	if IsCommitSHA(ref) {
+		return ref, nil
+	}
+
+	if ref == "" {
+		repository, _, err := g.Client.Repositories.Get(ctx, owner, repo)
+		if err != nil {
+			return "", fmt.Errorf("failed to get repository %s/%s: %w", owner, repo, err)
+		}
+
+		ref = repository.GetDefaultBranch()
+	}
+
+	commit, _, err := g.Client.Repositories.GetCommit(ctx, owner, repo, ref, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve ref %q of %s/%s: %w", ref, owner, repo, err)
+	}
+
+	return commit.GetSHA(), nil
 }

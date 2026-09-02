@@ -47,6 +47,8 @@ type eventWriter struct {
 	toolName    string
 	toolVersion string
 	store       *wal
+	rules       []DedupRule
+	now         func() time.Time
 }
 
 // NewSyncClient creates a new sync client.
@@ -144,6 +146,10 @@ func newEventWriter(toolName string, toolVersion string, opts ...SyncOption) (*e
 		opt(cfg)
 	}
 
+	if err := validateDedupRules(cfg.dedupRules); err != nil {
+		return nil, nil, err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(cfg.walPath), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("%w: failed to create WAL directory: %w", ErrWALOpen, err)
 	}
@@ -158,6 +164,8 @@ func newEventWriter(toolName string, toolVersion string, opts ...SyncOption) (*e
 		toolName:    toolName,
 		toolVersion: toolVersion,
 		store:       store,
+		rules:       cfg.dedupRules,
+		now:         time.Now,
 	}, cfg, nil
 }
 
@@ -189,17 +197,56 @@ func (w *eventWriter) Emit(ctx context.Context, event *servicev1.ToolEvent) erro
 		return fmt.Errorf("endpointsync: failed to marshal event: %w", err)
 	}
 
+	for i := range w.rules {
+		rule := &w.rules[i]
+		parts, ok := rule.Key(event)
+		if !ok {
+			continue
+		}
+
+		// The first matching rule claims the event.
+		return w.store.dedupEmit(
+			event.GetEventId(),
+			payload,
+			dedupKeyHash(rule.Name, parts),
+			rule.Name,
+			w.now().UnixMilli(),
+			rule.Window.Milliseconds(),
+		)
+	}
+
 	return w.store.insert(event.GetEventId(), payload)
 }
 
-// Close releases the WAL.
-func (w *eventWriter) Close() error {
-	return w.store.close()
+// sweepDedup flushes every dedup window whose recorded expiry has
+// passed. The row carries its own expiry, so a client with different
+// rules, or none, never collapses another client's open windows, and a
+// removed rule's count still delivers at its recorded expiry.
+func (w *eventWriter) sweepDedup() error {
+	return w.store.dedupSweep(w.now().UnixMilli())
 }
 
-// Sync delivers pending events from the WAL to the server.
+// Close flushes closed dedup windows and releases the WAL.
+func (w *eventWriter) Close() error {
+	var errs []error
+	if err := w.sweepDedup(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to sweep dedup state: %w", err))
+	}
+	if err := w.store.close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// Sync delivers pending events from the WAL to the server. It first
+// flushes closed dedup windows, so their carriers ride this sync round.
 func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 	totalSynced := 0
+
+	// A sweep failure must not block delivery of already-pending events.
+	if err := c.sweepDedup(); err != nil {
+		log.Warnf("endpointsync: dedup sweep failed, counts wait for the next sync: %v", err)
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {

@@ -3,8 +3,8 @@ module github.com/safedep/dry
 go 1.25.1
 
 require (
-	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20260721112344-78a866a85e69.1
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.11-20260721112344-78a866a85e69.1
+	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20260901164227-b6b5c7191208.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20260901164227-b6b5c7191208.1
 	buf.build/go/protovalidate v1.2.0
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3
@@ -42,7 +42,7 @@ require (
 	github.com/labstack/gommon v0.4.2
 	github.com/nats-io/nats.go v1.42.0
 	github.com/oklog/ulid/v2 v2.1.1
-	github.com/package-url/packageurl-go v0.1.3
+	github.com/package-url/packageurl-go v0.1.4
 	github.com/pandatix/go-cvss v0.6.2
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.22.0
@@ -67,7 +67,7 @@ require (
 	google.golang.org/genai v1.21.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171
 	google.golang.org/grpc v1.81.0
-	google.golang.org/protobuf v1.36.11
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/driver/postgres v1.6.0
@@ -81,7 +81,7 @@ require (
 
 require (
 	al.essio.dev/pkg/shellescape v1.5.1 // indirect
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20260415201107-50325440f8f2.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	cloud.google.com/go v0.121.2 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect

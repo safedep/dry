@@ -149,6 +149,42 @@ if err != nil {
 }
 ```
 
+## Event Dedup
+
+A tool can declare event dedup rules. Identical events collapse inside a time
+window, before the WAL. The sync client persists the first event of a window
+at once. Later events with an equal key are counted, and the last one
+delivers the count as `DedupContext.repeat_count` when the window closes.
+Totals stay exact:
+`SUM(repeat_count)`, with an absent `DedupContext` as one, equals the raw
+event count.
+
+```go
+client, err := endpointsync.NewEventEmitterClient("pmg", "1.2.3",
+    endpointsync.WithDedupRules(endpointsync.DedupRule{
+        Name:   "pmg-host-observation",
+        Window: 15 * time.Minute,
+        Key: func(e *servicev1.ToolEvent) ([]string, bool) {
+            ho := e.GetPmgEvent().GetHostObservation()
+            if ho == nil {
+                return nil, false
+            }
+            return []string{ho.GetHostname(), ho.GetMethod()}, true
+        },
+    }),
+)
+```
+
+- Rules are evaluated in declaration order. The first rule that returns
+  ok=true claims the event. Events that match no rule sync unchanged.
+- Client construction fails on an empty or duplicate rule name, a nil key
+  function, or a window below one millisecond.
+- `Sync()` and `Close()` flush closed windows. Each state row records its
+  own expiry, so any client that opens the WAL flushes it on time, and a
+  removed rule's count delivers at that recorded expiry.
+- Design: `safedep/control-tower`
+  `docs/specs/2026-09-01-client-side-event-dedup-design.md`.
+
 ## Configuration Options
 
 ```go
@@ -162,6 +198,9 @@ syncClient, err := endpointsync.NewSyncClient("pmg", "1.2.3", transport, identit
 
     // Override WAL path (default: os.UserConfigDir()/safedep/<name>/sync.db)
     endpointsync.WithWALPath("/custom/path/sync.db"),
+
+    // Collapse identical events inside a time window (see Event Dedup)
+    endpointsync.WithDedupRules(rules...),
 )
 ```
 

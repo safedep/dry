@@ -17,6 +17,7 @@ type syncConfig struct {
 	batchSize  int
 	maxPending int
 	walPath    string
+	dedupRules []DedupRule
 }
 
 func defaultSyncConfig(name string) *syncConfig {
@@ -57,6 +58,16 @@ func WithWALPath(path string) SyncOption {
 		if path != "" {
 			c.walPath = path
 		}
+	}
+}
+
+// WithDedupRules declares the event dedup rules for this client. Client
+// construction fails on an empty or duplicate rule name, a nil key
+// function, or a window below one millisecond. Events that match no rule
+// sync unchanged.
+func WithDedupRules(rules ...DedupRule) SyncOption {
+	return func(c *syncConfig) {
+		c.dedupRules = append(c.dedupRules, rules...)
 	}
 }
 

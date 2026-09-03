@@ -14,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/safedep/dry/log"
 	gobreaker "github.com/sony/gobreaker/v2"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -29,10 +31,11 @@ func isValidToolName(name string) bool {
 // SyncClient handles reliable event sync to SafeDep Cloud.
 type SyncClient struct {
 	*eventWriter
-	transport EventTransport
-	identity  *controltowerv1.EndpointIdentity
-	config    *syncConfig
-	breaker   *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+	transport      EventTransport
+	identity       *controltowerv1.EndpointIdentity
+	config         *syncConfig
+	breaker        *gobreaker.CircuitBreaker[*servicev1.SyncEventsResponse]
+	checkInBreaker *gobreaker.CircuitBreaker[*servicev1.CheckInResponse]
 }
 
 // EventEmitterClient creates ToolEvents and persists them to the local WAL.
@@ -44,6 +47,8 @@ type eventWriter struct {
 	toolName    string
 	toolVersion string
 	store       *wal
+	rules       []DedupRule
+	now         func() time.Time
 }
 
 // NewSyncClient creates a new sync client.
@@ -86,12 +91,31 @@ func NewSyncClient(toolName string, toolVersion string, transport EventTransport
 		},
 	})
 
+	// CheckIn gets its own breaker so a failing check-in path can never
+	// block event sync. Unimplemented is not a failure: it means an older
+	// server that does not know the RPC yet.
+	checkInBreaker := gobreaker.NewCircuitBreaker[*servicev1.CheckInResponse](gobreaker.Settings{
+		Name:        fmt.Sprintf("endpointsync-checkin-%s", toolName),
+		MaxRequests: 1,
+		Timeout:     5 * time.Minute,
+		ReadyToTrip: func(counts gobreaker.Counts) bool {
+			return counts.ConsecutiveFailures >= 5
+		},
+		IsSuccessful: func(err error) bool {
+			return err == nil || status.Code(err) == codes.Unimplemented
+		},
+		OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+			log.Infof("Circuit breaker %s: %s -> %s", name, from, to)
+		},
+	})
+
 	return &SyncClient{
-		eventWriter: writer,
-		transport:   transport,
-		identity:    endpointIdentity,
-		config:      cfg,
-		breaker:     breaker,
+		eventWriter:    writer,
+		transport:      transport,
+		identity:       endpointIdentity,
+		config:         cfg,
+		breaker:        breaker,
+		checkInBreaker: checkInBreaker,
 	}, nil
 }
 
@@ -122,6 +146,10 @@ func newEventWriter(toolName string, toolVersion string, opts ...SyncOption) (*e
 		opt(cfg)
 	}
 
+	if err := validateDedupRules(cfg.dedupRules); err != nil {
+		return nil, nil, err
+	}
+
 	if err := os.MkdirAll(filepath.Dir(cfg.walPath), 0o755); err != nil {
 		return nil, nil, fmt.Errorf("%w: failed to create WAL directory: %w", ErrWALOpen, err)
 	}
@@ -136,6 +164,8 @@ func newEventWriter(toolName string, toolVersion string, opts ...SyncOption) (*e
 		toolName:    toolName,
 		toolVersion: toolVersion,
 		store:       store,
+		rules:       cfg.dedupRules,
+		now:         time.Now,
 	}, cfg, nil
 }
 
@@ -167,17 +197,56 @@ func (w *eventWriter) Emit(ctx context.Context, event *servicev1.ToolEvent) erro
 		return fmt.Errorf("endpointsync: failed to marshal event: %w", err)
 	}
 
+	for i := range w.rules {
+		rule := &w.rules[i]
+		parts, ok := rule.Key(event)
+		if !ok {
+			continue
+		}
+
+		// The first matching rule claims the event.
+		return w.store.dedupEmit(
+			event.GetEventId(),
+			payload,
+			dedupKeyHash(rule.Name, parts),
+			rule.Name,
+			w.now().UnixMilli(),
+			rule.Window.Milliseconds(),
+		)
+	}
+
 	return w.store.insert(event.GetEventId(), payload)
 }
 
-// Close releases the WAL.
-func (w *eventWriter) Close() error {
-	return w.store.close()
+// sweepDedup flushes every dedup window whose recorded expiry has
+// passed. The row carries its own expiry, so a client with different
+// rules, or none, never collapses another client's open windows, and a
+// removed rule's count still delivers at its recorded expiry.
+func (w *eventWriter) sweepDedup() error {
+	return w.store.dedupSweep(w.now().UnixMilli())
 }
 
-// Sync delivers pending events from the WAL to the server.
+// Close flushes closed dedup windows and releases the WAL.
+func (w *eventWriter) Close() error {
+	var errs []error
+	if err := w.sweepDedup(); err != nil {
+		errs = append(errs, fmt.Errorf("failed to sweep dedup state: %w", err))
+	}
+	if err := w.store.close(); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// Sync delivers pending events from the WAL to the server. It first
+// flushes closed dedup windows, so their carriers ride this sync round.
 func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 	totalSynced := 0
+
+	// A sweep failure must not block delivery of already-pending events.
+	if err := c.sweepDedup(); err != nil {
+		log.Warnf("endpointsync: dedup sweep failed, counts wait for the next sync: %v", err)
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -280,6 +349,31 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 			return totalSynced, nil
 		}
 	}
+}
+
+// CheckIn reports endpoint presence to the server without events. The
+// caller decides when to call it; this client holds no cooldown state.
+// An Unimplemented error means an older server: the caller should treat
+// it as a soft failure.
+func (c *SyncClient) CheckIn(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("endpointsync: check-in cancelled: %w", err)
+	}
+
+	req := &servicev1.CheckInRequest{
+		Endpoint:    c.identity,
+		ToolName:    c.toolName,
+		ToolVersion: c.toolVersion,
+	}
+
+	_, err := c.checkInBreaker.Execute(func() (*servicev1.CheckInResponse, error) {
+		return c.transport.CheckIn(ctx, req)
+	})
+	if err != nil {
+		return fmt.Errorf("endpointsync: check-in failed: %w", err)
+	}
+
+	return nil
 }
 
 // Close releases resources.

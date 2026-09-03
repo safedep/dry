@@ -9,5 +9,6 @@ import (
 // EventTransport abstracts the sync delivery mechanism.
 type EventTransport interface {
 	Send(ctx context.Context, req *servicev1.SyncEventsRequest) (*servicev1.SyncEventsResponse, error)
+	CheckIn(ctx context.Context, req *servicev1.CheckInRequest) (*servicev1.CheckInResponse, error)
 	Close() error
 }

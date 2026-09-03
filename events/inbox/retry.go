@@ -74,7 +74,7 @@ func NewRetryPolicy(dlq DeadLetterQueue, opts ...RetryOption) ErrorHandler {
 	)
 
 	return func(ctx context.Context, d *Delivery, cause error) Disposition {
-		key := payloadFingerprint(d.Payload)
+		key := d.fingerprint()
 		if key == lastKey {
 			attempts++
 		} else {

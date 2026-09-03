@@ -25,6 +25,13 @@ import (
 // transient transport error from Source.Receive.
 const defaultRestartDelay = 5 * time.Second
 
+// defaultRedeliveryBase and defaultRedeliveryMax bound the exponential backoff
+// that paces repeated redeliveries of the same record (see redeliveryBackoff).
+const (
+	defaultRedeliveryBase = 1 * time.Second
+	defaultRedeliveryMax  = 60 * time.Second
+)
+
 // Handler processes one decoded event plus its envelope. It is called in stream
 // order with no concurrency. A non-nil error is routed through the error policy
 // (see Disposition / WithErrorHandler); it does not advance the cursor.
@@ -48,6 +55,18 @@ type Delivery struct {
 	Payload []byte
 	Ack     func() error
 	Nack    func() error
+
+	// fp memoizes fingerprint(); a failing record's fingerprint is needed by both
+	// the retry policy and the redelivery backoff.
+	fp string
+}
+
+// fingerprint returns payloadFingerprint(Payload), computed once per Delivery.
+func (d *Delivery) fingerprint() string {
+	if d.fp == "" {
+		d.fp = payloadFingerprint(d.Payload)
+	}
+	return d.fp
 }
 
 // Disposition is the error policy's verdict for a failed record.
@@ -79,9 +98,11 @@ type Dedup interface {
 }
 
 type config struct {
-	errorHandler ErrorHandler
-	dedup        Dedup
-	restartDelay time.Duration
+	errorHandler   ErrorHandler
+	dedup          Dedup
+	restartDelay   time.Duration
+	redeliveryBase time.Duration
+	redeliveryMax  time.Duration
 }
 
 // Option configures Consume.
@@ -109,6 +130,23 @@ func WithRestartDelay(d time.Duration) Option {
 	}
 }
 
+// WithRedeliveryBackoff overrides the exponential backoff that paces repeated
+// redeliveries of the same record (default 1s doubling to 60s). The first
+// redelivery is always immediate — the backoff starts on the second consecutive
+// failure of one record, the poison signature. A non-positive base is ignored;
+// a max below base is raised to base.
+func WithRedeliveryBackoff(base, max time.Duration) Option {
+	return func(c *config) {
+		if base <= 0 {
+			return
+		}
+		if max < base {
+			max = base
+		}
+		c.redeliveryBase, c.redeliveryMax = base, max
+	}
+}
+
 // Consume reads the feed via source and processes each record with handler until
 // ctx is done. newEvent constructs a fresh T to decode into (T is a proto pointer
 // type, so it cannot be allocated generically without a constructor).
@@ -117,6 +155,12 @@ func WithRestartDelay(d time.Duration) Option {
 // success, error policy on failure. A transient Receive error backs off and
 // retries (the Source reopens at the persisted cursor); only ctx cancellation
 // returns. This folds every consumer's hand-rolled restart loop into one place.
+//
+// Redeliveries of one failing record are paced with exponential backoff (see
+// WithRedeliveryBackoff): the first retry is immediate, consecutive ones wait
+// base, 2*base, ... up to max. On S2 a redelivery reopens a read session that
+// re-streams the backlog behind the stalled cursor, so an unpaced permanently
+// failing record amplifies into unbounded metered reads.
 func Consume[T proto.Message](ctx context.Context, source Source, newEvent func() T, handler Handler[T], opts ...Option) error {
 	if source == nil {
 		return errors.New("inbox: source is required")
@@ -135,10 +179,16 @@ func Consume[T proto.Message](ctx context.Context, source Source, newEvent func(
 		return errors.New("inbox: newEvent must return a non-nil message")
 	}
 
-	cfg := config{restartDelay: defaultRestartDelay}
+	cfg := config{
+		restartDelay:   defaultRestartDelay,
+		redeliveryBase: defaultRedeliveryBase,
+		redeliveryMax:  defaultRedeliveryMax,
+	}
 	for _, o := range opts {
 		o(&cfg)
 	}
+
+	backoff := redeliveryBackoff{base: cfg.redeliveryBase, max: cfg.redeliveryMax}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -160,42 +210,54 @@ func Consume[T proto.Message](ctx context.Context, source Source, newEvent func(
 			continue
 		}
 
-		handleOne(ctx, d, newEvent, handler, cfg)
+		if !handleOne(ctx, d, newEvent, handler, cfg) {
+			backoff.reset()
+			continue
+		}
+
+		// The record was not acked and redelivers as the very next Receive. Pace
+		// consecutive redeliveries of the same record so a poison record cannot
+		// spin the reopen loop at full speed. Warn (not debug) so an operator can
+		// see the backoff is engaged and at what delay without redeploying; the
+		// fingerprint prefix correlates with the dead-letter row's PayloadHash.
+		if delay := backoff.next(d.fingerprint()); delay > 0 {
+			log.Warnf("inbox: pacing redelivery of record %s by %s", shortFingerprint(d.fingerprint()), delay)
+			if !sleepCtx(ctx, delay) {
+				return ctx.Err()
+			}
+		}
 	}
 }
 
 // handleOne decodes, optionally dedups, runs the handler, and commits. Every
-// record-level error is absorbed via the error policy (Retry/Skip), so it returns
-// nothing: the loop always proceeds to the next Receive.
-func handleOne[T proto.Message](ctx context.Context, d *Delivery, newEvent func() T, handler Handler[T], cfg config) {
+// record-level error is absorbed via the error policy (Retry/Skip). It reports
+// whether the record was left un-acked — i.e. it redelivers on the next Receive
+// — so the loop can pace the redelivery.
+func handleOne[T proto.Message](ctx context.Context, d *Delivery, newEvent func() T, handler Handler[T], cfg config) bool {
 	event := newEvent()
 	if err := proto.Unmarshal(d.Payload, event); err != nil {
-		dispose(ctx, d, fmt.Errorf("decode: %w", err), cfg)
-		return
+		return dispose(ctx, d, fmt.Errorf("decode: %w", err), cfg)
 	}
 
 	meta, err := events.MetaOf(event)
 	if err != nil {
-		dispose(ctx, d, fmt.Errorf("envelope: %w", err), cfg)
-		return
+		return dispose(ctx, d, fmt.Errorf("envelope: %w", err), cfg)
 	}
 
 	eventID := meta.GetEventId()
 	if cfg.dedup != nil && eventID != "" {
 		seen, err := cfg.dedup.Seen(ctx, eventID)
 		if err != nil {
-			dispose(ctx, d, fmt.Errorf("dedup check: %w", err), cfg)
-			return
+			return dispose(ctx, d, fmt.Errorf("dedup check: %w", err), cfg)
 		}
 		if seen {
-			ackQuietly(d) // already processed: advance without re-running the handler
-			return
+			// Already processed: advance without re-running the handler.
+			return !ackQuietly(d)
 		}
 	}
 
 	if err := handler(ctx, event, meta); err != nil {
-		dispose(ctx, d, fmt.Errorf("handler: %w", err), cfg)
-		return
+		return dispose(ctx, d, fmt.Errorf("handler: %w", err), cfg)
 	}
 
 	if cfg.dedup != nil && eventID != "" {
@@ -207,17 +269,13 @@ func handleOne[T proto.Message](ctx context.Context, d *Delivery, newEvent func(
 		}
 	}
 
-	if err := d.Ack(); err != nil {
-		// Ack failure = non-advance: the cursor never leads the handler, so the
-		// record redelivers on the next read and idempotency absorbs it. The Source
-		// owns the reopen; here we just log and move on.
-		log.Warnf("inbox: ack failed (record will be redelivered): %v", err)
-	}
+	return !ackQuietly(d)
 }
 
 // dispose applies the error policy to a failed record: Retry (Nack/redeliver) by
-// default, or whatever a configured ErrorHandler decides.
-func dispose(ctx context.Context, d *Delivery, cause error, cfg config) {
+// default, or whatever a configured ErrorHandler decides. It reports whether the
+// record redelivers.
+func dispose(ctx context.Context, d *Delivery, cause error, cfg config) bool {
 	disposition := Retry
 	if cfg.errorHandler != nil {
 		disposition = cfg.errorHandler(ctx, d, cause)
@@ -226,22 +284,29 @@ func dispose(ctx context.Context, d *Delivery, cause error, cfg config) {
 	switch disposition {
 	case Skip:
 		log.Warnf("inbox: skipping record after error: %v", cause)
-		ackQuietly(d)
+		return !ackQuietly(d)
 	default:
 		// Retry: redeliver. On S2 this reopens at the cursor and re-reads the same
-		// record; a permanently-failing record blocks the feed until an operator
-		// wires WithErrorHandler->Skip (the Source emits a stalled-cursor warning).
+		// record; a permanently-failing record blocks the feed — paced by the
+		// redelivery backoff — until dead-lettered or skipped (the Source emits a
+		// stalled-cursor warning).
 		log.Warnf("inbox: redelivering record after error: %v", cause)
 		if err := d.Nack(); err != nil {
 			log.Warnf("inbox: nack failed: %v", err)
 		}
+		return true
 	}
 }
 
-func ackQuietly(d *Delivery) {
+// ackQuietly acks the record, reporting whether the ack succeeded. An ack
+// failure is a non-advance: the record redelivers on the next read and handler
+// idempotency absorbs it.
+func ackQuietly(d *Delivery) bool {
 	if err := d.Ack(); err != nil {
 		log.Warnf("inbox: ack failed (record will be redelivered): %v", err)
+		return false
 	}
+	return true
 }
 
 // nilMessage reports whether a constructed event is a nil pointer (or boxed nil),

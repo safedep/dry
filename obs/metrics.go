@@ -116,10 +116,11 @@ func NewHistogram(name, desc string) Histogram {
 // InitPrometheusMetricsProvider switches the default metrics provider to the
 // Prometheus Go SDK. Metrics declared before this call, including package-level
 // declarations in packages that Go initialised earlier, are bound to real
-// Prometheus metrics here. Call it once. A second call re-registers every
-// deferred metric and panics on the duplicate.
+// Prometheus metrics here. Call it once, before the program starts goroutines
+// that declare metrics. A second call routes new declarations to the new
+// provider and leaves the metrics already bound on the first one.
 func InitPrometheusMetricsProvider(namespace, subsystem string) {
 	real := NewPrometheusMetricsProvider(namespace, subsystem)
-	__provider = real
 	__deferred.bind(real)
+	__provider = real
 }

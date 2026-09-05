@@ -1,21 +1,25 @@
 package obs
 
 import (
+	"maps"
 	"sync"
 	"sync/atomic"
 )
 
 // deferredProvider is the provider in place before InitPrometheusMetricsProvider
-// runs. Go initialises packages in import-path order, so a package-level
-// `var m = obs.NewCounter(...)` in a package that sorts before the package that
-// calls InitPrometheusMetricsProvider used to run against the no-op provider
-// and stay a no-op for the life of the process. malysis adapters/registry/v2
-// and control-tower etl/* lost every metric that way. The deferred provider
-// records each declaration and binds it to the real metric when
-// InitPrometheusMetricsProvider runs. Calls made before the bind are dropped,
-// which matches the old behaviour for that window.
+// runs. Go initialises packages in dependency order and breaks ties by import
+// path, so a blank import of the package that calls
+// InitPrometheusMetricsProvider does not make it run first: a package-level
+// `var m = obs.NewCounter(...)` in a package that initialises earlier ran
+// against the no-op provider and stayed a no-op for the life of the process.
+// The deferred provider records each declaration and binds it to the real
+// metric when InitPrometheusMetricsProvider runs. A declaration that arrives
+// after the bind is created on the real provider at once. Calls on a metric
+// before its bind are dropped, which matches the old behaviour for that
+// window.
 type deferredProvider struct {
 	mu      sync.Mutex
+	real    Provider
 	pending []func(Provider)
 }
 
@@ -23,22 +27,29 @@ func newDeferredProvider() *deferredProvider {
 	return &deferredProvider{}
 }
 
+// defer_ records a declaration, or runs it at once when the provider is
+// already bound. The check and the append happen under the same lock as
+// bind, so a declaration cannot slip between the drain and the switch.
 func (p *deferredProvider) defer_(bind func(Provider)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.real != nil {
+		bind(p.real)
+		return
+	}
 	p.pending = append(p.pending, bind)
 }
 
-// bind materialises every recorded declaration with the real provider.
+// bind materialises every recorded declaration with the real provider and
+// routes later declarations to it directly.
 func (p *deferredProvider) bind(real Provider) {
 	p.mu.Lock()
-	pending := p.pending
-	p.pending = nil
-	p.mu.Unlock()
-
-	for _, b := range pending {
+	defer p.mu.Unlock()
+	p.real = real
+	for _, b := range p.pending {
 		b(real)
 	}
+	p.pending = nil
 }
 
 type deferredCounter struct {
@@ -94,12 +105,14 @@ type deferredCounterVec struct {
 }
 
 // WithLabels resolves through the vec on every call, so a labelled counter
-// taken before the bind starts counting after it.
+// taken before the bind starts counting after it. The labels are copied,
+// because the Prometheus vec selects its child at WithLabels time and the
+// caller may reuse the map.
 func (v *deferredCounterVec) WithLabels(labels map[string]string) Counter {
 	if r := v.real.Load(); r != nil {
 		return (*r).WithLabels(labels)
 	}
-	return &deferredLabelledCounter{vec: v, labels: labels}
+	return &deferredLabelledCounter{vec: v, labels: maps.Clone(labels)}
 }
 
 type deferredLabelledCounter struct {
@@ -127,7 +140,7 @@ func (v *deferredGaugeVec) WithLabels(labels map[string]string) Gauge {
 	if r := v.real.Load(); r != nil {
 		return (*r).WithLabels(labels)
 	}
-	return &deferredLabelledGauge{vec: v, labels: labels}
+	return &deferredLabelledGauge{vec: v, labels: maps.Clone(labels)}
 }
 
 type deferredLabelledGauge struct {

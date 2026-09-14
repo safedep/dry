@@ -89,7 +89,8 @@ func (d *dummyProvider) NewGaugeVec(_, _ string, _ []string) GaugeVec {
 }
 
 var (
-	__provider Provider = &dummyProvider{}
+	__deferred          = newDeferredProvider()
+	__provider Provider = __deferred
 )
 
 func NewCounter(name, desc string) Counter {
@@ -112,9 +113,14 @@ func NewHistogram(name, desc string) Histogram {
 	return __provider.NewHistogram(name, desc)
 }
 
-// InitPrometheusMetricsProvider initializes the default metrics provider to
-// use Prometheus Go SDK. This function is not thread-safe and should be called
-// before any other function in this package.
+// InitPrometheusMetricsProvider switches the default metrics provider to the
+// Prometheus Go SDK. Metrics declared before this call, including package-level
+// declarations in packages that Go initialised earlier, are bound to real
+// Prometheus metrics here. Call it once, before the program starts goroutines
+// that declare metrics. A second call routes new declarations to the new
+// provider and leaves the metrics already bound on the first one.
 func InitPrometheusMetricsProvider(namespace, subsystem string) {
-	__provider = NewPrometheusMetricsProvider(namespace, subsystem)
+	real := NewPrometheusMetricsProvider(namespace, subsystem)
+	__deferred.bind(real)
+	__provider = real
 }

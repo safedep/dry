@@ -130,6 +130,16 @@ func payloadFingerprint(payload []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// shortFingerprint abbreviates a payload fingerprint for log lines. The prefix
+// is enough to correlate with a dead-letter row's PayloadHash.
+func shortFingerprint(fp string) string {
+	const n = 12
+	if len(fp) <= n {
+		return fp
+	}
+	return fp[:n]
+}
+
 // sanitizeForText makes a diagnostic string safe for a Postgres text column,
 // which rejects NUL (0x00) and invalid UTF-8. Only the human-readable columns are
 // coerced; the raw record is preserved verbatim in the bytea payload column.

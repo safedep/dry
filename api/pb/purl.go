@@ -146,7 +146,9 @@ var pypiNameSeparators = regexp.MustCompile(`[-_.]+`)
 // CanonicalPackageName returns the one spelling of a package name for its
 // ecosystem, so two producers that disagree on case or separators still name
 // one package. A registry that treats names case-sensitively, and every
-// ecosystem this does not rule on, keeps the raw name.
+// ecosystem this does not rule on, keeps the raw name. npm is case-sensitive:
+// JSONStream and jsonstream are two packages with two artifacts, so an npm
+// name keeps its case.
 //
 // packageurl-go typeAdjustName is close but does not fit: for PyPI it folds
 // only `_`, and it lower-cases Go and GitHub names, which stay case-sensitive.
@@ -155,8 +157,7 @@ func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
 	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
 		return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
 
-	case packagev1.Ecosystem_ECOSYSTEM_NPM,
-		packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
+	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
 		packagev1.Ecosystem_ECOSYSTEM_CARGO,
 		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
 		return strings.ToLower(name)

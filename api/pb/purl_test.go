@@ -365,10 +365,12 @@ func TestCanonicalPackageName(t *testing.T) {
 		{"pypi trailing separator", packagev1.Ecosystem_ECOSYSTEM_PYPI, "name.", "name-"},
 		{"pypi empty", packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""},
 
-		// Lower case only. A separator is part of the name.
-		{"npm upper case", packagev1.Ecosystem_ECOSYSTEM_NPM, "Express", "express"},
-		{"npm scoped", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "@vue/reactivity"},
+		// npm is case-sensitive: JSONStream and jsonstream are two packages.
+		{"npm keeps case", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream", "JSONStream"},
+		{"npm scoped keeps case", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "@Vue/Reactivity"},
 		{"npm keeps dot", packagev1.Ecosystem_ECOSYSTEM_NPM, "socket.io", "socket.io"},
+
+		// Lower case only. A separator is part of the name.
 		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "nokogiri"},
 		{"cargo keeps underscore", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "serde_json"},
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog", "monolog/monolog"},

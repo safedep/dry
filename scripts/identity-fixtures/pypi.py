@@ -40,6 +40,8 @@ VERSION_INPUTS = [
     "1", "1.1", "1.0.1", "2.0", "1.0rc2", "1.0.post2", "1.0.dev1", "1.0+other",
     # Invalid under PEP 440: the fold keeps the raw string.
     "1.0_1", "1.0final", "1.0rc1rc2", "1.0.dev1.post1", "1!2!1.0", "1.0+local..1", "1.0+", "", "abc", "1.0.0-py3-none-any", "latest",
+    # Non-ASCII. PEP 440 is an ASCII grammar, and the Kelvin sign case-folds to k.
+    "1+\u212a", "1.0\u00a0", "\u0661.0",
 ]
 
 NAME_INPUTS = [

@@ -2,6 +2,7 @@ package pb
 
 import (
 	"fmt"
+	"net/url"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
@@ -183,8 +184,12 @@ func (p PackageVersion) URN() (string, error) {
 
 // Key is a string for maps and caches. It includes the rule version, so an
 // entry written under an older rule never matches a lookup under a newer one.
+// The name and the version are query-escaped, so a separator inside either
+// one cannot make two distinct identities share a key. The format is stable,
+// because a persistent cache stores it.
 func (p PackageVersion) Key() string {
-	return fmt.Sprintf("%s/%d/%s@%s", p.ecosystem.String(), p.ruleVersion, p.name, p.version)
+	return fmt.Sprintf("%s/%d/%s@%s", p.ecosystem.String(), p.ruleVersion,
+		url.QueryEscape(p.name), url.QueryEscape(p.version))
 }
 
 // Equal compares the canonical forms of two values under the same rule.

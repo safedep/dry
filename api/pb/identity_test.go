@@ -90,7 +90,7 @@ func TestNewPackageVersionFromParts(t *testing.T) {
 			wantRule:      1,
 			wantParsed:    false,
 			wantVersRule:  false,
-			wantKeySuffix: "ECOSYSTEM_CARGO/1/serde_json@1.0.0+build",
+			wantKeySuffix: "ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild",
 		},
 		{
 			name:          "empty input is total",
@@ -212,6 +212,45 @@ func TestPackageVersionEqual(t *testing.T) {
 	assert.False(t, a.Equal(npm), "a different ecosystem")
 }
 
+func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
+	// The constructor is total, so a name or a version can hold the
+	// separators the key uses. Two distinct identities must never share a key.
+	npm := packagev1.Ecosystem_ECOSYSTEM_NPM
+
+	cases := []struct {
+		name string
+		a    PackageVersion
+		b    PackageVersion
+	}{
+		{
+			name: "at sign moves between name and version",
+			a:    NewPackageVersionFromParts(npm, "a", "b@c"),
+			b:    NewPackageVersionFromParts(npm, "a@b", "c"),
+		},
+		{
+			name: "slash moves between name and version",
+			a:    NewPackageVersionFromParts(npm, "@scope/a", "1"),
+			b:    NewPackageVersionFromParts(npm, "@scope", "a@1"),
+		},
+		{
+			name: "scoped npm name keeps one key",
+			a:    NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0"),
+			b:    NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0"),
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.a.Equal(test.b), test.a.Key() == test.b.Key())
+		})
+	}
+
+	t.Run("format is stable", func(t *testing.T) {
+		pv := NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build")
+		assert.Equal(t, "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild", pv.Key())
+	})
+}
+
 func TestFoldWithRule(t *testing.T) {
 	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
 
@@ -256,6 +295,10 @@ func TestCanonicalPypiVersion(t *testing.T) {
 		{"1.0_1", "1.0_1", false},
 		{"latest", "latest", false},
 		{"", "", false},
+		// The Kelvin sign case-folds to k. PEP 440 is ASCII, so it stays raw.
+		{"1+\u212a", "1+\u212a", false},
+		// A no-break space is whitespace to packaging and to strings.TrimSpace.
+		{"1.0\u00a0", "1", true},
 	}
 
 	for _, test := range cases {

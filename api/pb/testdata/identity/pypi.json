@@ -343,6 +343,21 @@
       "input": "latest",
       "canonical": "latest",
       "parsed": false
+    },
+    {
+      "input": "1+\u212a",
+      "canonical": "1+\u212a",
+      "parsed": false
+    },
+    {
+      "input": "1.0\u00a0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u0661.0",
+      "canonical": "\u0661.0",
+      "parsed": false
     }
   ],
   "names": [

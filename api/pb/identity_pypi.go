@@ -3,6 +3,7 @@ package pb
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // pep440Pattern is the PEP 440 grammar in its permissive form, the one
@@ -23,7 +24,15 @@ var pep440Pattern = regexp.MustCompile(`(?i)^v?(?:(?P<epoch>[0-9]+)!)?` +
 // name one release. A string the grammar rejects comes back unchanged with
 // false, so the fold is total.
 func canonicalPypiVersion(version string) (string, bool) {
-	matches := pep440Pattern.FindStringSubmatch(strings.TrimSpace(version))
+	trimmed := strings.TrimSpace(version)
+	if !isASCII(trimmed) {
+		// PEP 440 is an ASCII grammar. Go's case-insensitive match folds
+		// Unicode too, so the Kelvin sign would match [a-z] and collide
+		// with the ASCII k that packaging accepts.
+		return version, false
+	}
+
+	matches := pep440Pattern.FindStringSubmatch(trimmed)
 	if matches == nil {
 		return version, false
 	}
@@ -78,6 +87,15 @@ func canonicalPypiVersion(version string) (string, bool) {
 	}
 
 	return result, true
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
 }
 
 func pep440Number(number string) string {

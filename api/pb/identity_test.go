@@ -251,33 +251,7 @@ func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
 	})
 }
 
-func TestFoldWithRule(t *testing.T) {
-	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
-
-	t.Run("version zero is the identity fold", func(t *testing.T) {
-		fold, err := FoldWithRule(pypi, 0, "CalcBoxLite", "1.0.0")
-		require.NoError(t, err)
-		assert.Equal(t, Fold{Name: "CalcBoxLite", Version: "1.0.0"}, fold)
-	})
-
-	t.Run("current version folds", func(t *testing.T) {
-		fold, err := FoldWithRule(pypi, 1, "CalcBoxLite", "1.0.0")
-		require.NoError(t, err)
-		assert.Equal(t, Fold{Name: "calcboxlite", Version: "1", VersionParsed: true}, fold)
-	})
-
-	t.Run("unknown version is an error", func(t *testing.T) {
-		_, err := FoldWithRule(pypi, 7, "x", "1")
-		require.Error(t, err)
-	})
-
-	t.Run("no rule ecosystem accepts only version zero", func(t *testing.T) {
-		_, err := FoldWithRule(packagev1.Ecosystem_ECOSYSTEM_NPM, 1, "x", "1")
-		require.Error(t, err)
-	})
-}
-
-func TestCanonicalPypiVersion(t *testing.T) {
+func TestPep440Version(t *testing.T) {
 	cases := []struct {
 		input string
 		want  string
@@ -303,12 +277,42 @@ func TestCanonicalPypiVersion(t *testing.T) {
 
 	for _, test := range cases {
 		t.Run(test.input, func(t *testing.T) {
-			got, ok := canonicalPypiVersion(test.input)
+			got, ok := pep440Version(test.input)
 			assert.Equal(t, test.ok, ok)
 			assert.Equal(t, test.want, got)
 
-			again, _ := canonicalPypiVersion(got)
+			again, _ := pep440Version(got)
 			assert.Equal(t, got, again, "the fold must be idempotent")
 		})
 	}
+}
+
+func TestIdentityRulesTable(t *testing.T) {
+	// A rule in the table is a published rule: it has a version and a name
+	// fold, and every fold is idempotent, because a second write of one
+	// package must land on the row the first created.
+	for ecosystem, rule := range identityRules {
+		t.Run(ecosystem.String(), func(t *testing.T) {
+			assert.Positive(t, rule.version)
+			require.NotNil(t, rule.foldName)
+
+			once := rule.foldName("Some_Name.Here")
+			assert.Equal(t, once, rule.foldName(once))
+
+			if rule.foldVersion == nil {
+				return
+			}
+			canonical, parsed := rule.foldVersion("1.0.0")
+			require.True(t, parsed)
+			again, _ := rule.foldVersion(canonical)
+			assert.Equal(t, canonical, again)
+		})
+	}
+
+	t.Run("absent ecosystem has the identity rule", func(t *testing.T) {
+		rule := ruleFor(packagev1.Ecosystem_ECOSYSTEM_NPM)
+		assert.False(t, rule.hasRule())
+		assert.False(t, rule.hasVersionRule())
+		assert.Equal(t, "JSONStream", rule.foldName("JSONStream"))
+	})
 }

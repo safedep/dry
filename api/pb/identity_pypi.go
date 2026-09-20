@@ -16,14 +16,25 @@ var pep440Pattern = regexp.MustCompile(`(?i)^v?(?:(?P<epoch>[0-9]+)!)?` +
 	`(?:[._-]?(?P<dev>dev)[._-]?(?P<devN>[0-9]+)?)?` +
 	`(?:\+(?P<local>[a-z0-9]+(?:[._-][a-z0-9]+)*))?$`)
 
-// canonicalPypiVersion folds a version string to the form
+// pypiNameSeparators matches a run of the characters PEP 503 folds to one
+// hyphen. See https://peps.python.org/pep-0503/#normalized-names.
+var pypiNameSeparators = regexp.MustCompile(`[-_.]+`)
+
+// pep503Name folds a PyPI project name: lower case, and every run of the
+// separators - _ . becomes one hyphen. Two names with one fold name one
+// project on PyPI.
+func pep503Name(name string) string {
+	return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
+}
+
+// pep440Version folds a version string to the form
 // packaging.utils.canonicalize_version produces: no leading v, no zero epoch,
 // no leading zeros in a number, no trailing zero release segments, lower case,
 // one spelling per pre, post and dev segment, dots between local segments.
 // PyPI resolves a release by this form, so two strings with one canonical form
 // name one release. A string the grammar rejects comes back unchanged with
 // false, so the fold is total.
-func canonicalPypiVersion(version string) (string, bool) {
+func pep440Version(version string) (string, bool) {
 	trimmed := strings.TrimSpace(version)
 	if !isASCII(trimmed) {
 		// PEP 440 is an ASCII grammar. Go's case-insensitive match folds

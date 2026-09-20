@@ -139,32 +139,16 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 }
 
-// pypiNameSeparators matches a run of the characters PEP 503 folds to one
-// hyphen. See https://peps.python.org/pep-0503/#normalized-names.
-var pypiNameSeparators = regexp.MustCompile(`[-_.]+`)
-
 // CanonicalPackageName returns the one spelling of a package name for its
 // ecosystem, so two producers that disagree on case or separators still name
-// one package. A registry that treats names case-sensitively, and every
-// ecosystem this does not rule on, keeps the raw name. npm is case-sensitive:
-// JSONStream and jsonstream are two packages with two artifacts, so an npm
-// name keeps its case.
+// one package. The rule per ecosystem lives in identityRules. A registry that
+// treats names case-sensitively, npm among them, and every ecosystem with no
+// rule keep the raw name.
 //
 // packageurl-go typeAdjustName is close but does not fit: for PyPI it folds
 // only `_`, and it lower-cases Go and GitHub names, which stay case-sensitive.
 func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
-	switch ecosystem {
-	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
-		return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
-
-	case packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
-		packagev1.Ecosystem_ECOSYSTEM_CARGO,
-		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
-		return strings.ToLower(name)
-
-	default:
-		return name
-	}
+	return ruleFor(ecosystem).foldName(name)
 }
 
 // EcosystemToPurlType maps a PackageVersion ecosystem to its canonical Package

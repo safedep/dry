@@ -7,63 +7,6 @@ import (
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 )
 
-// IdentityRuleVersion reports the version of the fold rule for an ecosystem.
-// Zero means no rule: the fold is the identity function and HasRule is false.
-// Bump one ecosystem's version when its rule changes. The owner of a store
-// re-folds the rows written under the older version, and FoldWithRule lets a
-// reader match those rows during the transition.
-//
-// Version 1 rules:
-//   - PyPI: PEP 503 name, PEP 440 canonical version.
-//   - RubyGems, Cargo, Packagist: lower-case name, raw version.
-//
-// Every other ecosystem, npm included, has no rule. npm keeps case because
-// JSONStream and jsonstream are two packages on the registry.
-func IdentityRuleVersion(ecosystem packagev1.Ecosystem) int {
-	switch ecosystem {
-	case packagev1.Ecosystem_ECOSYSTEM_PYPI,
-		packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
-		packagev1.Ecosystem_ECOSYSTEM_CARGO,
-		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
-		return 1
-	default:
-		return 0
-	}
-}
-
-// Fold is the result of one fold rule applied to a name and a version.
-type Fold struct {
-	Name    string
-	Version string
-
-	// VersionParsed is true when a version rule parsed the input. It is
-	// false when the ecosystem has no version rule, and false when the rule
-	// could not parse the input, in which case Version holds the raw string.
-	VersionParsed bool
-}
-
-// FoldWithRule folds a name and a version under one rule version of an
-// ecosystem. Version 0 is the identity fold for every ecosystem. The fold
-// never fails for a version that exists. A reader that has to match rows
-// written under the previous rule folds the request under that version too.
-func FoldWithRule(ecosystem packagev1.Ecosystem, ruleVersion int, name, version string) (Fold, error) {
-	if ruleVersion == 0 {
-		return Fold{Name: name, Version: version}, nil
-	}
-
-	if ruleVersion != IdentityRuleVersion(ecosystem) {
-		return Fold{}, fmt.Errorf("no identity rule version %d for %s", ruleVersion, ecosystem)
-	}
-
-	switch ecosystem {
-	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
-		canonical, parsed := canonicalPypiVersion(version)
-		return Fold{Name: CanonicalPackageName(ecosystem, name), Version: canonical, VersionParsed: parsed}, nil
-	default:
-		return Fold{Name: CanonicalPackageName(ecosystem, name), Version: version}, nil
-	}
-}
-
 // PackageVersion is the identity of one package version. It is the only way
 // to obtain a canonical name and version, so a function that takes it cannot
 // receive an unfolded pair. The value is immutable. It keeps the raw spelling
@@ -79,32 +22,27 @@ type PackageVersion struct {
 	versionParsed bool
 }
 
-// NewPackageVersion folds a proto under the current rule of its ecosystem. It
-// never fails. A nil message yields an unspecified ecosystem and empty strings.
+// NewPackageVersion folds a proto under the rule of its ecosystem. It never
+// fails. A nil message yields an unspecified ecosystem and empty strings.
 func NewPackageVersion(pv *packagev1.PackageVersion) PackageVersion {
 	return NewPackageVersionFromParts(pv.GetPackage().GetEcosystem(), pv.GetPackage().GetName(), pv.GetVersion())
 }
 
-// NewPackageVersionFromParts folds a raw name and version under the current
-// rule of the ecosystem. It never fails.
+// NewPackageVersionFromParts folds a raw name and version under the rule of
+// the ecosystem. It never fails. A version the rule cannot parse stays raw and
+// reports VersionParsed false, so a malformed input matches only itself.
 func NewPackageVersionFromParts(ecosystem packagev1.Ecosystem, name, version string) PackageVersion {
-	ruleVersion := IdentityRuleVersion(ecosystem)
-	folded, err := FoldWithRule(ecosystem, ruleVersion, name, version)
-	if err != nil {
-		// The current rule version always exists. A failure here is a bug in
-		// IdentityRuleVersion, and the identity fold is the safe answer.
-		folded = Fold{Name: name, Version: version}
-		ruleVersion = 0
-	}
+	rule := ruleFor(ecosystem)
+	canonicalName, canonicalVersion, parsed := rule.fold(name, version)
 
 	return PackageVersion{
 		ecosystem:     ecosystem,
 		rawName:       name,
 		rawVersion:    version,
-		name:          folded.Name,
-		version:       folded.Version,
-		ruleVersion:   ruleVersion,
-		versionParsed: folded.VersionParsed,
+		name:          canonicalName,
+		version:       canonicalVersion,
+		ruleVersion:   rule.version,
+		versionParsed: parsed,
 	}
 }
 
@@ -120,6 +58,7 @@ func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 	return NewPackageVersion(helper.PackageVersion()), nil
 }
 
+// Ecosystem is the ecosystem the name and version belong to.
 func (p PackageVersion) Ecosystem() packagev1.Ecosystem {
 	return p.ecosystem
 }
@@ -134,10 +73,12 @@ func (p PackageVersion) Version() string {
 	return p.version
 }
 
+// RawName is the name as the producer observed it.
 func (p PackageVersion) RawName() string {
 	return p.rawName
 }
 
+// RawVersion is the version as the producer observed it.
 func (p PackageVersion) RawVersion() string {
 	return p.rawVersion
 }
@@ -149,13 +90,13 @@ func (p PackageVersion) RuleVersion() int {
 
 // HasRule reports whether the ecosystem has any fold rule.
 func (p PackageVersion) HasRule() bool {
-	return p.ruleVersion != 0
+	return ruleFor(p.ecosystem).hasRule()
 }
 
 // HasVersionRule reports whether the ecosystem has a version rule. Count
 // VersionParsed misses only where this is true.
 func (p PackageVersion) HasVersionRule() bool {
-	return p.ecosystem == packagev1.Ecosystem_ECOSYSTEM_PYPI && p.ruleVersion != 0
+	return ruleFor(p.ecosystem).hasVersionRule()
 }
 
 // VersionParsed reports whether a version rule parsed the raw version.

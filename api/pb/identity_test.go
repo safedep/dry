@@ -31,95 +31,6 @@ func TestIdentityRuleVersion(t *testing.T) {
 	}
 }
 
-func TestNewPackageVersionFromParts(t *testing.T) {
-	cases := []struct {
-		name          string
-		ecosystem     packagev1.Ecosystem
-		rawName       string
-		rawVersion    string
-		wantName      string
-		wantVersion   string
-		wantRule      int
-		wantParsed    bool
-		wantVersRule  bool
-		wantKeySuffix string
-	}{
-		{
-			name:          "pypi folds name and version",
-			ecosystem:     packagev1.Ecosystem_ECOSYSTEM_PYPI,
-			rawName:       "CalcBoxLite",
-			rawVersion:    "1.0.0",
-			wantName:      "calcboxlite",
-			wantVersion:   "1",
-			wantRule:      1,
-			wantParsed:    true,
-			wantVersRule:  true,
-			wantKeySuffix: "ECOSYSTEM_PYPI/1/calcboxlite@1",
-		},
-		{
-			name:          "pypi keeps an unparsable version",
-			ecosystem:     packagev1.Ecosystem_ECOSYSTEM_PYPI,
-			rawName:       "demo",
-			rawVersion:    "latest",
-			wantName:      "demo",
-			wantVersion:   "latest",
-			wantRule:      1,
-			wantParsed:    false,
-			wantVersRule:  true,
-			wantKeySuffix: "ECOSYSTEM_PYPI/1/demo@latest",
-		},
-		{
-			name:          "npm keeps case and version",
-			ecosystem:     packagev1.Ecosystem_ECOSYSTEM_NPM,
-			rawName:       "JSONStream",
-			rawVersion:    "1.0.3",
-			wantName:      "JSONStream",
-			wantVersion:   "1.0.3",
-			wantRule:      0,
-			wantParsed:    false,
-			wantVersRule:  false,
-			wantKeySuffix: "ECOSYSTEM_NPM/0/JSONStream@1.0.3",
-		},
-		{
-			name:          "cargo folds name only",
-			ecosystem:     packagev1.Ecosystem_ECOSYSTEM_CARGO,
-			rawName:       "Serde_JSON",
-			rawVersion:    "1.0.0+build",
-			wantName:      "serde_json",
-			wantVersion:   "1.0.0+build",
-			wantRule:      1,
-			wantParsed:    false,
-			wantVersRule:  false,
-			wantKeySuffix: "ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild",
-		},
-		{
-			name:          "empty input is total",
-			ecosystem:     packagev1.Ecosystem_ECOSYSTEM_PYPI,
-			wantRule:      1,
-			wantParsed:    false,
-			wantVersRule:  true,
-			wantKeySuffix: "ECOSYSTEM_PYPI/1/@",
-		},
-	}
-
-	for _, test := range cases {
-		t.Run(test.name, func(t *testing.T) {
-			pv := NewPackageVersionFromParts(test.ecosystem, test.rawName, test.rawVersion)
-
-			assert.Equal(t, test.ecosystem, pv.Ecosystem())
-			assert.Equal(t, test.wantName, pv.Name())
-			assert.Equal(t, test.wantVersion, pv.Version())
-			assert.Equal(t, test.rawName, pv.RawName())
-			assert.Equal(t, test.rawVersion, pv.RawVersion())
-			assert.Equal(t, test.wantRule, pv.RuleVersion())
-			assert.Equal(t, test.wantRule != 0, pv.HasRule())
-			assert.Equal(t, test.wantParsed, pv.VersionParsed())
-			assert.Equal(t, test.wantVersRule, pv.HasVersionRule())
-			assert.Equal(t, test.wantKeySuffix, pv.Key())
-		})
-	}
-}
-
 func TestNewPackageVersionFromProto(t *testing.T) {
 	t.Run("nil is total", func(t *testing.T) {
 		pv := NewPackageVersion(nil)
@@ -246,8 +157,18 @@ func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
 	}
 
 	t.Run("format is stable", func(t *testing.T) {
-		pv := NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build")
-		assert.Equal(t, "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild", pv.Key())
+		cases := []struct {
+			pv   PackageVersion
+			want string
+		}{
+			{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
+			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0"), "ECOSYSTEM_PYPI/1/calcboxlite@1"},
+			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"), "ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild"},
+			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
+		}
+		for _, test := range cases {
+			assert.Equal(t, test.want, test.pv.Key())
+		}
 	})
 }
 

@@ -12,7 +12,14 @@ import (
 // receive an unfolded pair. The value is immutable. It keeps the raw spelling
 // next to the canonical one: the raw form serves display, registry URLs and a
 // re-fold when a rule changes, and the canonical form serves every comparison.
+//
+// The value is not comparable. Compare with Equal and index a map with Key.
+// A == on two values would compare the raw spelling too, and a map keyed on
+// the value would miss the entry the same identity wrote under another
+// spelling.
 type PackageVersion struct {
+	_ [0]func()
+
 	ecosystem     packagev1.Ecosystem
 	rawName       string
 	rawVersion    string
@@ -47,9 +54,11 @@ func NewPackageVersionFromParts(ecosystem packagev1.Ecosystem, name, version str
 }
 
 // NewPackageVersionFromPurl parses a Package URL and folds it. It returns an
-// error only for a malformed PURL. The raw name and raw version are the
-// coordinates as written in the PURL, percent-decoded, so the value folds the
-// same way as one built from the parts.
+// error for a malformed PURL and for a PURL type the ecosystem enum cannot
+// represent, because an identity that has lost its ecosystem and namespace
+// would let two distinct packages share a key. The raw name and raw version
+// are the coordinates as written in the PURL, percent-decoded, so the value
+// folds the same way as one built from the parts.
 func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 	p, err := parsePurl(purl)
 	if err != nil {
@@ -57,6 +66,10 @@ func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
+	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED {
+		return PackageVersion{}, fmt.Errorf("unsupported purl type: %q", p.Type)
+	}
+
 	return NewPackageVersionFromParts(ecosystem, purlMapName(ecosystem, p), p.Version), nil
 }
 
@@ -101,14 +114,19 @@ func (p PackageVersion) HasVersionRule() bool {
 	return ruleFor(p.ecosystem).hasVersionRule()
 }
 
-// VersionParsed reports whether a version rule parsed the raw version.
+// VersionParsed reports whether a version rule parsed the raw version. It is
+// false for every ecosystem with no version rule, where the raw version is
+// the identity, so false alone does not mean the version is invalid. Read it
+// with HasVersionRule.
 func (p PackageVersion) VersionParsed() bool {
 	return p.versionParsed
 }
 
-// Proto returns a new message that carries the canonical form. A caller that
-// mutates it changes nothing inside the value.
-func (p PackageVersion) Proto() *packagev1.PackageVersion {
+// CanonicalProto returns a new message that carries the canonical form. It
+// serves a store that keeps canonical columns. A client that sends a request
+// uses RawProto instead. A caller that mutates the message changes nothing
+// inside the value.
+func (p PackageVersion) CanonicalProto() *packagev1.PackageVersion {
 	return newPackageVersionProto(p.ecosystem, p.name, p.version)
 }
 
@@ -122,7 +140,7 @@ func (p PackageVersion) RawProto() *packagev1.PackageVersion {
 // URN is the canonical Package URL. It fails for an ecosystem with no PURL
 // type, as Purl does, rather than fabricate one.
 func (p PackageVersion) URN() (string, error) {
-	return Purl(p.Proto())
+	return Purl(p.CanonicalProto())
 }
 
 // Key is a string for maps and caches. It includes the rule version, so an

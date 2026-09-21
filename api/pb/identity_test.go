@@ -1,6 +1,7 @@
 package pb
 
 import (
+	"reflect"
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -97,9 +98,18 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		assert.Equal(t, "pkg:composer/vendor-a/library@1.0.0", urn)
 	})
 
-	t.Run("malformed purl is the one error", func(t *testing.T) {
+	t.Run("malformed purl is an error", func(t *testing.T) {
 		_, err := NewPackageVersionFromPurl("not a purl")
 		require.Error(t, err)
+	})
+
+	t.Run("purl type outside the ecosystem enum is an error", func(t *testing.T) {
+		// deb and rpm would both collapse to an unspecified ecosystem with
+		// the bare name curl, so two distinct packages would share one key.
+		for _, purl := range []string{"pkg:deb/debian/curl@1.0", "pkg:rpm/fedora/curl@1.0"} {
+			_, err := NewPackageVersionFromPurl(purl)
+			assert.ErrorContains(t, err, "unsupported purl type", purl)
+		}
 	})
 
 	t.Run("urn fails for an ecosystem with no purl type", func(t *testing.T) {
@@ -207,7 +217,7 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 func TestPackageVersionProtoIsFresh(t *testing.T) {
 	pv := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0")
 
-	canonical := pv.Proto()
+	canonical := pv.CanonicalProto()
 	canonical.Package.Name = "mutated"
 	canonical.Version = "mutated"
 
@@ -220,7 +230,7 @@ func TestPackageVersionProtoIsFresh(t *testing.T) {
 	assert.Equal(t, "CalcBoxLite", pv.RawName())
 	assert.Equal(t, "1.0.0", pv.RawVersion())
 
-	again := pv.Proto()
+	again := pv.CanonicalProto()
 	assert.Equal(t, "calcboxlite", again.GetPackage().GetName())
 	assert.Equal(t, "1", again.GetVersion())
 	assert.NotSame(t, canonical, again)
@@ -228,6 +238,13 @@ func TestPackageVersionProtoIsFresh(t *testing.T) {
 	rawAgain := pv.RawProto()
 	assert.Equal(t, "CalcBoxLite", rawAgain.GetPackage().GetName())
 	assert.Equal(t, "1.0.0", rawAgain.GetVersion())
+}
+
+func TestPackageVersionIsNotComparable(t *testing.T) {
+	// A comparable value would let a == b and a map keyed on the value
+	// compare the raw spelling, and miss an identity written under another
+	// spelling. Equal and Key are the two supported comparisons.
+	assert.False(t, reflect.TypeFor[PackageVersion]().Comparable())
 }
 
 func TestPackageVersionEqual(t *testing.T) {

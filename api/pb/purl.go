@@ -16,6 +16,9 @@ type purlPackageVersionHelper struct {
 	pv *packagev1.PackageVersion
 }
 
+// NewPurlPackageVersion parses a purl into the proto form, with the name
+// folded under CanonicalPackageName and the version as written. Use
+// NewPackageVersionFromPurl to obtain an identity to compare, key or send.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := parsePurl(purl)
 	if err != nil {

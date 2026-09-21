@@ -47,8 +47,8 @@ func NewPackageVersionFromParts(ecosystem packagev1.Ecosystem, name, version str
 }
 
 // NewPackageVersionFromPurl parses a Package URL and folds it. It returns an
-// error only for a malformed PURL. The raw name is the name the PURL parser
-// yields, which for a Go module path has already lost its case.
+// error only for a malformed PURL. The raw name is the name NewPurlPackageVersion
+// yields, with the case of a Go module path kept as written in the PURL.
 func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 	helper, err := NewPurlPackageVersion(purl)
 	if err != nil {

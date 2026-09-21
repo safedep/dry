@@ -73,6 +73,8 @@ var identityCases = []identityCase{
 	{"pypi version every segment", pypi, "pkg", "V01.0RC01.POST02.DEV03+LOCAL_004-ABC", "pkg", "1rc1.post2.dev3+local.4.abc", true},
 	{"pypi version surrounding whitespace", pypi, "pkg", " 1.0\n", "pkg", "1", true},
 	{"pypi version no-break space is whitespace", pypi, "pkg", "1.0\u00a0", "pkg", "1", true},
+	{"pypi version information separators are whitespace to python", pypi, "pkg", "\x1c1.0\x1f", "pkg", "1", true},
+	{"pypi version line separator is whitespace", pypi, "pkg", "\u20281.0", "pkg", "1", true},
 	{"pypi version huge epoch", pypi, "pkg", "999999999999999999999999999!1.0", "pkg", "999999999999999999999999999!1", true},
 	{"pypi version long numeric part", pypi, "pkg", "1.000000000000000000001", "pkg", "1.1", true},
 
@@ -89,6 +91,8 @@ var identityCases = []identityCase{
 	{"pypi version empty", pypi, "pkg", "", "pkg", "", false},
 	{"pypi version kelvin sign is not k", pypi, "pkg", "1+\u212a", "pkg", "1+\u212a", false},
 	{"pypi version non-ascii digit", pypi, "pkg", "\u0661.0", "pkg", "\u0661.0", false},
+	{"pypi version byte order mark is not whitespace", pypi, "pkg", "\ufeff1.0", "pkg", "\ufeff1.0", false},
+	{"pypi version zero width space is not whitespace", pypi, "pkg", "\u200b1.0", "pkg", "\u200b1.0", false},
 
 	// npm: no rule. The registry is case-sensitive, so JSONStream and
 	// jsonstream are two packages, and versions are semver as published.
@@ -111,6 +115,7 @@ var identityCases = []identityCase{
 	// Packagist: lower-case vendor and package, raw version.
 	{"packagist name upper case", packagist, "Monolog/Monolog", "3.0.0", "monolog/monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
+	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
 
 	// No rule: raw name and raw version, case and all.
 	{"go module path keeps case", golang, "github.com/safedep/Vet", "v1.0.0", "github.com/safedep/Vet", "v1.0.0", false},
@@ -167,6 +172,7 @@ var identityDistinctCases = []identityDistinctCase{
 	{"cargo hyphen and underscore differ", identitySide{cargo, "tokio-util", "1"}, identitySide{cargo, "tokio_util", "1"}},
 	{"rubygems trailing zero differs", identitySide{rubygems, "rails", "7.0"}, identitySide{rubygems, "rails", "7.0.0"}},
 	{"go case differs", identitySide{golang, "github.com/safedep/Vet", "v1"}, identitySide{golang, "github.com/safedep/vet", "v1"}},
+	{"packagist vendor differs", identitySide{packagist, "vendor-a/library", "1.0.0"}, identitySide{packagist, "vendor-b/library", "1.0.0"}},
 	{"same spelling in another ecosystem differs", identitySide{pypi, "requests", "1"}, identitySide{npm, "requests", "1"}},
 }
 

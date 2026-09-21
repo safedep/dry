@@ -358,6 +358,51 @@
       "input": "\u0661.0",
       "canonical": "\u0661.0",
       "parsed": false
+    },
+    {
+      "input": "\u001c1.0\u001c",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u001d1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0\u001e",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u001f1.0\u001f",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u000b1.0\f",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u20281.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u00851.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\ufeff1.0",
+      "canonical": "\ufeff1.0",
+      "parsed": false
+    },
+    {
+      "input": "\u200b1.0",
+      "canonical": "\u200b1.0",
+      "parsed": false
     }
   ],
   "names": [
@@ -428,7 +473,9 @@
       "V1.0",
       "0!1.0",
       "000!1.0",
-      " 1.0\n"
+      " 1.0\n",
+      "\u001c1.0\u001c",
+      "\u001f1.0\u001f"
     ],
     [
       "1.0.0rc1",

@@ -69,6 +69,48 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		assert.Equal(t, "JSONStream", pv.Name())
 	})
 
+	t.Run("go module path keeps case through the purl parser", func(t *testing.T) {
+		fromPurl, err := NewPackageVersionFromPurl("pkg:golang/example.com/Owner/Library@v1.0.0")
+		require.NoError(t, err)
+		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0")
+
+		assert.Equal(t, "example.com/Owner/Library", fromPurl.Name())
+		assert.True(t, fromPurl.Equal(fromParts), "both constructors must agree")
+
+		lower, err := NewPackageVersionFromPurl("pkg:golang/example.com/owner/library@v1.0.0")
+		require.NoError(t, err)
+		assert.False(t, fromPurl.Equal(lower), "a Go module path is case-sensitive")
+		assert.NotEqual(t, fromPurl.Key(), lower.Key())
+
+		urn, err := fromPurl.URN()
+		require.NoError(t, err)
+		assert.Equal(t, "pkg:golang/example.com/Owner/Library@v1.0.0", urn)
+	})
+
+	t.Run("go purl with qualifiers and subpath", func(t *testing.T) {
+		pv, err := NewPackageVersionFromPurl("pkg:golang/github.com/safedep/Vet@v1.0.0?type=module#cmd/vet")
+		require.NoError(t, err)
+		assert.Equal(t, "github.com/safedep/Vet", pv.Name())
+		assert.Equal(t, "v1.0.0", pv.Version())
+	})
+
+	t.Run("composer keeps its vendor", func(t *testing.T) {
+		vendorA, err := NewPackageVersionFromPurl("pkg:composer/vendor-a/library@1.0.0")
+		require.NoError(t, err)
+		vendorB, err := NewPackageVersionFromPurl("pkg:composer/vendor-b/library@1.0.0")
+		require.NoError(t, err)
+		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0")
+
+		assert.Equal(t, "vendor-a/library", vendorA.Name())
+		assert.False(t, vendorA.Equal(vendorB), "two vendors are two packages")
+		assert.NotEqual(t, vendorA.Key(), vendorB.Key())
+		assert.True(t, vendorA.Equal(fromParts), "both constructors must agree")
+
+		urn, err := fromParts.URN()
+		require.NoError(t, err)
+		assert.Equal(t, "pkg:composer/vendor-a/library@1.0.0", urn)
+	})
+
 	t.Run("malformed purl is the one error", func(t *testing.T) {
 		_, err := NewPackageVersionFromPurl("not a purl")
 		require.Error(t, err)
@@ -194,6 +236,9 @@ func TestPep440Version(t *testing.T) {
 		{"1+\u212a", "1+\u212a", false},
 		// A no-break space is whitespace to packaging and to strings.TrimSpace.
 		{"1.0\u00a0", "1", true},
+		// The information separators are whitespace to Python but not to Go.
+		{"\x1c1.0\x1d", "1", true},
+		{"\x1e1.0\x1f", "1", true},
 	}
 
 	for _, test := range cases {

@@ -3,6 +3,7 @@ package pb
 import (
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -35,7 +36,7 @@ func pep503Name(name string) string {
 // name one release. A string the grammar rejects comes back unchanged with
 // false, so the fold is total.
 func pep440Version(version string) (string, bool) {
-	trimmed := strings.TrimSpace(version)
+	trimmed := strings.TrimFunc(version, isPep440Space)
 	if !isASCII(trimmed) {
 		// PEP 440 is an ASCII grammar. Go's case-insensitive match folds
 		// Unicode too, so the Kelvin sign would match [a-z] and collide
@@ -98,6 +99,13 @@ func pep440Version(version string) (string, bool) {
 	}
 
 	return result, true
+}
+
+// isPep440Space is Python's str.isspace, which packaging uses around a
+// version. It is Go's unicode.IsSpace plus the four information separators
+// U+001C to U+001F, which Python counts as whitespace and Go does not.
+func isPep440Space(r rune) bool {
+	return unicode.IsSpace(r) || (r >= '\x1c' && r <= '\x1f')
 }
 
 func isASCII(s string) bool {

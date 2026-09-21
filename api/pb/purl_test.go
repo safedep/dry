@@ -54,6 +54,20 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "v2",
 		},
 		{
+			name:          "composer keeps its vendor",
+			purl:          "pkg:composer/vendor-a/library@1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
+			wantName:      "vendor-a/library",
+			wantVersion:   "1.0.0",
+		},
+		{
+			name:          "go keeps module path case",
+			purl:          "pkg:golang/github.com/Azure/Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/Azure/Foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
 			name:          "ruby gems",
 			purl:          "pkg:gem/rails@6.1.3",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,

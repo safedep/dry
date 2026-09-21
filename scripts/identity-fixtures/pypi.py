@@ -42,6 +42,9 @@ VERSION_INPUTS = [
     "1.0_1", "1.0final", "1.0rc1rc2", "1.0.dev1.post1", "1!2!1.0", "1.0+local..1", "1.0+", "", "abc", "1.0.0-py3-none-any", "latest",
     # Non-ASCII. PEP 440 is an ASCII grammar, and the Kelvin sign case-folds to k.
     "1+\u212a", "1.0\u00a0", "\u0661.0",
+    # Python's whitespace set is wider than Go's strings.TrimSpace: the four
+    # information separators U+001C to U+001F strip too. U+FEFF and U+200B are not whitespace.
+    "\x1c1.0\x1c", "\x1d1.0", "1.0\x1e", "\x1f1.0\x1f", "\x0b1.0\x0c", "\u20281.0", "\x851.0", "\ufeff1.0", "\u200b1.0",
 ]
 
 NAME_INPUTS = [
@@ -50,7 +53,7 @@ NAME_INPUTS = [
 ]
 
 VERSION_GROUPS = [
-    ["1.0", "1.0.0", "1.0.0.0", "01.0", "v1.0", "V1.0", "0!1.0", "000!1.0", " 1.0\n"],
+    ["1.0", "1.0.0", "1.0.0.0", "01.0", "v1.0", "V1.0", "0!1.0", "000!1.0", " 1.0\n", "\x1c1.0\x1c", "\x1f1.0\x1f"],
     ["1.0.0rc1", "1.0rc1", "1rc1", "1.0RC1", "1.0c1", "1.0preview1", "1.0pre1", "1.0-rc.1", "1.0.rc1"],
     ["1.0.post1", "1.0.0.post1", "1.0-01", "1.0-1", "1.0post1", "1.0.r1"],
     ["1.0+local.1", "1.0.0+local.1"],

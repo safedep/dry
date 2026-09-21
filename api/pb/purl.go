@@ -22,6 +22,11 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 
 	ecosystem := purlMapEcosystem(p.Type)
 	name := purlMapName(ecosystem, p)
+	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_GO {
+		if raw, ok := purlRawPath(purl); ok && strings.EqualFold(raw, name) {
+			name = raw
+		}
+	}
 
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
@@ -32,6 +37,34 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	}
 
 	return &purlPackageVersionHelper{pv: pv}, nil
+}
+
+// purlRawPath returns the namespace and name of a purl exactly as written,
+// percent-decoded, with the type, version, qualifiers and subpath removed.
+// packageurl-go lower-cases the golang namespace and name, and a Go module
+// path is case-sensitive, so the parsed name would name a different module.
+func purlRawPath(purl string) (string, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(purl), "pkg:")
+	if !ok {
+		return "", false
+	}
+
+	_, rest, ok = strings.Cut(rest, "/")
+	if !ok {
+		return "", false
+	}
+
+	rest = strings.TrimLeft(rest, "/")
+	if end := strings.IndexAny(rest, "@?#"); end >= 0 {
+		rest = rest[:end]
+	}
+
+	decoded, err := url.PathUnescape(rest)
+	if err != nil || decoded == "" {
+		return "", false
+	}
+
+	return decoded, true
 }
 
 var githubHostRegexp = regexp.MustCompile(`^github(\.[a-zA-Z0-9-]+)?\.com$`)
@@ -126,7 +159,9 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 
 	switch ecosystem {
-	case packagev1.Ecosystem_ECOSYSTEM_GO, packagev1.Ecosystem_ECOSYSTEM_NPM:
+	case packagev1.Ecosystem_ECOSYSTEM_GO,
+		packagev1.Ecosystem_ECOSYSTEM_NPM,
+		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
 		return purl.Namespace + "/" + purl.Name
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
 		return purl.Namespace + ":" + purl.Name
@@ -228,6 +263,7 @@ func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) 
 		}
 	case packagev1.Ecosystem_ECOSYSTEM_GO,
 		packagev1.Ecosystem_ECOSYSTEM_NPM,
+		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
 		packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
 		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,

@@ -49,6 +49,10 @@ func purlRawPath(purl string) (string, bool) {
 		return "", false
 	}
 
+	// The purl scheme allows slashes after "pkg:", as in "pkg://golang/...".
+	// The parser ignores them, and so must the type split below.
+	rest = strings.TrimLeft(rest, "/")
+
 	_, rest, ok = strings.Cut(rest, "/")
 	if !ok {
 		return "", false

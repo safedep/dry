@@ -87,6 +87,23 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		assert.Equal(t, "pkg:golang/example.com/Owner/Library@v1.0.0", urn)
 	})
 
+	t.Run("go module path keeps case under every purl prefix", func(t *testing.T) {
+		want := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0")
+
+		for _, prefix := range []string{"pkg:", "pkg:/", "pkg://", "pkg:///"} {
+			t.Run(prefix, func(t *testing.T) {
+				upper, err := NewPackageVersionFromPurl(prefix + "golang/example.com/Owner/Library@v1.0.0")
+				require.NoError(t, err)
+				lower, err := NewPackageVersionFromPurl(prefix + "golang/example.com/owner/library@v1.0.0")
+				require.NoError(t, err)
+
+				assert.Equal(t, "example.com/Owner/Library", upper.Name())
+				assert.True(t, upper.Equal(want), "the purl constructor must agree with the parts constructor")
+				assert.False(t, upper.Equal(lower), "a Go module path is case-sensitive")
+			})
+		}
+	})
+
 	t.Run("go purl with qualifiers and subpath", func(t *testing.T) {
 		pv, err := NewPackageVersionFromPurl("pkg:golang/github.com/safedep/Vet@v1.0.0?type=module#cmd/vet")
 		require.NoError(t, err)

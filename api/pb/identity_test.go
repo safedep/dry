@@ -17,6 +17,10 @@ func TestIdentityRuleVersion(t *testing.T) {
 		{packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_NPM, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_GO, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, 0},
@@ -69,41 +73,6 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		assert.Equal(t, "JSONStream", pv.Name())
 	})
 
-	t.Run("go module path keeps case through the purl parser", func(t *testing.T) {
-		fromPurl, err := NewPackageVersionFromPurl("pkg:golang/example.com/Owner/Library@v1.0.0")
-		require.NoError(t, err)
-		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0")
-
-		assert.Equal(t, "example.com/Owner/Library", fromPurl.Name())
-		assert.True(t, fromPurl.Equal(fromParts), "both constructors must agree")
-
-		lower, err := NewPackageVersionFromPurl("pkg:golang/example.com/owner/library@v1.0.0")
-		require.NoError(t, err)
-		assert.False(t, fromPurl.Equal(lower), "a Go module path is case-sensitive")
-		assert.NotEqual(t, fromPurl.Key(), lower.Key())
-
-		urn, err := fromPurl.URN()
-		require.NoError(t, err)
-		assert.Equal(t, "pkg:golang/example.com/Owner/Library@v1.0.0", urn)
-	})
-
-	t.Run("go module path keeps case under every purl prefix", func(t *testing.T) {
-		want := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0")
-
-		for _, prefix := range []string{"pkg:", "pkg:/", "pkg://", "pkg:///"} {
-			t.Run(prefix, func(t *testing.T) {
-				upper, err := NewPackageVersionFromPurl(prefix + "golang/example.com/Owner/Library@v1.0.0")
-				require.NoError(t, err)
-				lower, err := NewPackageVersionFromPurl(prefix + "golang/example.com/owner/library@v1.0.0")
-				require.NoError(t, err)
-
-				assert.Equal(t, "example.com/Owner/Library", upper.Name())
-				assert.True(t, upper.Equal(want), "the purl constructor must agree with the parts constructor")
-				assert.False(t, upper.Equal(lower), "a Go module path is case-sensitive")
-			})
-		}
-	})
-
 	t.Run("go purl with qualifiers and subpath", func(t *testing.T) {
 		pv, err := NewPackageVersionFromPurl("pkg:golang/github.com/safedep/Vet@v1.0.0?type=module#cmd/vet")
 		require.NoError(t, err)
@@ -138,6 +107,101 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		_, err := pv.URN()
 		require.Error(t, err)
 	})
+}
+
+// TestNewPackageVersionFromPurlAgreesWithParts pins the extraction boundary:
+// the purl constructor keeps the coordinates as written, then folds them
+// under the same rule as the parts constructor, so both name one identity
+// and URN() round-trips to it. Every prefix, alias, encoding and namespace
+// spelling the parser accepts must land on the same value.
+func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
+	cases := []struct {
+		name      string
+		purl      string
+		ecosystem packagev1.Ecosystem
+		rawName   string
+		version   string
+		wantName  string
+	}{
+		{"go keeps case", "pkg:golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go upper case scheme", "PKG:golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go one slash after scheme", "pkg:/golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go two slashes after scheme", "pkg://golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go three slashes after scheme", "pkg:///golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go type alias", "pkg:go/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go empty namespace segment", "pkg:golang/example.com/Owner//Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go percent-encoded slash", "pkg:golang/example.com/Owner%2FLibrary@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go percent-encoded version", "pkg:golang/example.com/Owner/Library@v1.0.0%2Bincompatible", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0+incompatible", "example.com/Owner/Library"},
+		{"go qualifiers and subpath", "pkg:golang/example.com/Owner/Library@v1.0.0?type=module#cmd/tool", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"pypi keeps raw spelling", "pkg:pypi/Flask_RESTful@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "1.0", "flask-restful"},
+		{"pypi type alias", "pkg:pip/Flask_RESTful@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "1.0", "flask-restful"},
+		{"npm keeps case", "pkg:npm/JSONStream@1.0.3", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream", "1.0.3", "JSONStream"},
+		{"npm scope keeps case", "pkg:npm/@Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
+		{"npm percent-encoded scope", "pkg:npm/%40Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
+		{"composer keeps raw vendor case", "pkg:composer/Vendor-A/Library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0", "vendor-a/library"},
+		{"github keeps raw owner case", "pkg:github/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "owner/library"},
+		{"github type alias", "pkg:actions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "owner/library"},
+		{"bitbucket keeps raw owner case", "pkg:bitbucket/Owner/Library@244fd47", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "Owner/Library", "244fd47", "owner/library"},
+		{"gitlab keeps case", "pkg:gitlab/Group/Project@1.2", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "Group/Project", "1.2", "Group/Project"},
+		{"maven keeps case", "pkg:maven/com.google.Guava/guava@32.0", packagev1.Ecosystem_ECOSYSTEM_MAVEN, "com.google.Guava:guava", "32.0", "com.google.Guava:guava"},
+		{"rubygems type alias", "pkg:rubygems/Nokogiri@1.16.0", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "1.16.0", "nokogiri"},
+		{"cargo keeps raw case", "pkg:cargo/Serde_JSON@1.0.0", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0", "serde_json"},
+		{"nuget keeps case", "pkg:nuget/Newtonsoft.Json@13.0.1", packagev1.Ecosystem_ECOSYSTEM_NUGET, "Newtonsoft.Json", "13.0.1", "Newtonsoft.Json"},
+		{"no version", "pkg:golang/example.com/Owner/Library", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "", "example.com/Owner/Library"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			fromPurl, err := NewPackageVersionFromPurl(test.purl)
+			require.NoError(t, err)
+			fromParts := NewPackageVersionFromParts(test.ecosystem, test.rawName, test.version)
+
+			assert.Equal(t, test.ecosystem, fromPurl.Ecosystem())
+			assert.Equal(t, test.rawName, fromPurl.RawName(), "the raw name is the spelling in the purl")
+			assert.Equal(t, test.version, fromPurl.RawVersion(), "the raw version is the spelling in the purl")
+			assert.Equal(t, test.wantName, fromPurl.Name())
+			assert.True(t, fromPurl.Equal(fromParts), "both constructors must agree")
+			assert.Equal(t, fromParts.Key(), fromPurl.Key())
+
+			urn, err := fromPurl.URN()
+			require.NoError(t, err)
+			again, err := NewPackageVersionFromPurl(urn)
+			require.NoError(t, err)
+			assert.True(t, fromPurl.Equal(again), "URN() must round-trip to the same identity: %s", urn)
+		})
+	}
+}
+
+// TestNewPackageVersionFromPurlCase pins which purl types keep case as an
+// identity and which fold it, so a change in either direction is a visible
+// change to a published rule.
+func TestNewPackageVersionFromPurlCase(t *testing.T) {
+	cases := []struct {
+		name  string
+		upper string
+		lower string
+		same  bool
+	}{
+		{"go module path is case-sensitive", "pkg:golang/example.com/Owner/Library@v1.0.0", "pkg:golang/example.com/owner/library@v1.0.0", false},
+		{"npm name is case-sensitive", "pkg:npm/JSONStream@1.0.3", "pkg:npm/jsonstream@1.0.3", false},
+		{"gitlab path is case-sensitive", "pkg:gitlab/Group/Project@1.2", "pkg:gitlab/group/project@1.2", false},
+		{"github owner and repository fold", "pkg:github/Owner/Library@main", "pkg:github/owner/library@main", true},
+		{"bitbucket owner and repository fold", "pkg:bitbucket/Owner/Library@244fd47", "pkg:bitbucket/owner/library@244fd47", true},
+		{"composer vendor and package fold", "pkg:composer/Vendor-A/Library@1.0.0", "pkg:composer/vendor-a/library@1.0.0", true},
+		{"pypi name folds", "pkg:pypi/Flask_RESTful@1.0", "pkg:pypi/flask-restful@1.0", true},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			upper, err := NewPackageVersionFromPurl(test.upper)
+			require.NoError(t, err)
+			lower, err := NewPackageVersionFromPurl(test.lower)
+			require.NoError(t, err)
+
+			assert.Equal(t, test.same, upper.Equal(lower))
+			assert.Equal(t, test.same, upper.Key() == lower.Key())
+		})
+	}
 }
 
 func TestPackageVersionProtoIsFresh(t *testing.T) {

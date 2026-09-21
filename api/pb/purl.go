@@ -1,8 +1,10 @@
 package pb
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 
@@ -15,23 +17,16 @@ type purlPackageVersionHelper struct {
 }
 
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
-	p, err := packageurl.FromString(purl)
+	p, err := parsePurl(purl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid purl: %v", err)
+		return nil, err
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
-	name := purlMapName(ecosystem, p)
-	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_GO {
-		if raw, ok := purlRawPath(purl); ok && strings.EqualFold(raw, name) {
-			name = raw
-		}
-	}
-
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
 			Ecosystem: ecosystem,
-			Name:      name,
+			Name:      CanonicalPackageName(ecosystem, purlMapName(ecosystem, p)),
 		},
 		Version: p.Version,
 	}
@@ -39,36 +34,62 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	return &purlPackageVersionHelper{pv: pv}, nil
 }
 
-// purlRawPath returns the namespace and name of a purl exactly as written,
-// percent-decoded, with the type, version, qualifiers and subpath removed.
-// packageurl-go lower-cases the golang namespace and name, and a Go module
-// path is case-sensitive, so the parsed name would name a different module.
-func purlRawPath(purl string) (string, bool) {
-	rest, ok := strings.CutPrefix(strings.TrimSpace(purl), "pkg:")
+// parsePurl parses a purl and keeps the namespace and name as written,
+// percent-decoded. packageurl-go rewrites both for some types before any
+// SafeDep rule runs: it lower-cases golang, github, bitbucket and composer,
+// and folds pypi underscores. The identity rules own every fold, and a Go
+// module path is case-sensitive, so the parser must not apply its own.
+func parsePurl(purl string) (packageurl.PackageURL, error) {
+	p, err := packageurl.FromString(purl)
+	if err != nil {
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %v", err)
+	}
+
+	p.Namespace, p.Name, err = purlObservedName(purl)
+	if err != nil {
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %v", err)
+	}
+
+	return p, nil
+}
+
+// purlObservedName splits a purl the way packageurl.FromString does, up to
+// the point where the parser adjusts the result for the type. The steps
+// mirror the parser so both agree on where the namespace, name and version
+// start. The caller has already validated the purl with the parser.
+func purlObservedName(purl string) (namespace, name string, err error) {
+	u, err := url.Parse(purl)
+	if err != nil {
+		return "", "", err
+	}
+
+	rest := u.Opaque
+	if rest == "" {
+		rest = strings.TrimPrefix(path.Join(u.Host, u.Path), "/")
+	}
+
+	_, rest, ok := strings.Cut(rest, "/")
 	if !ok {
-		return "", false
+		return "", "", errors.New("purl is missing type or name")
 	}
 
-	// The purl scheme allows slashes after "pkg:", as in "pkg://golang/...".
-	// The parser ignores them, and so must the type split below.
-	rest = strings.TrimLeft(rest, "/")
-
-	_, rest, ok = strings.Cut(rest, "/")
-	if !ok {
-		return "", false
+	name = rest
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		namespace, name = name[:i], name[i+1:]
+		if namespace, err = url.PathUnescape(namespace); err != nil {
+			return "", "", err
+		}
 	}
 
-	rest = strings.TrimLeft(rest, "/")
-	if end := strings.IndexAny(rest, "@?#"); end >= 0 {
-		rest = rest[:end]
+	if i := strings.LastIndex(name, "@"); i >= 0 {
+		name = name[:i]
 	}
 
-	decoded, err := url.PathUnescape(rest)
-	if err != nil || decoded == "" {
-		return "", false
+	if name, err = url.PathUnescape(name); err != nil {
+		return "", "", err
 	}
 
-	return decoded, true
+	return strings.Trim(namespace, "/"), name, nil
 }
 
 var githubHostRegexp = regexp.MustCompile(`^github(\.[a-zA-Z0-9-]+)?\.com$`)
@@ -185,7 +206,7 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 // rule keep the raw name.
 //
 // packageurl-go typeAdjustName is close but does not fit: for PyPI it folds
-// only `_`, and it lower-cases Go and GitHub names, which stay case-sensitive.
+// only `_`, and it lower-cases Go module paths, which are case-sensitive.
 func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
 	return ruleFor(ecosystem).foldName(name)
 }

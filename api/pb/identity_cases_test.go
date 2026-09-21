@@ -28,6 +28,10 @@ var (
 	rubygems  = packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS
 	cargo     = packagev1.Ecosystem_ECOSYSTEM_CARGO
 	packagist = packagev1.Ecosystem_ECOSYSTEM_PACKAGIST
+	github    = packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
+	githubRep = packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY
+	bitbucket = packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY
+	gitlab    = packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY
 	golang    = packagev1.Ecosystem_ECOSYSTEM_GO
 	maven     = packagev1.Ecosystem_ECOSYSTEM_MAVEN
 	nuget     = packagev1.Ecosystem_ECOSYSTEM_NUGET
@@ -117,7 +121,14 @@ var identityCases = []identityCase{
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
 	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
 
+	// GitHub and Bitbucket: lower-case owner and repository, raw ref.
+	{"github action upper case", github, "Actions/Checkout", "v4", "actions/checkout", "v4", false},
+	{"github action keeps ref case", github, "actions/checkout", "V4", "actions/checkout", "V4", false},
+	{"github repository upper case", githubRep, "SafeDep/Vet", "main", "safedep/vet", "main", false},
+	{"bitbucket repository upper case", bitbucket, "Birkenfeld/Pygments-Main", "244fd47", "birkenfeld/pygments-main", "244fd47", false},
+
 	// No rule: raw name and raw version, case and all.
+	{"gitlab path keeps case", gitlab, "Inkscape/Inkscape", "1.2", "Inkscape/Inkscape", "1.2", false},
 	{"go module path keeps case", golang, "github.com/safedep/Vet", "v1.0.0", "github.com/safedep/Vet", "v1.0.0", false},
 	{"maven coordinate keeps case", maven, "com.google.Guava:guava", "32.0", "com.google.Guava:guava", "32.0", false},
 	{"nuget id keeps case", nuget, "Newtonsoft.Json", "13.0.1", "Newtonsoft.Json", "13.0.1", false},
@@ -172,6 +183,8 @@ var identityDistinctCases = []identityDistinctCase{
 	{"cargo hyphen and underscore differ", identitySide{cargo, "tokio-util", "1"}, identitySide{cargo, "tokio_util", "1"}},
 	{"rubygems trailing zero differs", identitySide{rubygems, "rails", "7.0"}, identitySide{rubygems, "rails", "7.0.0"}},
 	{"go case differs", identitySide{golang, "github.com/safedep/Vet", "v1"}, identitySide{golang, "github.com/safedep/vet", "v1"}},
+	{"github ref case differs", identitySide{github, "actions/checkout", "v4"}, identitySide{github, "actions/checkout", "V4"}},
+	{"gitlab path case differs", identitySide{gitlab, "Inkscape/Inkscape", "1.2"}, identitySide{gitlab, "inkscape/inkscape", "1.2"}},
 	{"packagist vendor differs", identitySide{packagist, "vendor-a/library", "1.0.0"}, identitySide{packagist, "vendor-b/library", "1.0.0"}},
 	{"same spelling in another ecosystem differs", identitySide{pypi, "requests", "1"}, identitySide{npm, "requests", "1"}},
 }

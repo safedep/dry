@@ -41,11 +41,16 @@ func (r identityRule) fold(name, version string) (canonicalName, canonicalVersio
 //
 // npm is absent on purpose. Its registry is case-sensitive, so JSONStream and
 // jsonstream are two packages with two artifacts, and a fold would merge them.
+// GitHub and Bitbucket resolve an owner and a repository without regard to
+// case, so their names fold to lower case.
 var identityRules = map[packagev1.Ecosystem]identityRule{
-	packagev1.Ecosystem_ECOSYSTEM_PYPI:      {version: 1, foldName: pep503Name, foldVersion: pep440Version},
-	packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:  {version: 1, foldName: strings.ToLower},
-	packagev1.Ecosystem_ECOSYSTEM_CARGO:     {version: 1, foldName: strings.ToLower},
-	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST: {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_PYPI:                 {version: 1, foldName: pep503Name, foldVersion: pep440Version},
+	packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:             {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_CARGO:                {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:            {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:       {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:    {version: 1, foldName: strings.ToLower},
+	packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: {version: 1, foldName: strings.ToLower},
 }
 
 var identityRuleNone = identityRule{foldName: func(name string) string { return name }}

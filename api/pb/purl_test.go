@@ -2,11 +2,13 @@ package pb
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPurlPackageVersionHelper(t *testing.T) {
@@ -66,6 +68,41 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
 			wantName:      "github.com/Azure/Foo",
 			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "upper case scheme",
+			purl:          "PKG:golang/github.com/Azure/Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/Azure/Foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "empty namespace segment",
+			purl:          "pkg:golang/github.com/Azure//Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/Azure/Foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "pypi folds under the identity rule",
+			purl:          "pkg:pypi/Flask.RESTful@1.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PYPI,
+			wantName:      "flask-restful",
+			wantVersion:   "1.0",
+		},
+		{
+			name:          "github folds owner and repository case",
+			purl:          "pkg:github/Actions/Setup-Node@v2",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			wantName:      "actions/setup-node",
+			wantVersion:   "v2",
+		},
+		{
+			name:          "composer folds vendor case",
+			purl:          "pkg:composer/Vendor-A/Library@1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
+			wantName:      "vendor-a/library",
+			wantVersion:   "1.0.0",
 		},
 		{
 			name:          "ruby gems",
@@ -411,4 +448,48 @@ func TestCanonicalPackageName(t *testing.T) {
 			assert.Equal(t, once, CanonicalPackageName(test.ecosystem, once), test.name)
 		}
 	})
+}
+
+// TestPurlObservedNameMirrorsParser guards the split that purlObservedName
+// copies from packageurl.FromString. The two must agree on every purl up to
+// the parser's own type adjustment, or an upgrade of the parser would move
+// the identity boundary without a failing test.
+func TestPurlObservedNameMirrorsParser(t *testing.T) {
+	purls := []string{
+		"pkg:golang/example.com/Owner/Library@v1.0.0",
+		"PKG:golang/example.com/Owner/Library@v1.0.0",
+		"pkg:///golang/example.com/Owner//Library@v1.0.0?type=module#cmd/tool",
+		"pkg:golang/example.com/Owner%2FLibrary@v1.0.0%2Bincompatible",
+		"pkg:pypi/Flask_RESTful@1.0",
+		"pkg:npm/%40Vue/Reactivity@3.0.0",
+		"pkg:composer/Vendor-A/Library@1.0.0",
+		"pkg:github/Owner/Library@main",
+		"pkg:bitbucket/Owner/Library@244fd47",
+		"pkg:gitlab/Group/Project@1.2",
+		"pkg:maven/com.google.Guava/guava@32.0",
+		"pkg:nuget/Newtonsoft.Json@13.0.1",
+		"pkg:gem/Nokogiri",
+	}
+
+	adjust := func(purlType, s string) string {
+		switch purlType {
+		case packageurl.TypeGolang, packageurl.TypeGithub, packageurl.TypeBitbucket, packageurl.TypeComposer:
+			return strings.ToLower(s)
+		case packageurl.TypePyPi:
+			return strings.ToLower(strings.ReplaceAll(s, "_", "-"))
+		}
+		return s
+	}
+
+	for _, purl := range purls {
+		t.Run(purl, func(t *testing.T) {
+			parsed, err := packageurl.FromString(purl)
+			require.NoError(t, err)
+			namespace, name, err := purlObservedName(purl)
+			require.NoError(t, err)
+
+			assert.Equal(t, parsed.Namespace, adjust(parsed.Type, namespace))
+			assert.Equal(t, parsed.Name, adjust(parsed.Type, name))
+		})
+	}
 }

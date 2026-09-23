@@ -191,7 +191,7 @@ func TestAsUsefulError_TypedReasonBeatsGenericCodeConverter(t *testing.T) {
 	assert.Equal(t, ErrBadRequest, useful.Code())
 	assert.Equal(t, "Project not scannable", useful.HumanError())
 	assert.Equal(t,
-		"Give the SafeDep GitHub or Bitbucket app access to this repository, enable it for scanning, wait for project sync, then retry.",
+		"Give the SafeDep app for your SCM access to this repository, enable it for scanning, wait for project sync, then retry.",
 		useful.Help())
 	assert.Equal(t,
 		"https://docs.safedep.io/governance/integrations/overview",

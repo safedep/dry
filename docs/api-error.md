@@ -94,7 +94,7 @@ Applications can register their own presentation or override a default.
 usefulerror.RegisterReason(errorv1.ErrorReason_ERROR_REASON_PROJECT_NOT_SCANNABLE, usefulerror.ReasonPresentation{
     Code:         usefulerror.ErrBadRequest,
     HumanError:   "Project not scannable",
-    Help:         "Give the SafeDep GitHub or Bitbucket app access to this repository, enable it for scanning, wait for project sync, then retry.",
+    Help:         "Give the SafeDep app for your SCM access to this repository, enable it for scanning, wait for project sync, then retry.",
     ReferenceURL: "https://docs.safedep.io/governance/integrations/overview",
 })
 ```

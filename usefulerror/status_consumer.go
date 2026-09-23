@@ -275,7 +275,7 @@ func init() {
 	RegisterReason(errorv1.ErrorReason_ERROR_REASON_PROJECT_NOT_SCANNABLE, ReasonPresentation{
 		Code:         ErrBadRequest,
 		HumanError:   "Project not scannable",
-		Help:         "Grant the SafeDep GitHub App access to this repository, wait for project sync, then retry.",
-		ReferenceURL: "https://docs.safedep.io/governance/integrations/github",
+		Help:         "Give the SafeDep app for your SCM access to this repository, enable it for scanning, wait for project sync, then retry.",
+		ReferenceURL: "https://docs.safedep.io/governance/integrations/overview",
 	})
 }

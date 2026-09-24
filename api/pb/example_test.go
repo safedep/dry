@@ -12,8 +12,8 @@ import (
 // sends. The client sends the raw spelling. The server folds it under its
 // own rule, so a rule change on the server needs no client release.
 func ExamplePackageVersion() {
-	observed := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0")
-	stored := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "calcboxlite", "1.0")
+	observed := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0")
+	stored := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "datatoolkit", "1.0")
 
 	fmt.Println(observed.Name(), observed.Version())
 	fmt.Println(observed.Equal(stored))
@@ -23,10 +23,10 @@ func ExamplePackageVersion() {
 	fmt.Println(request.GetPackage().GetName(), request.GetVersion())
 
 	// Output:
-	// calcboxlite 1
+	// datatoolkit 1
 	// true
 	// true
-	// CalcBoxLite 1.0.0
+	// DataToolKit 1.0.0
 }
 
 // ExamplePackageVersion_versionParsed shows that VersionParsed is false for

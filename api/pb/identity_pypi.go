@@ -28,6 +28,17 @@ func pep503Name(name string) string {
 	return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
 }
 
+// pypiIdentityName is the name fold of the PyPI rule. PEP 508 names are
+// ASCII and PyPI rejects any other, so a non-ASCII name stays raw and matches
+// only itself. Go's simple case map and Python's str.lower disagree on some
+// non-ASCII letters, so folding one would not match packaging.
+func pypiIdentityName(name string) string {
+	if !isASCII(name) {
+		return name
+	}
+	return pep503Name(name)
+}
+
 // pep440Version folds a version string to the form
 // packaging.utils.canonicalize_version produces: no leading v, no zero epoch,
 // no leading zeros in a number, no trailing zero release segments, lower case,

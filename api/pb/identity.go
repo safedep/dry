@@ -70,7 +70,15 @@ func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 		return PackageVersion{}, fmt.Errorf("unsupported purl type: %q", p.Type)
 	}
 
-	return NewPackageVersionFromParts(ecosystem, purlIdentityName(ecosystem, p), p.Version), nil
+	// PyPI, Cargo, RubyGems, NuGet and the editor extension types name a
+	// package without a namespace. The name mapping would drop one, so the
+	// constructor rejects it rather than yield a different package.
+	name := purlIdentityName(ecosystem, p)
+	if p.Namespace != "" && name == p.Name {
+		return PackageVersion{}, fmt.Errorf("%s purl has a namespace: %q", p.Type, p.Namespace)
+	}
+
+	return NewPackageVersionFromParts(ecosystem, name, p.Version), nil
 }
 
 // Ecosystem is the ecosystem the name and version belong to.
@@ -138,9 +146,10 @@ func (p PackageVersion) RawProto() *packagev1.PackageVersion {
 }
 
 // URN is the canonical Package URL. It fails for an ecosystem with no PURL
-// type, as Purl does, rather than fabricate one.
+// type, and for a name a PURL cannot hold, rather than fabricate one. A URN
+// parses back through NewPackageVersionFromPurl to the same identity.
 func (p PackageVersion) URN() (string, error) {
-	return Purl(p.CanonicalProto())
+	return identityPurl(p.ecosystem, p.name, p.version)
 }
 
 // Key is a string for maps and caches. It includes the rule version, so an

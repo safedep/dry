@@ -44,7 +44,7 @@ func (r identityRule) fold(name, version string) (canonicalName, canonicalVersio
 // its registry is case-sensitive, so JSONStream and jsonstream are two
 // packages with two artifacts, and a fold would merge them.
 var identityRules = map[packagev1.Ecosystem]identityRule{
-	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 1, foldName: pep503Name, foldVersion: pep440Version},
+	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 1, foldName: pypiIdentityName, foldVersion: pep440Version},
 }
 
 var identityRuleNone = identityRule{foldName: func(name string) string { return name }}

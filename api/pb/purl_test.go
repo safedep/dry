@@ -442,10 +442,10 @@ func TestCanonicalPackageName(t *testing.T) {
 }
 
 // TestNewPurlPackageVersionIsFrozen pins the output of the frozen helper on
-// the inputs where PackageVersion differs from it. control-tower writes
-// malware rows through this helper and finds them by the exact name, so a
-// change in any cell splits one package across two rows until those writers
-// move to PackageVersion. Update a cell only together with that move.
+// the inputs where PackageVersion differs from it. Existing callers store the
+// names it returns and look them up again, so a change in any cell gives one
+// package two names until those callers move to PackageVersion. Update a cell
+// only together with that move.
 func TestNewPurlPackageVersionIsFrozen(t *testing.T) {
 	cases := []struct {
 		purl string
@@ -473,11 +473,78 @@ func TestNewPurlPackageVersionIsFrozen(t *testing.T) {
 	}
 }
 
+// TestPurlIsFrozen pins the output of Purl on the inputs where the purl of a
+// PackageVersion differs from it. Existing callers build keys from Purl, so a
+// change in any cell moves those keys. Update a cell only together with the
+// move of those callers to PackageVersion.
+func TestPurlIsFrozen(t *testing.T) {
+	pv := func(ecosystem packagev1.Ecosystem, name string) *packagev1.PackageVersion {
+		return &packagev1.PackageVersion{
+			Package: &packagev1.Package{Ecosystem: ecosystem, Name: name},
+			Version: "1.0",
+		}
+	}
+
+	cases := []struct {
+		name string
+		pv   *packagev1.PackageVersion
+		want string
+	}{
+		{"packagist vendor stays in the name", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library"), "pkg:composer/vendor-a%2Flibrary@1.0"},
+		{"packagist mixed case", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog"), "pkg:composer/Monolog%2FMonolog@1.0"},
+		{"packagist without vendor", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"), "pkg:composer/library@1.0"},
+		{"go empty short name", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/"), "pkg:golang/example.com/@1.0"},
+		{"go empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com//Owner"), "pkg:golang/example.com/Owner@1.0"},
+		{"npm empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "a//b"), "pkg:npm/a/b@1.0"},
+		{"maven empty group", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, ":artifact"), "pkg:maven/artifact@1.0"},
+		{"maven empty artifact", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "group:"), "pkg:maven/group/@1.0"},
+		{"github empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner//repo"), "pkg:github/owner/repo@1.0"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := Purl(test.pv)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
+
+// TestPurlRoundTripThroughFrozenHelper pins the round trip Purl, then
+// NewPurlPackageVersion, which existing callers use to build a key.
+func TestPurlRoundTripThroughFrozenHelper(t *testing.T) {
+	cases := []struct {
+		ecosystem packagev1.Ecosystem
+		name      string
+		want      string
+	}{
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library", "vendor-a/library"},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor/Lib", "vendor/lib"},
+		{packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "@angular/core"},
+		{packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/Azure/sdk", "github.com/azure/sdk"},
+		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "org.apache.commons:compress"},
+		{packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "flask-restful"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			purl, err := Purl(&packagev1.PackageVersion{
+				Package: &packagev1.Package{Ecosystem: test.ecosystem, Name: test.name},
+				Version: "1.0",
+			})
+			require.NoError(t, err)
+			h, err := NewPurlPackageVersion(purl)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, h.Name())
+		})
+	}
+}
+
 // TestPurlObservedNameMirrorsParser guards the split that purlObservedName
 // copies from packageurl.FromString. The two must agree on every purl up to
 // the parser's own type adjustment, or an upgrade of the parser would move
 // the identity boundary without a failing test.
-func TestPurlObservedNameMirrorsParser(t *testing.T) {
+func TestPurlObservedCoordinatesMirrorsParser(t *testing.T) {
 	purls := []string{
 		"pkg:golang/example.com/Owner/Library@v1.0.0",
 		"PKG:golang/example.com/Owner/Library@v1.0.0",
@@ -508,11 +575,13 @@ func TestPurlObservedNameMirrorsParser(t *testing.T) {
 		t.Run(purl, func(t *testing.T) {
 			parsed, err := packageurl.FromString(purl)
 			require.NoError(t, err)
-			namespace, name, err := purlObservedName(purl)
+			typ, namespace, name, version, err := purlObservedCoordinates(purl)
 			require.NoError(t, err)
 
 			assert.Equal(t, parsed.Namespace, adjust(parsed.Type, namespace))
 			assert.Equal(t, parsed.Name, adjust(parsed.Type, name))
+			assert.Equal(t, parsed.Version, version)
+			assert.Equal(t, parsed.Type, typ)
 		})
 	}
 }

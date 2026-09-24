@@ -14,11 +14,11 @@ import json
 import sys
 
 import packaging
-from packaging.utils import canonicalize_name, canonicalize_version
+from packaging.utils import InvalidName, canonicalize_name, canonicalize_version
 from packaging.version import InvalidVersion, Version
 
 VERSION_INPUTS = [
-    # The vulnerability report: every spelling PyPI treats as release 1.0.
+    # Spellings PyPI treats as release 1.0.
     "1.0", "1.0.0", "1.0.0.0", "01.0", "v1.0", "V1.0", "0!1.0", "0!v01.00.0", "000!1.0",
     # Trailing zeros with a suffix segment.
     "1.0.0rc1", "1.0rc1", "1rc1", "1.0.post1", "1.0.0.post1", "1.0.dev0", "1.0+local.1", "1.0.0+local.1",
@@ -45,11 +45,23 @@ VERSION_INPUTS = [
     # Python's whitespace set is wider than Go's strings.TrimSpace: the four
     # information separators U+001C to U+001F strip too. U+FEFF and U+200B are not whitespace.
     "\x1c1.0\x1c", "\x1d1.0", "1.0\x1e", "\x1f1.0\x1f", "\x0b1.0\x0c", "\u20281.0", "\x851.0", "\ufeff1.0", "\u200b1.0",
+    # Python's re.IGNORECASE lets exactly four non-ASCII letters match [a-z]:
+    # U+0130, U+0131, U+017F and the Kelvin sign. packaging 21.3 to 26.0 read
+    # 1.0po\u017ft1 as 1.post1 and 1.0+\u212a as 1+k; 26.1 made the grammar ASCII,
+    # and PyPI runs 26.3. The fold follows PyPI and keeps them raw.
+    "1.0po\u017ft1", "1.0.po\u017ft", "1.0prev\u0131ew1", "1.0PREV\u0130EW1", "1.0+\u212a", "1.0+\u017f", "1.0+\u0131", "1.0\u212a",
+    # v comes before the epoch, so 0!v01.00.0 above is not a version.
+    "v0!1.0",
+    # Near misses of a keyword.
+    "1.0p1", "1.0.p1", "1.0po1", "1.0ev1", "1.0de1", "1.0alp1",
 ]
 
 NAME_INPUTS = [
-    "CalcBoxLite", "calcboxlite", "Calc_Box.Lite", "calc-box-lite", "Flask", "flask", "Flask_RESTful",
+    "DataToolKit", "datatoolkit", "Data_Tool.Kit", "data-tool-kit", "Flask", "flask", "Flask_RESTful",
     "flask-restful", "flask.restful", "FLASK__RESTFUL", "zope.interface", "Zope._-.Interface", "name.", "",
+    # Non-ASCII: PyPI and packaging's name validator reject every one, so the
+    # fold keeps them raw. Go's strings.ToLower would send U+0130 to the ASCII i.
+    "\u0130nvoke", "\u212aeras", "\u017fix", "caf\u00e9",
 ]
 
 VERSION_GROUPS = [
@@ -64,17 +76,21 @@ VERSION_DISTINCT = [
     ["1.0", "1.1"], ["1.0", "1.0.1"], ["1.0", "1.0rc1"], ["1.0rc1", "1.0rc2"], ["1.0", "1.0.post1"],
     ["1.0.post1", "1.0.post2"], ["1.0", "1.0.dev0"], ["1.0.dev0", "1.0.dev1"], ["1.0+local.1", "1.0+other"],
     ["1!2", "2!1.0"], ["1.0", "1.0+local.1"], ["1.0", "1.0_1"],
+    ["1.0po\u017ft1", "1.0.post1"], ["1.0+\u212a", "1.0+k"], ["1.0prev\u0131ew1", "1.0rc1"], ["1.0.post1", "1.0_1"],
 ]
 
 NAME_GROUPS = [
-    ["CalcBoxLite", "calcboxlite"],
+    ["DataToolKit", "datatoolkit"],
     ["Flask_RESTful", "flask-restful", "flask.restful", "FLASK__RESTFUL"],
     ["zope.interface", "Zope._-.Interface"],
 ]
 
 NAME_DISTINCT = [
-    ["calcboxlite", "calc-box-lite"],
-    ["calcboxlite", "Calc_Box.Lite"],
+    ["datatoolkit", "data-tool-kit"],
+    ["datatoolkit", "Data_Tool.Kit"],
+    ["\u0130nvoke", "invoke"],
+    ["\u212aeras", "keras"],
+    ["\u017fix", "six"],
 ]
 
 
@@ -86,6 +102,18 @@ def version_row(raw):
         return {"input": raw, "canonical": raw, "parsed": False}
 
 
+def name_row(raw):
+    if raw.isascii():
+        return {"input": raw, "canonical": canonicalize_name(raw)}
+    # The fold keeps a non-ASCII name raw. That is right only while packaging
+    # agrees no such name is valid.
+    try:
+        canonicalize_name(raw, validate=True)
+    except InvalidName:
+        return {"input": raw, "canonical": raw}
+    raise SystemExit(f"packaging {packaging.__version__} accepts the non-ASCII name {raw!r}")
+
+
 def main():
     fixture = {
         "ecosystem": "ECOSYSTEM_PYPI",
@@ -93,7 +121,7 @@ def main():
         "source": f"packaging {packaging.__version__}: packaging.utils.canonicalize_version and canonicalize_name",
         "generator": "scripts/identity-fixtures/pypi.py",
         "versions": [version_row(v) for v in VERSION_INPUTS],
-        "names": [{"input": n, "canonical": canonicalize_name(n)} for n in NAME_INPUTS],
+        "names": [name_row(n) for n in NAME_INPUTS],
         "version_groups": VERSION_GROUPS,
         "version_distinct": VERSION_DISTINCT,
         "name_groups": NAME_GROUPS,

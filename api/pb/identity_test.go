@@ -2,7 +2,9 @@ package pb
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"unicode"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/stretchr/testify/assert"
@@ -140,6 +142,7 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 		{"go three slashes after scheme", "pkg:///golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
 		{"go type alias", "pkg:go/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
 		{"go empty namespace segment", "pkg:golang/example.com/Owner//Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
+		{"go empty interior namespace segment", "pkg:golang/example.com//Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
 		{"go percent-encoded slash", "pkg:golang/example.com/Owner%2FLibrary@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
 		{"go percent-encoded version", "pkg:golang/example.com/Owner/Library@v1.0.0%2Bincompatible", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0+incompatible", "example.com/Owner/Library"},
 		{"go qualifiers and subpath", "pkg:golang/example.com/Owner/Library@v1.0.0?type=module#cmd/tool", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
@@ -216,7 +219,7 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 }
 
 func TestPackageVersionProtoIsFresh(t *testing.T) {
-	pv := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0")
+	pv := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0")
 
 	canonical := pv.CanonicalProto()
 	canonical.Package.Name = "mutated"
@@ -226,18 +229,18 @@ func TestPackageVersionProtoIsFresh(t *testing.T) {
 	raw.Package.Name = "mutated"
 	raw.Version = "mutated"
 
-	assert.Equal(t, "calcboxlite", pv.Name())
+	assert.Equal(t, "datatoolkit", pv.Name())
 	assert.Equal(t, "1", pv.Version())
-	assert.Equal(t, "CalcBoxLite", pv.RawName())
+	assert.Equal(t, "DataToolKit", pv.RawName())
 	assert.Equal(t, "1.0.0", pv.RawVersion())
 
 	again := pv.CanonicalProto()
-	assert.Equal(t, "calcboxlite", again.GetPackage().GetName())
+	assert.Equal(t, "datatoolkit", again.GetPackage().GetName())
 	assert.Equal(t, "1", again.GetVersion())
 	assert.NotSame(t, canonical, again)
 
 	rawAgain := pv.RawProto()
-	assert.Equal(t, "CalcBoxLite", rawAgain.GetPackage().GetName())
+	assert.Equal(t, "DataToolKit", rawAgain.GetPackage().GetName())
 	assert.Equal(t, "1.0.0", rawAgain.GetVersion())
 }
 
@@ -251,11 +254,11 @@ func TestPackageVersionIsNotComparable(t *testing.T) {
 func TestPackageVersionEqual(t *testing.T) {
 	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
 
-	a := NewPackageVersionFromParts(pypi, "CalcBoxLite", "1.0")
-	b := NewPackageVersionFromParts(pypi, "calcboxlite", "1.0.0")
-	c := NewPackageVersionFromParts(pypi, "calc-box-lite", "1.0")
-	d := NewPackageVersionFromParts(pypi, "calcboxlite", "1.0rc1")
-	npm := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "calcboxlite", "1")
+	a := NewPackageVersionFromParts(pypi, "DataToolKit", "1.0")
+	b := NewPackageVersionFromParts(pypi, "datatoolkit", "1.0.0")
+	c := NewPackageVersionFromParts(pypi, "data-tool-kit", "1.0")
+	d := NewPackageVersionFromParts(pypi, "datatoolkit", "1.0rc1")
+	npm := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "datatoolkit", "1")
 
 	assert.True(t, a.Equal(b))
 	assert.Equal(t, a.Key(), b.Key())
@@ -310,7 +313,7 @@ func TestPackageVersionKeyFormat(t *testing.T) {
 		want string
 	}{
 		{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0"), "ECOSYSTEM_PYPI/1/calcboxlite@1"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0"), "ECOSYSTEM_PYPI/1/datatoolkit@1"},
 		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"), "ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild"},
 		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"), "ECOSYSTEM_GO/0/example.com%2FOwner%2FLibrary@v1.0.0"},
 		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
@@ -388,4 +391,116 @@ func TestIdentityRulesTable(t *testing.T) {
 		assert.False(t, rule.hasVersionRule())
 		assert.Equal(t, "JSONStream", rule.foldName("JSONStream"))
 	})
+}
+
+func TestNewPackageVersionFromPurlSpellingsAgree(t *testing.T) {
+	// packageurl-go splits the decoded path of a pkg:// or pkg:/ purl, so an
+	// escaped separator moved the split. Every spelling now yields the
+	// identity of the opaque form.
+	cases := []struct {
+		name     string
+		opaque   string
+		spelling string
+	}{
+		{"escaped at in the version", "pkg:pypi/name@1.0%40x", "pkg://pypi/name@1.0%40x"},
+		{"escaped at in the name", "pkg:pypi/na%40me@1.0", "pkg:/pypi/na%40me@1.0"},
+		{"escaped slash in a go namespace", "pkg:golang/example.com/Owner%2FLibrary@v1", "pkg://golang/example.com/Owner%2FLibrary@v1"},
+		{"escaped slash in an npm name", "pkg:npm/%40scope/na%2Fme@1.0.0", "pkg://npm/%40scope/na%2Fme@1.0.0"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			want, err := NewPackageVersionFromPurl(test.opaque)
+			require.NoError(t, err)
+			got, err := NewPackageVersionFromPurl(test.spelling)
+			require.NoError(t, err)
+			assert.True(t, want.Equal(got), "%s yields %s, %s yields %s", test.opaque, want.Key(), test.spelling, got.Key())
+			assert.Equal(t, want.RawName(), got.RawName())
+			assert.Equal(t, want.RawVersion(), got.RawVersion())
+		})
+	}
+}
+
+func TestNewPackageVersionFromPurlRejectsDroppedNamespace(t *testing.T) {
+	// These types name a package without a namespace.
+	for _, purl := range []string{
+		"pkg:pypi/ns/requests@2.0", "pkg://pypi/ns/requests@2.0", "pkg:pip/a/b/requests@2.0",
+		"pkg:cargo/bottlerocket/update-operator@1.0.0", "pkg:gem/ns/rails@7.0.0",
+		"pkg:nuget/ns/Newtonsoft.Json@13.0.1", "pkg:vscode/ms-python/python@1.0.0",
+		"pkg:openvsx/ns/solargraph@0.24.1",
+	} {
+		_, err := NewPackageVersionFromPurl(purl)
+		assert.Error(t, err, purl)
+	}
+
+	pv, err := NewPackageVersionFromPurl("pkg://pypi/ns%2Frequests@2.0")
+	require.NoError(t, err)
+	assert.Equal(t, "ns/requests", pv.RawName(), "an escaped slash is part of the name, not a namespace")
+
+	// These types keep the namespace in the name.
+	for _, purl := range []string{
+		"pkg:npm/%40angular/core@17.0.0", "pkg:golang/github.com/Azure/sdk@v1.0.0",
+		"pkg:maven/org.apache.commons/compress@1.20", "pkg:composer/vendor-a/library@1.0.0",
+		"pkg:github/actions/checkout@v4", "pkg:gitlab/inkscape/inkscape@1.2",
+		"pkg:bitbucket/birkenfeld/pygments-main@244fd47",
+	} {
+		_, err := NewPackageVersionFromPurl(purl)
+		assert.NoError(t, err, purl)
+	}
+}
+
+func TestNewPackageVersionFromPurlRejectsMovedType(t *testing.T) {
+	// packageurl-go resolves the decoded dot segments of a pkg:// purl, so
+	// these read as pypi purls though npm is written.
+	for _, purl := range []string{"pkg://npm/%2E%2E/pypi/x@1", "pkg:/npm/%2e%2e/pypi/requests@2.0"} {
+		_, err := NewPackageVersionFromPurl(purl)
+		assert.Error(t, err, purl)
+	}
+}
+
+func TestPep440SpaceIsPythonWhitespace(t *testing.T) {
+	// Python's str.isspace, which packaging strips around a version, over
+	// all of Unicode (Python 3.14).
+	python := "\t\n\v\f\r\x1c\x1d\x1e\x1f \u0085        " +
+		"         　"
+	for r := rune(0); r <= unicode.MaxRune; r++ {
+		if isPep440Space(r) != strings.ContainsRune(python, r) {
+			assert.Failf(t, "isPep440Space disagrees with Python", "%U", r)
+		}
+	}
+}
+
+func TestPackageVersionURNRejectsUnrepresentableNames(t *testing.T) {
+	// A purl cannot hold an empty namespace segment or an empty short name.
+	// ToString drops the segment, so two names would share one URN.
+	cases := []struct {
+		ecosystem packagev1.Ecosystem
+		name      string
+	}{
+		{packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/"},
+		{packagev1.Ecosystem_ECOSYSTEM_GO, "example.com//Owner"},
+		{packagev1.Ecosystem_ECOSYSTEM_NPM, "a//b"},
+		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, ":artifact"},
+		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, "group:"},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor/"},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "/library"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.ecosystem.String()+" "+test.name, func(t *testing.T) {
+			_, err := NewPackageVersionFromParts(test.ecosystem, test.name, "1.0").URN()
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestPackageVersionURNKeepsComposerVendor(t *testing.T) {
+	pv := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library", "1.0.0")
+	urn, err := pv.URN()
+	require.NoError(t, err)
+	assert.Equal(t, "pkg:composer/vendor-a/library@1.0.0", urn)
+
+	back, err := NewPackageVersionFromPurl(urn)
+	require.NoError(t, err)
+	assert.True(t, pv.Equal(back))
 }

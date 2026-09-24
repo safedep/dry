@@ -403,24 +403,99 @@
       "input": "\u200b1.0",
       "canonical": "\u200b1.0",
       "parsed": false
+    },
+    {
+      "input": "1.0po\u017ft1",
+      "canonical": "1.0po\u017ft1",
+      "parsed": false
+    },
+    {
+      "input": "1.0.po\u017ft",
+      "canonical": "1.0.po\u017ft",
+      "parsed": false
+    },
+    {
+      "input": "1.0prev\u0131ew1",
+      "canonical": "1.0prev\u0131ew1",
+      "parsed": false
+    },
+    {
+      "input": "1.0PREV\u0130EW1",
+      "canonical": "1.0PREV\u0130EW1",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u212a",
+      "canonical": "1.0+\u212a",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u017f",
+      "canonical": "1.0+\u017f",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u0131",
+      "canonical": "1.0+\u0131",
+      "parsed": false
+    },
+    {
+      "input": "1.0\u212a",
+      "canonical": "1.0\u212a",
+      "parsed": false
+    },
+    {
+      "input": "v0!1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0p1",
+      "canonical": "1.0p1",
+      "parsed": false
+    },
+    {
+      "input": "1.0.p1",
+      "canonical": "1.0.p1",
+      "parsed": false
+    },
+    {
+      "input": "1.0po1",
+      "canonical": "1.0po1",
+      "parsed": false
+    },
+    {
+      "input": "1.0ev1",
+      "canonical": "1.0ev1",
+      "parsed": false
+    },
+    {
+      "input": "1.0de1",
+      "canonical": "1.0de1",
+      "parsed": false
+    },
+    {
+      "input": "1.0alp1",
+      "canonical": "1.0alp1",
+      "parsed": false
     }
   ],
   "names": [
     {
-      "input": "CalcBoxLite",
-      "canonical": "calcboxlite"
+      "input": "DataToolKit",
+      "canonical": "datatoolkit"
     },
     {
-      "input": "calcboxlite",
-      "canonical": "calcboxlite"
+      "input": "datatoolkit",
+      "canonical": "datatoolkit"
     },
     {
-      "input": "Calc_Box.Lite",
-      "canonical": "calc-box-lite"
+      "input": "Data_Tool.Kit",
+      "canonical": "data-tool-kit"
     },
     {
-      "input": "calc-box-lite",
-      "canonical": "calc-box-lite"
+      "input": "data-tool-kit",
+      "canonical": "data-tool-kit"
     },
     {
       "input": "Flask",
@@ -461,6 +536,22 @@
     {
       "input": "",
       "canonical": ""
+    },
+    {
+      "input": "\u0130nvoke",
+      "canonical": "\u0130nvoke"
+    },
+    {
+      "input": "\u212aeras",
+      "canonical": "\u212aeras"
+    },
+    {
+      "input": "\u017fix",
+      "canonical": "\u017fix"
+    },
+    {
+      "input": "caf\u00e9",
+      "canonical": "caf\u00e9"
     }
   ],
   "version_groups": [
@@ -553,12 +644,28 @@
     [
       "1.0",
       "1.0_1"
+    ],
+    [
+      "1.0po\u017ft1",
+      "1.0.post1"
+    ],
+    [
+      "1.0+\u212a",
+      "1.0+k"
+    ],
+    [
+      "1.0prev\u0131ew1",
+      "1.0rc1"
+    ],
+    [
+      "1.0.post1",
+      "1.0_1"
     ]
   ],
   "name_groups": [
     [
-      "CalcBoxLite",
-      "calcboxlite"
+      "DataToolKit",
+      "datatoolkit"
     ],
     [
       "Flask_RESTful",
@@ -573,12 +680,24 @@
   ],
   "name_distinct": [
     [
-      "calcboxlite",
-      "calc-box-lite"
+      "datatoolkit",
+      "data-tool-kit"
     ],
     [
-      "calcboxlite",
-      "Calc_Box.Lite"
+      "datatoolkit",
+      "Data_Tool.Kit"
+    ],
+    [
+      "\u0130nvoke",
+      "invoke"
+    ],
+    [
+      "\u212aeras",
+      "keras"
+    ],
+    [
+      "\u017fix",
+      "six"
     ]
   ]
 }

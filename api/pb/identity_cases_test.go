@@ -40,12 +40,15 @@ var (
 
 var identityCases = []identityCase{
 	// PyPI names: PEP 503. Lower case, every run of - _ . folds to one hyphen.
-	{"pypi name upper case", pypi, "CalcBoxLite", "1", "calcboxlite", "1", true},
+	{"pypi name upper case", pypi, "DataToolKit", "1", "datatoolkit", "1", true},
 	{"pypi name underscore", pypi, "Flask_RESTful", "1", "flask-restful", "1", true},
 	{"pypi name dot", pypi, "zope.interface", "1", "zope-interface", "1", true},
 	{"pypi name separator run", pypi, "Zope._-.Interface", "1", "zope-interface", "1", true},
-	{"pypi name with separators is another package", pypi, "Calc_Box.Lite", "1", "calc-box-lite", "1", true},
+	{"pypi name with separators is another package", pypi, "Data_Tool.Kit", "1", "data-tool-kit", "1", true},
 	{"pypi name trailing separator", pypi, "name.", "1", "name-", "1", true},
+	{"pypi name non-ascii stays raw", pypi, "\u0130nvoke", "1", "\u0130nvoke", "1", true},
+	{"pypi name kelvin sign stays raw", pypi, "\u212aeras", "1", "\u212aeras", "1", true},
+	{"pypi name invalid utf-8 stays raw", pypi, "\x80Name", "1", "\x80Name", "1", true},
 
 	// PyPI versions: PEP 440 canonical form, as packaging.utils.canonicalize_version.
 	{"pypi version release", pypi, "pkg", "1.0", "pkg", "1", true},
@@ -166,7 +169,7 @@ type identitySide struct {
 }
 
 var identityDistinctCases = []identityDistinctCase{
-	{"pypi separators make another package", identitySide{pypi, "calcboxlite", "1"}, identitySide{pypi, "calc-box-lite", "1"}},
+	{"pypi separators make another package", identitySide{pypi, "datatoolkit", "1"}, identitySide{pypi, "data-tool-kit", "1"}},
 	{"pypi pre release is another version", identitySide{pypi, "pkg", "1.0"}, identitySide{pypi, "pkg", "1.0rc1"}},
 	{"pypi post release is another version", identitySide{pypi, "pkg", "1.0"}, identitySide{pypi, "pkg", "1.0.post1"}},
 	{"pypi dev release is another version", identitySide{pypi, "pkg", "1.0"}, identitySide{pypi, "pkg", "1.0.dev0"}},

@@ -450,8 +450,7 @@ func TestNewPackageVersionFromPurlRejectsDroppedNamespace(t *testing.T) {
 }
 
 func TestNewPackageVersionFromPurlRejectsMovedType(t *testing.T) {
-	// packageurl-go resolves the decoded dot segments of a pkg:// purl, so
-	// these read as pypi purls though npm is written.
+	// The parsed type must match the type as written.
 	for _, purl := range []string{"pkg://npm/%2E%2E/pypi/x@1", "pkg:/npm/%2e%2e/pypi/requests@2.0"} {
 		_, err := NewPackageVersionFromPurl(purl)
 		assert.Error(t, err, purl)

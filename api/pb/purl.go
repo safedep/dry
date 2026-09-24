@@ -18,8 +18,8 @@ type purlPackageVersionHelper struct {
 // NewPurlPackageVersion parses a purl into the proto form. Its output is
 // frozen: existing callers store the names it returns and look them up again,
 // so a change here before those callers move to PackageVersion would give one
-// package two names. TestNewPurlPackageVersionIsFrozen pins the output. Use NewPackageVersionFromPurl to obtain an identity to
-// compare, key or send.
+// package two names. TestNewPurlPackageVersionIsFrozen pins the output. Use
+// NewPackageVersionFromPurl to obtain an identity to compare, key or send.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {
@@ -56,10 +56,9 @@ func parsePurl(purl string) (packageurl.PackageURL, error) {
 		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %v", err)
 	}
 
-	// In a pkg:// purl the parser resolves dot segments of the decoded path,
-	// so pkg://npm/%2E%2E/pypi/x@1 reads as a pypi purl. A type that differs
-	// from the one written would pair one ecosystem's rule with another's
-	// coordinates.
+	// The ecosystem must come from the type as written. A purl whose parsed
+	// type differs from it is rejected, so one ecosystem's rule never folds
+	// another's coordinates.
 	if !strings.EqualFold(typ, p.Type) {
 		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: type %q is written as %q", p.Type, typ)
 	}
@@ -70,9 +69,9 @@ func parsePurl(purl string) (packageurl.PackageURL, error) {
 // purlObservedCoordinates splits a purl as written, the way
 // packageurl.FromString splits the opaque pkg:type/... form, before the
 // parser adjusts the result for the type. For pkg:/ and pkg:// the parser
-// splits the decoded path instead, so pkg://pypi/ns%2Frequests@2.0 would read
-// as namespace ns; splitting the raw string keeps every spelling of a purl
-// one identity. The caller has already validated the purl with the parser.
+// splits the decoded path instead, so an escaped separator would move the
+// split; splitting the raw string keeps every spelling of a purl one
+// identity. The caller has already validated the purl with the parser.
 func purlObservedCoordinates(purl string) (typ, namespace, name, version string, err error) {
 	_, rest, ok := strings.Cut(purl, ":")
 	if !ok {

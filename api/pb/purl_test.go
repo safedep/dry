@@ -56,53 +56,46 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "v2",
 		},
 		{
-			name:          "composer keeps its vendor",
+			name:          "composer drops its vendor",
 			purl:          "pkg:composer/vendor-a/library@1.0.0",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
-			wantName:      "vendor-a/library",
+			wantName:      "library",
 			wantVersion:   "1.0.0",
 		},
 		{
-			name:          "go keeps module path case",
+			name:          "go lower-cases the module path",
 			purl:          "pkg:golang/github.com/Azure/Foo@v1.2.3",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
-			wantName:      "github.com/Azure/Foo",
+			wantName:      "github.com/azure/foo",
 			wantVersion:   "v1.2.3",
 		},
 		{
 			name:          "upper case scheme",
 			purl:          "PKG:golang/github.com/Azure/Foo@v1.2.3",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
-			wantName:      "github.com/Azure/Foo",
+			wantName:      "github.com/azure/foo",
 			wantVersion:   "v1.2.3",
 		},
 		{
 			name:          "empty namespace segment",
 			purl:          "pkg:golang/github.com/Azure//Foo@v1.2.3",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
-			wantName:      "github.com/Azure/Foo",
+			wantName:      "github.com/azure/foo",
 			wantVersion:   "v1.2.3",
 		},
 		{
-			name:          "pypi folds under the identity rule",
+			name:          "pypi folds only underscore and case",
 			purl:          "pkg:pypi/Flask.RESTful@1.0",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PYPI,
-			wantName:      "flask-restful",
+			wantName:      "flask.restful",
 			wantVersion:   "1.0",
 		},
 		{
-			name:          "github folds owner and repository case",
+			name:          "github lower-cases owner and repository",
 			purl:          "pkg:github/Actions/Setup-Node@v2",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			wantName:      "actions/setup-node",
 			wantVersion:   "v2",
-		},
-		{
-			name:          "composer folds vendor case",
-			purl:          "pkg:composer/Vendor-A/Library@1.0.0",
-			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
-			wantName:      "vendor-a/library",
-			wantVersion:   "1.0.0",
 		},
 		{
 			name:          "ruby gems",
@@ -416,12 +409,10 @@ func TestCanonicalPackageName(t *testing.T) {
 		{"pypi trailing separator", packagev1.Ecosystem_ECOSYSTEM_PYPI, "name.", "name-"},
 		{"pypi empty", packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""},
 
-		// npm is case-sensitive: JSONStream and jsonstream are two packages.
-		{"npm keeps case", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream", "JSONStream"},
-		{"npm scoped keeps case", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "@Vue/Reactivity"},
-		{"npm keeps dot", packagev1.Ecosystem_ECOSYSTEM_NPM, "socket.io", "socket.io"},
-
 		// Lower case only. A separator is part of the name.
+		{"npm upper case", packagev1.Ecosystem_ECOSYSTEM_NPM, "Express", "express"},
+		{"npm scoped", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "@vue/reactivity"},
+		{"npm keeps dot", packagev1.Ecosystem_ECOSYSTEM_NPM, "socket.io", "socket.io"},
 		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "nokogiri"},
 		{"cargo keeps underscore", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "serde_json"},
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog", "monolog/monolog"},
@@ -448,6 +439,38 @@ func TestCanonicalPackageName(t *testing.T) {
 			assert.Equal(t, once, CanonicalPackageName(test.ecosystem, once), test.name)
 		}
 	})
+}
+
+// TestNewPurlPackageVersionIsFrozen pins the output of the frozen helper on
+// the inputs where PackageVersion differs from it. control-tower writes
+// malware rows through this helper and finds them by the exact name, so a
+// change in any cell splits one package across two rows until those writers
+// move to PackageVersion. Update a cell only together with that move.
+func TestNewPurlPackageVersionIsFrozen(t *testing.T) {
+	cases := []struct {
+		purl string
+		want string
+	}{
+		{"pkg:pypi/zope.interface@1.0", "zope.interface"},
+		{"pkg:pypi/a__b@1", "a--b"},
+		{"pkg:pypi/Flask_RESTful@1.0", "flask-restful"},
+		{"pkg:golang/github.com/Azure/sdk@v1.0.0", "github.com/azure/sdk"},
+		{"pkg:composer/vendor-a/library@1.0.0", "library"},
+		{"pkg:composer/Vendor-A/Library@1.0.0", "library"},
+		{"pkg:gem/Rails@7", "Rails"},
+		{"pkg:cargo/Serde_Json@1", "Serde_Json"},
+		{"pkg:github/Owner/Library@main", "owner/library"},
+		{"pkg:bitbucket/Owner/Library@244fd47", "owner/library"},
+		{"pkg:npm/JSONStream@1.0.3", "JSONStream"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.purl, func(t *testing.T) {
+			h, err := NewPurlPackageVersion(test.purl)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, h.Name())
+		})
+	}
 }
 
 // TestPurlObservedNameMirrorsParser guards the split that purlObservedName

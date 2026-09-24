@@ -70,7 +70,7 @@ func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 		return PackageVersion{}, fmt.Errorf("unsupported purl type: %q", p.Type)
 	}
 
-	return NewPackageVersionFromParts(ecosystem, purlMapName(ecosystem, p), p.Version), nil
+	return NewPackageVersionFromParts(ecosystem, purlIdentityName(ecosystem, p), p.Version), nil
 }
 
 // Ecosystem is the ecosystem the name and version belong to.

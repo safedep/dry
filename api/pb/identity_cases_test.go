@@ -107,25 +107,22 @@ var identityCases = []identityCase{
 	{"npm version keeps v prefix", npm, "express", "v4.17.1", "express", "v4.17.1", false},
 	{"npm version keeps build metadata", npm, "express", "4.17.1+build", "express", "4.17.1+build", false},
 
-	// RubyGems: lower-case name, raw version.
-	{"rubygems name upper case", rubygems, "Nokogiri", "1.16.0", "nokogiri", "1.16.0", false},
+	// No rule yet: RubyGems, Cargo, Packagist, GitHub and Bitbucket keep the
+	// raw name and the raw version until each ships its rule with a fixture.
+	// The frozen CanonicalPackageName lower-cases some of these. The type does
+	// not, and its callers move to it under the spec's rollout.
+	{"rubygems name keeps case", rubygems, "Nokogiri", "1.16.0", "Nokogiri", "1.16.0", false},
 	{"rubygems version keeps trailing zero", rubygems, "rails", "7.0", "rails", "7.0", false},
-
-	// Cargo: lower-case name, underscore kept, raw version.
-	{"cargo name upper case", cargo, "Serde_JSON", "1.0.0", "serde_json", "1.0.0", false},
+	{"cargo name keeps case and underscore", cargo, "Serde_JSON", "1.0.0", "Serde_JSON", "1.0.0", false},
 	{"cargo name keeps hyphen", cargo, "tokio-util", "0.7.0", "tokio-util", "0.7.0", false},
 	{"cargo version keeps build metadata", cargo, "serde", "1.0.0+build", "serde", "1.0.0+build", false},
-
-	// Packagist: lower-case vendor and package, raw version.
-	{"packagist name upper case", packagist, "Monolog/Monolog", "3.0.0", "monolog/monolog", "3.0.0", false},
+	{"packagist name keeps case", packagist, "Monolog/Monolog", "3.0.0", "Monolog/Monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
 	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
-
-	// GitHub and Bitbucket: lower-case owner and repository, raw ref.
-	{"github action upper case", github, "Actions/Checkout", "v4", "actions/checkout", "v4", false},
+	{"github action keeps case", github, "Actions/Checkout", "v4", "Actions/Checkout", "v4", false},
 	{"github action keeps ref case", github, "actions/checkout", "V4", "actions/checkout", "V4", false},
-	{"github repository upper case", githubRep, "SafeDep/Vet", "main", "safedep/vet", "main", false},
-	{"bitbucket repository upper case", bitbucket, "Birkenfeld/Pygments-Main", "244fd47", "birkenfeld/pygments-main", "244fd47", false},
+	{"github repository keeps case", githubRep, "SafeDep/Vet", "main", "SafeDep/Vet", "main", false},
+	{"bitbucket repository keeps case", bitbucket, "Birkenfeld/Pygments-Main", "244fd47", "Birkenfeld/Pygments-Main", "244fd47", false},
 
 	// No rule: raw name and raw version, case and all.
 	{"gitlab path keeps case", gitlab, "Inkscape/Inkscape", "1.2", "Inkscape/Inkscape", "1.2", false},
@@ -184,6 +181,9 @@ var identityDistinctCases = []identityDistinctCase{
 	{"rubygems trailing zero differs", identitySide{rubygems, "rails", "7.0"}, identitySide{rubygems, "rails", "7.0.0"}},
 	{"go case differs", identitySide{golang, "github.com/safedep/Vet", "v1"}, identitySide{golang, "github.com/safedep/vet", "v1"}},
 	{"github ref case differs", identitySide{github, "actions/checkout", "v4"}, identitySide{github, "actions/checkout", "V4"}},
+	{"github owner case differs until its rule ships", identitySide{github, "Actions/checkout", "v4"}, identitySide{github, "actions/checkout", "v4"}},
+	{"rubygems case differs until its rule ships", identitySide{rubygems, "Rails", "7"}, identitySide{rubygems, "rails", "7"}},
+	{"packagist case differs until its rule ships", identitySide{packagist, "Monolog/Monolog", "3"}, identitySide{packagist, "monolog/monolog", "3"}},
 	{"gitlab path case differs", identitySide{gitlab, "Inkscape/Inkscape", "1.2"}, identitySide{gitlab, "inkscape/inkscape", "1.2"}},
 	{"packagist vendor differs", identitySide{packagist, "vendor-a/library", "1.0.0"}, identitySide{packagist, "vendor-b/library", "1.0.0"}},
 	{"same spelling in another ecosystem differs", identitySide{pypi, "requests", "1"}, identitySide{npm, "requests", "1"}},

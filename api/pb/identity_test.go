@@ -15,12 +15,12 @@ func TestIdentityRuleVersion(t *testing.T) {
 		want      int
 	}{
 		{packagev1.Ecosystem_ECOSYSTEM_PYPI, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_NPM, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_GO, 0},
@@ -86,7 +86,7 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		require.NoError(t, err)
 		vendorB, err := NewPackageVersionFromPurl("pkg:composer/vendor-b/library@1.0.0")
 		require.NoError(t, err)
-		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0")
+		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library", "1.0.0")
 
 		assert.Equal(t, "vendor-a/library", vendorA.Name())
 		assert.False(t, vendorA.Equal(vendorB), "two vendors are two packages")
@@ -148,14 +148,14 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 		{"npm keeps case", "pkg:npm/JSONStream@1.0.3", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream", "1.0.3", "JSONStream"},
 		{"npm scope keeps case", "pkg:npm/@Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
 		{"npm percent-encoded scope", "pkg:npm/%40Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
-		{"composer keeps raw vendor case", "pkg:composer/Vendor-A/Library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0", "vendor-a/library"},
-		{"github keeps raw owner case", "pkg:github/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "owner/library"},
-		{"github type alias", "pkg:actions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "owner/library"},
-		{"bitbucket keeps raw owner case", "pkg:bitbucket/Owner/Library@244fd47", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "Owner/Library", "244fd47", "owner/library"},
+		{"composer keeps case until its rule ships", "pkg:composer/Vendor-A/Library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0", "Vendor-A/Library"},
+		{"github keeps case until its rule ships", "pkg:github/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "Owner/Library"},
+		{"github type alias", "pkg:actions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "Owner/Library"},
+		{"bitbucket keeps case until its rule ships", "pkg:bitbucket/Owner/Library@244fd47", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "Owner/Library", "244fd47", "Owner/Library"},
 		{"gitlab keeps case", "pkg:gitlab/Group/Project@1.2", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "Group/Project", "1.2", "Group/Project"},
 		{"maven keeps case", "pkg:maven/com.google.Guava/guava@32.0", packagev1.Ecosystem_ECOSYSTEM_MAVEN, "com.google.Guava:guava", "32.0", "com.google.Guava:guava"},
-		{"rubygems type alias", "pkg:rubygems/Nokogiri@1.16.0", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "1.16.0", "nokogiri"},
-		{"cargo keeps raw case", "pkg:cargo/Serde_JSON@1.0.0", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0", "serde_json"},
+		{"rubygems type alias", "pkg:rubygems/Nokogiri@1.16.0", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "1.16.0", "Nokogiri"},
+		{"cargo keeps case until its rule ships", "pkg:cargo/Serde_JSON@1.0.0", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0", "Serde_JSON"},
 		{"nuget keeps case", "pkg:nuget/Newtonsoft.Json@13.0.1", packagev1.Ecosystem_ECOSYSTEM_NUGET, "Newtonsoft.Json", "13.0.1", "Newtonsoft.Json"},
 		{"no version", "pkg:golang/example.com/Owner/Library", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "", "example.com/Owner/Library"},
 	}
@@ -184,7 +184,8 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 
 // TestNewPackageVersionFromPurlCase pins which purl types keep case as an
 // identity and which fold it, so a change in either direction is a visible
-// change to a published rule.
+// change to a published rule. Only PyPI folds until the other rules ship with
+// their fixtures, even where the frozen helper lower-cases the name.
 func TestNewPackageVersionFromPurlCase(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -195,9 +196,9 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 		{"go module path is case-sensitive", "pkg:golang/example.com/Owner/Library@v1.0.0", "pkg:golang/example.com/owner/library@v1.0.0", false},
 		{"npm name is case-sensitive", "pkg:npm/JSONStream@1.0.3", "pkg:npm/jsonstream@1.0.3", false},
 		{"gitlab path is case-sensitive", "pkg:gitlab/Group/Project@1.2", "pkg:gitlab/group/project@1.2", false},
-		{"github owner and repository fold", "pkg:github/Owner/Library@main", "pkg:github/owner/library@main", true},
-		{"bitbucket owner and repository fold", "pkg:bitbucket/Owner/Library@244fd47", "pkg:bitbucket/owner/library@244fd47", true},
-		{"composer vendor and package fold", "pkg:composer/Vendor-A/Library@1.0.0", "pkg:composer/vendor-a/library@1.0.0", true},
+		{"github keeps case until its rule ships", "pkg:github/Owner/Library@main", "pkg:github/owner/library@main", false},
+		{"bitbucket keeps case until its rule ships", "pkg:bitbucket/Owner/Library@244fd47", "pkg:bitbucket/owner/library@244fd47", false},
+		{"composer keeps case until its rule ships", "pkg:composer/Vendor-A/Library@1.0.0", "pkg:composer/vendor-a/library@1.0.0", false},
 		{"pypi name folds", "pkg:pypi/Flask_RESTful@1.0", "pkg:pypi/flask-restful@1.0", true},
 	}
 
@@ -296,20 +297,28 @@ func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
 		})
 	}
 
-	t.Run("format is stable", func(t *testing.T) {
-		cases := []struct {
-			pv   PackageVersion
-			want string
-		}{
-			{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
-			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0"), "ECOSYSTEM_PYPI/1/calcboxlite@1"},
-			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"), "ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild"},
-			{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
-		}
-		for _, test := range cases {
-			assert.Equal(t, test.want, test.pv.Key())
-		}
-	})
+}
+
+// TestPackageVersionKeyFormat pins the key byte for byte, because a
+// persistent cache stores it. The ecosystem part is the proto enum value
+// name. buf breaking runs on safedep/api with ENUM_VALUE_SAME_NAME, so a
+// rename of a value is a rejected change there, not a silent key change here.
+func TestPackageVersionKeyFormat(t *testing.T) {
+	npm := packagev1.Ecosystem_ECOSYSTEM_NPM
+	cases := []struct {
+		pv   PackageVersion
+		want string
+	}{
+		{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "CalcBoxLite", "1.0.0"), "ECOSYSTEM_PYPI/1/calcboxlite@1"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"), "ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"), "ECOSYSTEM_GO/0/example.com%2FOwner%2FLibrary@v1.0.0"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "ECOSYSTEM_UNSPECIFIED/0/x@1"},
+	}
+	for _, test := range cases {
+		assert.Equal(t, test.want, test.pv.Key())
+	}
 }
 
 func TestPep440Version(t *testing.T) {

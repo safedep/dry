@@ -16,20 +16,23 @@ type purlPackageVersionHelper struct {
 	pv *packagev1.PackageVersion
 }
 
-// NewPurlPackageVersion parses a purl into the proto form, with the name
-// folded under CanonicalPackageName and the version as written. Use
-// NewPackageVersionFromPurl to obtain an identity to compare, key or send.
+// NewPurlPackageVersion parses a purl into the proto form. Its output is
+// frozen: control-tower writes malware rows through it and finds them by the
+// exact name, so a change here before those writers move to PackageVersion
+// would split one package across two rows. TestNewPurlPackageVersionIsFrozen
+// pins the output. Use NewPackageVersionFromPurl to obtain an identity to
+// compare, key or send.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
-	p, err := parsePurl(purl)
+	p, err := packageurl.FromString(purl)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid purl: %v", err)
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
 			Ecosystem: ecosystem,
-			Name:      CanonicalPackageName(ecosystem, purlMapName(ecosystem, p)),
+			Name:      purlMapName(ecosystem, p),
 		},
 		Version: p.Version,
 	}
@@ -181,15 +184,16 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 	}
 }
 
+// purlMapName joins the purl namespace and name the way NewPurlPackageVersion
+// always has. It drops the Composer vendor. That is a defect, but the frozen
+// helper keeps it until its writers move to PackageVersion.
 func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) string {
 	if purl.Namespace == "" {
 		return purl.Name
 	}
 
 	switch ecosystem {
-	case packagev1.Ecosystem_ECOSYSTEM_GO,
-		packagev1.Ecosystem_ECOSYSTEM_NPM,
-		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
+	case packagev1.Ecosystem_ECOSYSTEM_GO, packagev1.Ecosystem_ECOSYSTEM_NPM:
 		return purl.Namespace + "/" + purl.Name
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
 		return purl.Namespace + ":" + purl.Name
@@ -202,16 +206,36 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 }
 
-// CanonicalPackageName returns the one spelling of a package name for its
-// ecosystem, so two producers that disagree on case or separators still name
-// one package. The rule per ecosystem lives in identityRules. A registry that
-// treats names case-sensitively, npm among them, and every ecosystem with no
-// rule keep the raw name.
-//
-// packageurl-go typeAdjustName is close but does not fit: for PyPI it folds
-// only `_`, and it lower-cases Go module paths, which are case-sensitive.
+// purlIdentityName joins the namespace and name for PackageVersion. It keeps
+// the Composer vendor, which purlMapName drops, so two vendors' packages of
+// one name stay two identities and URN() round-trips.
+func purlIdentityName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) string {
+	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST && purl.Namespace != "" {
+		return purl.Namespace + "/" + purl.Name
+	}
+	return purlMapName(ecosystem, purl)
+}
+
+// CanonicalPackageName is the name fold that control-tower component
+// definitions store today. Its output is frozen, for the same reason as
+// NewPurlPackageVersion: a caller finds the row by this exact name. The fold
+// rules of PackageVersion live in identityRules and differ from this one for
+// npm, which is case-sensitive. Callers move to PackageVersion, and the npm
+// change lands with that move.
 func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
-	return ruleFor(ecosystem).foldName(name)
+	switch ecosystem {
+	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
+		return pep503Name(name)
+
+	case packagev1.Ecosystem_ECOSYSTEM_NPM,
+		packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
+		packagev1.Ecosystem_ECOSYSTEM_CARGO,
+		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
+		return strings.ToLower(name)
+
+	default:
+		return name
+	}
 }
 
 // EcosystemToPurlType maps a PackageVersion ecosystem to its canonical Package
@@ -280,9 +304,10 @@ func Purl(pv *packagev1.PackageVersion) (string, error) {
 	return packageurl.NewPackageURL(purlType, namespace, shortName, pv.GetVersion(), nil, "").ToString(), nil
 }
 
-// purlSplitName is the inverse of purlMapName: it splits a safedep package name
-// back into the purl namespace and name for the ecosystem's convention. A name
-// with no namespace separator yields an empty namespace.
+// purlSplitName is the inverse of purlIdentityName: it splits a safedep
+// package name back into the purl namespace and name for the ecosystem's
+// convention. A name with no namespace separator yields an empty namespace,
+// so a Composer name from the frozen helper still renders as it did.
 func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:

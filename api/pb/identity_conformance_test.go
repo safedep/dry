@@ -50,6 +50,7 @@ func TestIdentityConformance(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 
+	fixtures := map[packagev1.Ecosystem]identityFixture{}
 	for _, file := range files {
 		t.Run(filepath.Base(file), func(t *testing.T) {
 			raw, err := os.ReadFile(file)
@@ -61,6 +62,7 @@ func TestIdentityConformance(t *testing.T) {
 			ecosystemValue, ok := packagev1.Ecosystem_value[fixture.Ecosystem]
 			require.True(t, ok, "unknown ecosystem %q", fixture.Ecosystem)
 			ecosystem := packagev1.Ecosystem(ecosystemValue)
+			fixtures[ecosystem] = fixture
 
 			assert.Equal(t, fixture.RuleVersion, IdentityRuleVersion(ecosystem), "fixture rule version must match the code")
 
@@ -69,6 +71,23 @@ func TestIdentityConformance(t *testing.T) {
 			runIdentityDistinct(t, ecosystem, fixture)
 		})
 	}
+
+	// A rule is a claim about what the registry treats as one package
+	// version. The claim ships with its evidence: positive rows and at least
+	// one distinct pair from the registry. A rule with no fixture folds on
+	// belief, which is how two packages become one row.
+	t.Run("every rule has a fixture with a distinct pair", func(t *testing.T) {
+		for ecosystem, rule := range identityRules {
+			fixture, ok := fixtures[ecosystem]
+			require.True(t, ok, "%s is at rule version %d and has no fixture", ecosystem, rule.version)
+			assert.NotEmpty(t, fixture.NameGroups, "%s fixture has no positive name rows", ecosystem)
+			assert.NotEmpty(t, fixture.NameDistinct, "%s fixture has no distinct name pair", ecosystem)
+			if rule.hasVersionRule() {
+				assert.NotEmpty(t, fixture.VersionGroups, "%s fixture has no positive version rows", ecosystem)
+				assert.NotEmpty(t, fixture.VersionDistinct, "%s fixture has no distinct version pair", ecosystem)
+			}
+		}
+	})
 }
 
 func runIdentityRows(t *testing.T, ecosystem packagev1.Ecosystem, fixture identityFixture) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -23,7 +24,7 @@ type purlPackageVersionHelper struct {
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid purl: %v", err)
+		return nil, fmt.Errorf("invalid purl: %w", err)
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
@@ -47,13 +48,13 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 func parsePurl(purl string) (packageurl.PackageURL, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {
-		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %v", err)
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %w", err)
 	}
 
 	var typ string
 	typ, p.Namespace, p.Name, p.Version, err = purlObservedCoordinates(purl)
 	if err != nil {
-		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %v", err)
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %w", err)
 	}
 
 	// The ecosystem must come from the type as written. A purl whose parsed
@@ -114,7 +115,7 @@ func purlObservedCoordinates(purl string) (typ, namespace, name, version string,
 // that kept them would not survive a round trip through URN.
 func purlNamespace(raw string) (string, error) {
 	segments := make([]string, 0, strings.Count(raw, "/")+1)
-	for _, segment := range strings.Split(raw, "/") {
+	for segment := range strings.SplitSeq(raw, "/") {
 		if segment == "" {
 			continue
 		}
@@ -136,12 +137,12 @@ func NewPurlPackageVersionFromGithubUrl(githubUrl string) (*purlPackageVersionHe
 	}
 
 	if !githubHostRegexp.MatchString(parsedUrl.Host) {
-		return nil, fmt.Errorf("invalid GitHub repository URL host")
+		return nil, errors.New("invalid GitHub repository URL host")
 	}
 
 	parts := strings.Split(strings.Trim(parsedUrl.Path, "/"), "/")
 	if len(parts) < 2 || (len(parts) > 3 && parts[2] != "tree") {
-		return nil, fmt.Errorf("invalid GitHub repository URL format")
+		return nil, errors.New("invalid GitHub repository URL format")
 	}
 
 	owner := parts[0]
@@ -168,15 +169,15 @@ func (p *purlPackageVersionHelper) PackageVersion() *packagev1.PackageVersion {
 }
 
 func (p *purlPackageVersionHelper) Ecosystem() packagev1.Ecosystem {
-	return p.pv.Package.Ecosystem
+	return p.pv.GetPackage().GetEcosystem()
 }
 
 func (p *purlPackageVersionHelper) Name() string {
-	return p.pv.Package.Name
+	return p.pv.GetPackage().GetName()
 }
 
 func (p *purlPackageVersionHelper) Version() string {
-	return p.pv.Version
+	return p.pv.GetVersion()
 }
 
 func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
@@ -324,7 +325,7 @@ func Purl(pv *packagev1.PackageVersion) (string, error) {
 	pkg := pv.GetPackage()
 	name := pkg.GetName()
 	if name == "" {
-		return "", fmt.Errorf("cannot build purl: empty package name")
+		return "", errors.New("cannot build purl: empty package name")
 	}
 
 	purlType, err := EcosystemToPurlType(pkg.GetEcosystem())
@@ -342,7 +343,7 @@ func Purl(pv *packagev1.PackageVersion) (string, error) {
 // hold, so every URN parses back to the identity that built it.
 func identityPurl(ecosystem packagev1.Ecosystem, name, version string) (string, error) {
 	if name == "" {
-		return "", fmt.Errorf("cannot build purl: empty package name")
+		return "", errors.New("cannot build purl: empty package name")
 	}
 
 	purlType, err := EcosystemToPurlType(ecosystem)
@@ -368,12 +369,7 @@ func purlRepresentable(name, namespace, shortName string) bool {
 	if namespace == "" {
 		return shortName == name
 	}
-	for _, segment := range strings.Split(namespace, "/") {
-		if segment == "" {
-			return false
-		}
-	}
-	return true
+	return !slices.Contains(strings.Split(namespace, "/"), "")
 }
 
 // purlSplitName is the inverse of purlMapName: it splits a safedep package name
@@ -394,6 +390,8 @@ func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) 
 		if i := strings.LastIndex(name, "/"); i >= 0 {
 			return name[:i], name[i+1:]
 		}
+	default:
+		// The other ecosystems keep no namespace in the name.
 	}
 	return "", name
 }

@@ -2,7 +2,9 @@ package pb
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -194,19 +196,29 @@ type packagingOracle struct {
 }
 
 func startOracle(f *testing.F, fixture identityFixture) *packagingOracle {
+	f.Helper()
 	python := os.Getenv("IDENTITY_ORACLE_PYTHON")
 	if python == "" {
 		return nil
 	}
 
-	cmd := exec.Command(python, "-c", oracleScript)
+	cmd := exec.CommandContext(f.Context(), python, "-c", oracleScript)
 	cmd.Stderr = os.Stderr
 	stdin, err := cmd.StdinPipe()
 	require.NoError(f, err)
 	stdout, err := cmd.StdoutPipe()
 	require.NoError(f, err)
+	// The context ends before the cleanup runs. Closing stdin lets the oracle
+	// finish its loop and exit, where the default cancel would kill it.
+	cmd.Cancel = stdin.Close
 	require.NoError(f, cmd.Start())
-	f.Cleanup(func() { _ = stdin.Close(); _ = cmd.Wait() })
+	f.Cleanup(func() {
+		// A clean exit after the cancel reports the context error, so only
+		// another error means the oracle failed.
+		if err := cmd.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			f.Errorf("oracle: %v", err)
+		}
+	})
 
 	o := &packagingOracle{enc: json.NewEncoder(stdin), out: bufio.NewScanner(stdout)}
 	o.out.Buffer(nil, 1<<24)
@@ -224,6 +236,7 @@ func startOracle(f *testing.F, fixture identityFixture) *packagingOracle {
 // ask returns packaging's answer for raw, or false when there is no oracle or
 // raw is not valid UTF-8, which a Python str cannot hold.
 func (o *packagingOracle) ask(t *testing.T, kind, raw string) (oracleAnswer, bool) {
+	t.Helper()
 	var answer oracleAnswer
 	if o == nil || !utf8.ValidString(raw) {
 		return answer, false

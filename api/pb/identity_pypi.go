@@ -64,29 +64,14 @@ func pep440Version(version string) (string, bool) {
 		return strings.ToLower(matches[pep440Pattern.SubexpIndex(name)])
 	}
 
-	release := strings.Split(part("release"), ".")
-	for i := range release {
-		release[i] = pep440Number(release[i])
-	}
-	for len(release) > 1 && release[len(release)-1] == "0" {
-		release = release[:len(release)-1]
-	}
-	result := strings.Join(release, ".")
+	result := pep440Release(part("release"))
 
 	if epoch := pep440Number(part("epoch")); epoch != "0" {
 		result = epoch + "!" + result
 	}
 
 	if pre := part("pre"); pre != "" {
-		switch pre {
-		case "alpha":
-			pre = "a"
-		case "beta":
-			pre = "b"
-		case "c", "pre", "preview":
-			pre = "rc"
-		}
-		result += pre + pep440Number(part("preN"))
+		result += pep440PreLabel(pre) + pep440Number(part("preN"))
 	}
 
 	if implicit := part("postImplicit"); implicit != "" {
@@ -100,16 +85,48 @@ func pep440Version(version string) (string, bool) {
 	}
 
 	if local := part("local"); local != "" {
-		segments := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
-		for i, segment := range segments {
-			if strings.Trim(segment, "0123456789") == "" {
-				segments[i] = pep440Number(segment)
-			}
-		}
-		result += "+" + strings.Join(segments, ".")
+		result += "+" + pep440Local(local)
 	}
 
 	return result, true
+}
+
+// pep440Release folds a release segment: no leading zeros in a number and no
+// trailing zero numbers after the first.
+func pep440Release(release string) string {
+	numbers := strings.Split(release, ".")
+	for i := range numbers {
+		numbers[i] = pep440Number(numbers[i])
+	}
+	for len(numbers) > 1 && numbers[len(numbers)-1] == "0" {
+		numbers = numbers[:len(numbers)-1]
+	}
+	return strings.Join(numbers, ".")
+}
+
+// pep440PreLabel is the one spelling of a pre-release label.
+func pep440PreLabel(pre string) string {
+	switch pre {
+	case "alpha":
+		return "a"
+	case "beta":
+		return "b"
+	case "c", "pre", "preview":
+		return "rc"
+	}
+	return pre
+}
+
+// pep440Local folds a local version label: dots between segments and no
+// leading zeros in a numeric segment.
+func pep440Local(local string) string {
+	segments := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
+	for i, segment := range segments {
+		if strings.Trim(segment, "0123456789") == "" {
+			segments[i] = pep440Number(segment)
+		}
+	}
+	return strings.Join(segments, ".")
 }
 
 // isPep440Space is Python's str.isspace, which packaging uses around a
@@ -120,7 +137,7 @@ func isPep440Space(r rune) bool {
 }
 
 func isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] >= utf8.RuneSelf {
 			return false
 		}

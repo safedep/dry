@@ -64,7 +64,12 @@ func TestIdentityConformance(t *testing.T) {
 			ecosystem := packagev1.Ecosystem(ecosystemValue)
 			fixtures[ecosystem] = fixture
 
-			assert.Equal(t, fixture.RuleVersion, IdentityRuleVersion(ecosystem), "fixture rule version must match the code")
+			assert.Equal(
+				t,
+				fixture.RuleVersion,
+				IdentityRuleVersion(ecosystem),
+				"fixture rule version must match the code",
+			)
 
 			runIdentityRows(t, ecosystem, fixture)
 			runIdentityGroups(t, ecosystem, fixture)

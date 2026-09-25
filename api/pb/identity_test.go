@@ -135,32 +135,214 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 		version   string
 		wantName  string
 	}{
-		{"go keeps case", "pkg:golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go upper case scheme", "PKG:golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go one slash after scheme", "pkg:/golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go two slashes after scheme", "pkg://golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go three slashes after scheme", "pkg:///golang/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go type alias", "pkg:go/example.com/Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go empty namespace segment", "pkg:golang/example.com/Owner//Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go empty interior namespace segment", "pkg:golang/example.com//Owner/Library@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go percent-encoded slash", "pkg:golang/example.com/Owner%2FLibrary@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"go percent-encoded version", "pkg:golang/example.com/Owner/Library@v1.0.0%2Bincompatible", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0+incompatible", "example.com/Owner/Library"},
-		{"go qualifiers and subpath", "pkg:golang/example.com/Owner/Library@v1.0.0?type=module#cmd/tool", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0", "example.com/Owner/Library"},
-		{"pypi keeps raw spelling", "pkg:pypi/Flask_RESTful@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "1.0", "flask-restful"},
-		{"pypi type alias", "pkg:pip/Flask_RESTful@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "1.0", "flask-restful"},
-		{"npm keeps case", "pkg:npm/JSONStream@1.0.3", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream", "1.0.3", "JSONStream"},
-		{"npm scope keeps case", "pkg:npm/@Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
-		{"npm percent-encoded scope", "pkg:npm/%40Vue/Reactivity@3.0.0", packagev1.Ecosystem_ECOSYSTEM_NPM, "@Vue/Reactivity", "3.0.0", "@Vue/Reactivity"},
-		{"composer keeps case until its rule ships", "pkg:composer/Vendor-A/Library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor-A/Library", "1.0.0", "Vendor-A/Library"},
-		{"github keeps case until its rule ships", "pkg:github/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "Owner/Library"},
-		{"github type alias", "pkg:actions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Owner/Library", "main", "Owner/Library"},
-		{"bitbucket keeps case until its rule ships", "pkg:bitbucket/Owner/Library@244fd47", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "Owner/Library", "244fd47", "Owner/Library"},
-		{"gitlab keeps case", "pkg:gitlab/Group/Project@1.2", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "Group/Project", "1.2", "Group/Project"},
-		{"maven keeps case", "pkg:maven/com.google.Guava/guava@32.0", packagev1.Ecosystem_ECOSYSTEM_MAVEN, "com.google.Guava:guava", "32.0", "com.google.Guava:guava"},
-		{"rubygems type alias", "pkg:rubygems/Nokogiri@1.16.0", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "1.16.0", "Nokogiri"},
-		{"cargo keeps case until its rule ships", "pkg:cargo/Serde_JSON@1.0.0", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0", "Serde_JSON"},
-		{"nuget keeps case", "pkg:nuget/Newtonsoft.Json@13.0.1", packagev1.Ecosystem_ECOSYSTEM_NUGET, "Newtonsoft.Json", "13.0.1", "Newtonsoft.Json"},
-		{"no version", "pkg:golang/example.com/Owner/Library", packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "", "example.com/Owner/Library"},
+		{
+			"go keeps case",
+			"pkg:golang/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go upper case scheme",
+			"PKG:golang/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go one slash after scheme",
+			"pkg:/golang/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go two slashes after scheme",
+			"pkg://golang/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go three slashes after scheme",
+			"pkg:///golang/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go type alias",
+			"pkg:go/example.com/Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go empty namespace segment",
+			"pkg:golang/example.com/Owner//Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go empty interior namespace segment",
+			"pkg:golang/example.com//Owner/Library@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go percent-encoded slash",
+			"pkg:golang/example.com/Owner%2FLibrary@v1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"go percent-encoded version",
+			"pkg:golang/example.com/Owner/Library@v1.0.0%2Bincompatible",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0+incompatible",
+			"example.com/Owner/Library",
+		},
+		{
+			"go qualifiers and subpath",
+			"pkg:golang/example.com/Owner/Library@v1.0.0?type=module#cmd/tool",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"v1.0.0",
+			"example.com/Owner/Library",
+		},
+		{
+			"pypi keeps raw spelling",
+			"pkg:pypi/Flask_RESTful@1.0",
+			packagev1.Ecosystem_ECOSYSTEM_PYPI,
+			"Flask_RESTful",
+			"1.0",
+			"flask-restful",
+		},
+		{
+			"pypi type alias",
+			"pkg:pip/Flask_RESTful@1.0",
+			packagev1.Ecosystem_ECOSYSTEM_PYPI,
+			"Flask_RESTful",
+			"1.0",
+			"flask-restful",
+		},
+		{
+			"npm keeps case",
+			"pkg:npm/JSONStream@1.0.3",
+			packagev1.Ecosystem_ECOSYSTEM_NPM,
+			"JSONStream",
+			"1.0.3",
+			"JSONStream",
+		},
+		{
+			"npm scope keeps case",
+			"pkg:npm/@Vue/Reactivity@3.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_NPM,
+			"@Vue/Reactivity",
+			"3.0.0",
+			"@Vue/Reactivity",
+		},
+		{
+			"npm percent-encoded scope",
+			"pkg:npm/%40Vue/Reactivity@3.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_NPM,
+			"@Vue/Reactivity",
+			"3.0.0",
+			"@Vue/Reactivity",
+		},
+		{
+			"composer keeps case until its rule ships",
+			"pkg:composer/Vendor-A/Library@1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
+			"Vendor-A/Library",
+			"1.0.0",
+			"Vendor-A/Library",
+		},
+		{
+			"github keeps case until its rule ships",
+			"pkg:github/Owner/Library@main",
+			packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			"Owner/Library",
+			"main",
+			"Owner/Library",
+		},
+		{
+			"github type alias",
+			"pkg:actions/Owner/Library@main",
+			packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			"Owner/Library",
+			"main",
+			"Owner/Library",
+		},
+		{
+			"bitbucket keeps case until its rule ships",
+			"pkg:bitbucket/Owner/Library@244fd47",
+			packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY,
+			"Owner/Library",
+			"244fd47",
+			"Owner/Library",
+		},
+		{
+			"gitlab keeps case",
+			"pkg:gitlab/Group/Project@1.2",
+			packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
+			"Group/Project",
+			"1.2",
+			"Group/Project",
+		},
+		{
+			"maven keeps case",
+			"pkg:maven/com.google.Guava/guava@32.0",
+			packagev1.Ecosystem_ECOSYSTEM_MAVEN,
+			"com.google.Guava:guava",
+			"32.0",
+			"com.google.Guava:guava",
+		},
+		{
+			"rubygems type alias",
+			"pkg:rubygems/Nokogiri@1.16.0",
+			packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
+			"Nokogiri",
+			"1.16.0",
+			"Nokogiri",
+		},
+		{
+			"cargo keeps case until its rule ships",
+			"pkg:cargo/Serde_JSON@1.0.0",
+			packagev1.Ecosystem_ECOSYSTEM_CARGO,
+			"Serde_JSON",
+			"1.0.0",
+			"Serde_JSON",
+		},
+		{
+			"nuget keeps case",
+			"pkg:nuget/Newtonsoft.Json@13.0.1",
+			packagev1.Ecosystem_ECOSYSTEM_NUGET,
+			"Newtonsoft.Json",
+			"13.0.1",
+			"Newtonsoft.Json",
+		},
+		{
+			"no version",
+			"pkg:golang/example.com/Owner/Library",
+			packagev1.Ecosystem_ECOSYSTEM_GO,
+			"example.com/Owner/Library",
+			"",
+			"example.com/Owner/Library",
+		},
 	}
 
 	for _, test := range cases {
@@ -196,12 +378,32 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 		lower string
 		same  bool
 	}{
-		{"go module path is case-sensitive", "pkg:golang/example.com/Owner/Library@v1.0.0", "pkg:golang/example.com/owner/library@v1.0.0", false},
+		{
+			"go module path is case-sensitive",
+			"pkg:golang/example.com/Owner/Library@v1.0.0",
+			"pkg:golang/example.com/owner/library@v1.0.0",
+			false,
+		},
 		{"npm name is case-sensitive", "pkg:npm/JSONStream@1.0.3", "pkg:npm/jsonstream@1.0.3", false},
 		{"gitlab path is case-sensitive", "pkg:gitlab/Group/Project@1.2", "pkg:gitlab/group/project@1.2", false},
-		{"github keeps case until its rule ships", "pkg:github/Owner/Library@main", "pkg:github/owner/library@main", false},
-		{"bitbucket keeps case until its rule ships", "pkg:bitbucket/Owner/Library@244fd47", "pkg:bitbucket/owner/library@244fd47", false},
-		{"composer keeps case until its rule ships", "pkg:composer/Vendor-A/Library@1.0.0", "pkg:composer/vendor-a/library@1.0.0", false},
+		{
+			"github keeps case until its rule ships",
+			"pkg:github/Owner/Library@main",
+			"pkg:github/owner/library@main",
+			false,
+		},
+		{
+			"bitbucket keeps case until its rule ships",
+			"pkg:bitbucket/Owner/Library@244fd47",
+			"pkg:bitbucket/owner/library@244fd47",
+			false,
+		},
+		{
+			"composer keeps case until its rule ships",
+			"pkg:composer/Vendor-A/Library@1.0.0",
+			"pkg:composer/vendor-a/library@1.0.0",
+			false,
+		},
 		{"pypi name folds", "pkg:pypi/Flask_RESTful@1.0", "pkg:pypi/flask-restful@1.0", true},
 	}
 
@@ -299,7 +501,6 @@ func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
 			assert.Equal(t, test.a.Equal(test.b), test.a.Key() == test.b.Key())
 		})
 	}
-
 }
 
 // TestPackageVersionKeyFormat pins the key byte for byte, because a
@@ -313,11 +514,23 @@ func TestPackageVersionKeyFormat(t *testing.T) {
 		want string
 	}{
 		{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0"), "ECOSYSTEM_PYPI/1/datatoolkit@1"},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"), "ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild"},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"), "ECOSYSTEM_GO/0/example.com%2FOwner%2FLibrary@v1.0.0"},
+		{
+			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0"),
+			"ECOSYSTEM_PYPI/1/datatoolkit@1",
+		},
+		{
+			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"),
+			"ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild",
+		},
+		{
+			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"),
+			"ECOSYSTEM_GO/0/example.com%2FOwner%2FLibrary@v1.0.0",
+		},
 		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "ECOSYSTEM_UNSPECIFIED/0/x@1"},
+		{
+			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"),
+			"ECOSYSTEM_UNSPECIFIED/0/x@1",
+		},
 	}
 	for _, test := range cases {
 		assert.Equal(t, test.want, test.pv.Key())
@@ -404,7 +617,11 @@ func TestNewPackageVersionFromPurlSpellingsAgree(t *testing.T) {
 	}{
 		{"escaped at in the version", "pkg:pypi/name@1.0%40x", "pkg://pypi/name@1.0%40x"},
 		{"escaped at in the name", "pkg:pypi/na%40me@1.0", "pkg:/pypi/na%40me@1.0"},
-		{"escaped slash in a go namespace", "pkg:golang/example.com/Owner%2FLibrary@v1", "pkg://golang/example.com/Owner%2FLibrary@v1"},
+		{
+			"escaped slash in a go namespace",
+			"pkg:golang/example.com/Owner%2FLibrary@v1",
+			"pkg://golang/example.com/Owner%2FLibrary@v1",
+		},
 		{"escaped slash in an npm name", "pkg:npm/%40scope/na%2Fme@1.0.0", "pkg://npm/%40scope/na%2Fme@1.0.0"},
 	}
 
@@ -414,7 +631,15 @@ func TestNewPackageVersionFromPurlSpellingsAgree(t *testing.T) {
 			require.NoError(t, err)
 			got, err := NewPackageVersionFromPurl(test.spelling)
 			require.NoError(t, err)
-			assert.True(t, want.Equal(got), "%s yields %s, %s yields %s", test.opaque, want.Key(), test.spelling, got.Key())
+			assert.True(
+				t,
+				want.Equal(got),
+				"%s yields %s, %s yields %s",
+				test.opaque,
+				want.Key(),
+				test.spelling,
+				got.Key(),
+			)
 			assert.Equal(t, want.RawName(), got.RawName())
 			assert.Equal(t, want.RawVersion(), got.RawVersion())
 		})
@@ -430,7 +655,7 @@ func TestNewPackageVersionFromPurlRejectsDroppedNamespace(t *testing.T) {
 		"pkg:openvsx/ns/solargraph@0.24.1",
 	} {
 		_, err := NewPackageVersionFromPurl(purl)
-		assert.Error(t, err, purl)
+		require.Error(t, err, purl)
 	}
 
 	pv, err := NewPackageVersionFromPurl("pkg://pypi/ns%2Frequests@2.0")

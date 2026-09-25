@@ -157,10 +157,10 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			h, err := NewPurlPackageVersion(test.purl)
 			if test.err != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.ErrorContains(t, err, test.err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, test.wantEcosystem, h.Ecosystem())
 				assert.Equal(t, test.wantName, h.Name())
 				assert.Equal(t, test.wantVersion, h.Version())
@@ -289,10 +289,10 @@ func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			h, err := NewPurlPackageVersionFromGithubUrl(test.githubUrl)
 			if test.err != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.ErrorContains(t, err, test.err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, h.Ecosystem())
 				assert.Equal(t, test.wantName, h.Name())
 				assert.Equal(t, test.wantVersion, h.Version())
@@ -329,9 +329,9 @@ func TestEcosystemToPurlType(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := EcosystemToPurlType(test.ecosystem)
 			if test.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.Equal(t, test.want, got)
 		})
@@ -353,22 +353,62 @@ func TestPurl(t *testing.T) {
 		wantErr bool
 	}{
 		{"npm unscoped", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "left-pad", "1.0.0"), "pkg:npm/left-pad@1.0.0", false},
-		{"npm scoped", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "17.0.0"), "pkg:npm/%40angular/core@17.0.0", false},
+		{
+			"npm scoped",
+			pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "17.0.0"),
+			"pkg:npm/%40angular/core@17.0.0",
+			false,
+		},
 		{"pypi", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", "2.31.0"), "pkg:pypi/requests@2.31.0", false},
 		// Maven names are stored as "group:artifact"; the namespace must split on
 		// ":" (round-trips NewPurlPackageVersion) not "/".
-		{"maven", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "1.20"), "pkg:maven/org.apache.commons/compress@1.20", false},
-		{"go", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/golang/protobuf", "v1.4.2"), "pkg:golang/github.com/golang/protobuf@v1.4.2", false},
+		{
+			"maven",
+			pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "1.20"),
+			"pkg:maven/org.apache.commons/compress@1.20",
+			false,
+		},
+		{
+			"go",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/golang/protobuf", "v1.4.2"),
+			"pkg:golang/github.com/golang/protobuf@v1.4.2",
+			false,
+		},
 		// GitHub Actions names are "owner/action"; GitHub repositories "owner/repo".
 		// Both split the namespace on "/" and render under the "github" purl type.
-		{"github actions", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"), "pkg:github/actions/checkout@v4", false},
-		{"github repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"), "pkg:github/safedep/vet@v1.0.0", false},
+		{
+			"github actions",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"),
+			"pkg:github/actions/checkout@v4",
+			false,
+		},
+		{
+			"github repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"),
+			"pkg:github/safedep/vet@v1.0.0",
+			false,
+		},
 		// GitLab/Bitbucket repositories are "owner/repo"; split the namespace on
 		// "/" and render under the "gitlab"/"bitbucket" purl types.
-		{"gitlab repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "inkscape/inkscape", "1.2"), "pkg:gitlab/inkscape/inkscape@1.2", false},
-		{"bitbucket repository", pv(packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "birkenfeld/pygments-main", "244fd47"), "pkg:bitbucket/birkenfeld/pygments-main@244fd47", false},
+		{
+			"gitlab repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "inkscape/inkscape", "1.2"),
+			"pkg:gitlab/inkscape/inkscape@1.2",
+			false,
+		},
+		{
+			"bitbucket repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "birkenfeld/pygments-main", "244fd47"),
+			"pkg:bitbucket/birkenfeld/pygments-main@244fd47",
+			false,
+		},
 		// VSCode/OpenVSX have no namespace convention here, so the name is used verbatim.
-		{"vscode", pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"), "pkg:vscode/ms-python.python@2024.0.0", false},
+		{
+			"vscode",
+			pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"),
+			"pkg:vscode/ms-python.python@2024.0.0",
+			false,
+		},
 		{"no version", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", ""), "pkg:pypi/requests", false},
 		{"unmapped ecosystem errors", pv(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "", true},
 		{"empty name errors", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "", "1"), "", true},
@@ -378,9 +418,9 @@ func TestPurl(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := Purl(test.pv)
 			if test.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.Equal(t, test.want, got)
 		})
@@ -490,15 +530,35 @@ func TestPurlIsFrozen(t *testing.T) {
 		pv   *packagev1.PackageVersion
 		want string
 	}{
-		{"packagist vendor stays in the name", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library"), "pkg:composer/vendor-a%2Flibrary@1.0"},
-		{"packagist mixed case", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog"), "pkg:composer/Monolog%2FMonolog@1.0"},
-		{"packagist without vendor", pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"), "pkg:composer/library@1.0"},
+		{
+			"packagist vendor stays in the name",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library"),
+			"pkg:composer/vendor-a%2Flibrary@1.0",
+		},
+		{
+			"packagist mixed case",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog"),
+			"pkg:composer/Monolog%2FMonolog@1.0",
+		},
+		{
+			"packagist without vendor",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"),
+			"pkg:composer/library@1.0",
+		},
 		{"go empty short name", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/"), "pkg:golang/example.com/@1.0"},
-		{"go empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com//Owner"), "pkg:golang/example.com/Owner@1.0"},
+		{
+			"go empty namespace segment",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com//Owner"),
+			"pkg:golang/example.com/Owner@1.0",
+		},
 		{"npm empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "a//b"), "pkg:npm/a/b@1.0"},
 		{"maven empty group", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, ":artifact"), "pkg:maven/artifact@1.0"},
 		{"maven empty artifact", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "group:"), "pkg:maven/group/@1.0"},
-		{"github empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner//repo"), "pkg:github/owner/repo@1.0"},
+		{
+			"github empty namespace segment",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner//repo"),
+			"pkg:github/owner/repo@1.0",
+		},
 	}
 
 	for _, test := range cases {

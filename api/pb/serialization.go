@@ -52,7 +52,7 @@ func ToYaml[T proto.Message](writer io.Writer, obj T) error {
 		return err
 	}
 
-	yamlData, err := sig_yaml.JSONToYAML([]byte(jsonData))
+	yamlData, err := sig_yaml.JSONToYAML(jsonData)
 	if err != nil {
 		return err
 	}

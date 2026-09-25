@@ -8,6 +8,7 @@ import (
 
 	envoy_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFromYamlToPb(t *testing.T) {
@@ -54,7 +55,7 @@ func TestFromYamlToPb(t *testing.T) {
 			if test.errMsg != "" {
 				assert.ErrorContains(t, err, test.errMsg)
 			} else {
-				assert.Nil(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, test.pbMsg.GetSocketAddress().GetAddress(), obj.GetSocketAddress().GetAddress())
 				assert.Equal(t, test.pbMsg.GetSocketAddress().GetPortValue(), obj.GetSocketAddress().GetPortValue())
 			}
@@ -99,12 +100,12 @@ func TestFromPbToYAML(t *testing.T) {
 
 			err := ToYaml(writer, test.pbMsg)
 			if test.errMsg != "" {
-				assert.NotNil(t, err)
+				require.Error(t, err)
 				assert.ErrorContains(t, err, test.errMsg)
 			} else {
 				writer.Flush()
 
-				assert.Nil(t, err)
+				require.NoError(t, err)
 				assert.Contains(t, buffer.String(), test.yamlContains)
 			}
 		})

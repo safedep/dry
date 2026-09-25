@@ -2,11 +2,13 @@ package pb
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 	"github.com/package-url/packageurl-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestPurlPackageVersionHelper(t *testing.T) {
@@ -49,6 +51,48 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 		{
 			name:          "github actions",
 			purl:          "pkg:github/actions/setup-node@v2",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			wantName:      "actions/setup-node",
+			wantVersion:   "v2",
+		},
+		{
+			name:          "composer drops its vendor",
+			purl:          "pkg:composer/vendor-a/library@1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
+			wantName:      "library",
+			wantVersion:   "1.0.0",
+		},
+		{
+			name:          "go lower-cases the module path",
+			purl:          "pkg:golang/github.com/Azure/Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/azure/foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "upper case scheme",
+			purl:          "PKG:golang/github.com/Azure/Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/azure/foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "empty namespace segment",
+			purl:          "pkg:golang/github.com/Azure//Foo@v1.2.3",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GO,
+			wantName:      "github.com/azure/foo",
+			wantVersion:   "v1.2.3",
+		},
+		{
+			name:          "pypi folds only underscore and case",
+			purl:          "pkg:pypi/Flask.RESTful@1.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_PYPI,
+			wantName:      "flask.restful",
+			wantVersion:   "1.0",
+		},
+		{
+			name:          "github lower-cases owner and repository",
+			purl:          "pkg:github/Actions/Setup-Node@v2",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			wantName:      "actions/setup-node",
 			wantVersion:   "v2",
@@ -113,10 +157,10 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			h, err := NewPurlPackageVersion(test.purl)
 			if test.err != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.ErrorContains(t, err, test.err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, test.wantEcosystem, h.Ecosystem())
 				assert.Equal(t, test.wantName, h.Name())
 				assert.Equal(t, test.wantVersion, h.Version())
@@ -245,10 +289,10 @@ func TestPurlPackageVersionFromGithubUrl(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			h, err := NewPurlPackageVersionFromGithubUrl(test.githubUrl)
 			if test.err != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.ErrorContains(t, err, test.err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, h.Ecosystem())
 				assert.Equal(t, test.wantName, h.Name())
 				assert.Equal(t, test.wantVersion, h.Version())
@@ -285,9 +329,9 @@ func TestEcosystemToPurlType(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := EcosystemToPurlType(test.ecosystem)
 			if test.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.Equal(t, test.want, got)
 		})
@@ -309,22 +353,62 @@ func TestPurl(t *testing.T) {
 		wantErr bool
 	}{
 		{"npm unscoped", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "left-pad", "1.0.0"), "pkg:npm/left-pad@1.0.0", false},
-		{"npm scoped", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "17.0.0"), "pkg:npm/%40angular/core@17.0.0", false},
+		{
+			"npm scoped",
+			pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "17.0.0"),
+			"pkg:npm/%40angular/core@17.0.0",
+			false,
+		},
 		{"pypi", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", "2.31.0"), "pkg:pypi/requests@2.31.0", false},
 		// Maven names are stored as "group:artifact"; the namespace must split on
 		// ":" (round-trips NewPurlPackageVersion) not "/".
-		{"maven", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "1.20"), "pkg:maven/org.apache.commons/compress@1.20", false},
-		{"go", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/golang/protobuf", "v1.4.2"), "pkg:golang/github.com/golang/protobuf@v1.4.2", false},
+		{
+			"maven",
+			pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "1.20"),
+			"pkg:maven/org.apache.commons/compress@1.20",
+			false,
+		},
+		{
+			"go",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/golang/protobuf", "v1.4.2"),
+			"pkg:golang/github.com/golang/protobuf@v1.4.2",
+			false,
+		},
 		// GitHub Actions names are "owner/action"; GitHub repositories "owner/repo".
 		// Both split the namespace on "/" and render under the "github" purl type.
-		{"github actions", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"), "pkg:github/actions/checkout@v4", false},
-		{"github repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"), "pkg:github/safedep/vet@v1.0.0", false},
+		{
+			"github actions",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"),
+			"pkg:github/actions/checkout@v4",
+			false,
+		},
+		{
+			"github repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "safedep/vet", "v1.0.0"),
+			"pkg:github/safedep/vet@v1.0.0",
+			false,
+		},
 		// GitLab/Bitbucket repositories are "owner/repo"; split the namespace on
 		// "/" and render under the "gitlab"/"bitbucket" purl types.
-		{"gitlab repository", pv(packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "inkscape/inkscape", "1.2"), "pkg:gitlab/inkscape/inkscape@1.2", false},
-		{"bitbucket repository", pv(packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "birkenfeld/pygments-main", "244fd47"), "pkg:bitbucket/birkenfeld/pygments-main@244fd47", false},
+		{
+			"gitlab repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, "inkscape/inkscape", "1.2"),
+			"pkg:gitlab/inkscape/inkscape@1.2",
+			false,
+		},
+		{
+			"bitbucket repository",
+			pv(packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "birkenfeld/pygments-main", "244fd47"),
+			"pkg:bitbucket/birkenfeld/pygments-main@244fd47",
+			false,
+		},
 		// VSCode/OpenVSX have no namespace convention here, so the name is used verbatim.
-		{"vscode", pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"), "pkg:vscode/ms-python.python@2024.0.0", false},
+		{
+			"vscode",
+			pv(packagev1.Ecosystem_ECOSYSTEM_VSCODE, "ms-python.python", "2024.0.0"),
+			"pkg:vscode/ms-python.python@2024.0.0",
+			false,
+		},
 		{"no version", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", ""), "pkg:pypi/requests", false},
 		{"unmapped ecosystem errors", pv(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "", true},
 		{"empty name errors", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "", "1"), "", true},
@@ -334,9 +418,9 @@ func TestPurl(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			got, err := Purl(test.pv)
 			if test.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 			assert.Equal(t, test.want, got)
 		})
@@ -395,4 +479,169 @@ func TestCanonicalPackageName(t *testing.T) {
 			assert.Equal(t, once, CanonicalPackageName(test.ecosystem, once), test.name)
 		}
 	})
+}
+
+// TestNewPurlPackageVersionIsFrozen pins the output of the frozen helper on
+// the inputs where PackageVersion differs from it. Existing callers store the
+// names it returns and look them up again, so a change in any cell gives one
+// package two names until those callers move to PackageVersion. Update a cell
+// only together with that move.
+func TestNewPurlPackageVersionIsFrozen(t *testing.T) {
+	cases := []struct {
+		purl string
+		want string
+	}{
+		{"pkg:pypi/zope.interface@1.0", "zope.interface"},
+		{"pkg:pypi/a__b@1", "a--b"},
+		{"pkg:pypi/Flask_RESTful@1.0", "flask-restful"},
+		{"pkg:golang/github.com/Azure/sdk@v1.0.0", "github.com/azure/sdk"},
+		{"pkg:composer/vendor-a/library@1.0.0", "library"},
+		{"pkg:composer/Vendor-A/Library@1.0.0", "library"},
+		{"pkg:gem/Rails@7", "Rails"},
+		{"pkg:cargo/Serde_Json@1", "Serde_Json"},
+		{"pkg:github/Owner/Library@main", "owner/library"},
+		{"pkg:bitbucket/Owner/Library@244fd47", "owner/library"},
+		{"pkg:npm/JSONStream@1.0.3", "JSONStream"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.purl, func(t *testing.T) {
+			h, err := NewPurlPackageVersion(test.purl)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, h.Name())
+		})
+	}
+}
+
+// TestPurlIsFrozen pins the output of Purl on the inputs where the purl of a
+// PackageVersion differs from it. Existing callers build keys from Purl, so a
+// change in any cell moves those keys. Update a cell only together with the
+// move of those callers to PackageVersion.
+func TestPurlIsFrozen(t *testing.T) {
+	pv := func(ecosystem packagev1.Ecosystem, name string) *packagev1.PackageVersion {
+		return &packagev1.PackageVersion{
+			Package: &packagev1.Package{Ecosystem: ecosystem, Name: name},
+			Version: "1.0",
+		}
+	}
+
+	cases := []struct {
+		name string
+		pv   *packagev1.PackageVersion
+		want string
+	}{
+		{
+			"packagist vendor stays in the name",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library"),
+			"pkg:composer/vendor-a%2Flibrary@1.0",
+		},
+		{
+			"packagist mixed case",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog"),
+			"pkg:composer/Monolog%2FMonolog@1.0",
+		},
+		{
+			"packagist without vendor",
+			pv(packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"),
+			"pkg:composer/library@1.0",
+		},
+		{"go empty short name", pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/"), "pkg:golang/example.com/@1.0"},
+		{
+			"go empty namespace segment",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com//Owner"),
+			"pkg:golang/example.com/Owner@1.0",
+		},
+		{"npm empty namespace segment", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "a//b"), "pkg:npm/a/b@1.0"},
+		{"maven empty group", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, ":artifact"), "pkg:maven/artifact@1.0"},
+		{"maven empty artifact", pv(packagev1.Ecosystem_ECOSYSTEM_MAVEN, "group:"), "pkg:maven/group/@1.0"},
+		{
+			"github empty namespace segment",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner//repo"),
+			"pkg:github/owner/repo@1.0",
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := Purl(test.pv)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, got)
+		})
+	}
+}
+
+// TestPurlRoundTripThroughFrozenHelper pins the round trip Purl, then
+// NewPurlPackageVersion, which existing callers use to build a key.
+func TestPurlRoundTripThroughFrozenHelper(t *testing.T) {
+	cases := []struct {
+		ecosystem packagev1.Ecosystem
+		name      string
+		want      string
+	}{
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "vendor-a/library", "vendor-a/library"},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Vendor/Lib", "vendor/lib"},
+		{packagev1.Ecosystem_ECOSYSTEM_NPM, "@angular/core", "@angular/core"},
+		{packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/Azure/sdk", "github.com/azure/sdk"},
+		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "org.apache.commons:compress"},
+		{packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "flask-restful"},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			purl, err := Purl(&packagev1.PackageVersion{
+				Package: &packagev1.Package{Ecosystem: test.ecosystem, Name: test.name},
+				Version: "1.0",
+			})
+			require.NoError(t, err)
+			h, err := NewPurlPackageVersion(purl)
+			require.NoError(t, err)
+			assert.Equal(t, test.want, h.Name())
+		})
+	}
+}
+
+// TestPurlObservedNameMirrorsParser guards the split that purlObservedName
+// copies from packageurl.FromString. The two must agree on every purl up to
+// the parser's own type adjustment, or an upgrade of the parser would move
+// the identity boundary without a failing test.
+func TestPurlObservedCoordinatesMirrorsParser(t *testing.T) {
+	purls := []string{
+		"pkg:golang/example.com/Owner/Library@v1.0.0",
+		"PKG:golang/example.com/Owner/Library@v1.0.0",
+		"pkg:///golang/example.com/Owner//Library@v1.0.0?type=module#cmd/tool",
+		"pkg:golang/example.com/Owner%2FLibrary@v1.0.0%2Bincompatible",
+		"pkg:pypi/Flask_RESTful@1.0",
+		"pkg:npm/%40Vue/Reactivity@3.0.0",
+		"pkg:composer/Vendor-A/Library@1.0.0",
+		"pkg:github/Owner/Library@main",
+		"pkg:bitbucket/Owner/Library@244fd47",
+		"pkg:gitlab/Group/Project@1.2",
+		"pkg:maven/com.google.Guava/guava@32.0",
+		"pkg:nuget/Newtonsoft.Json@13.0.1",
+		"pkg:gem/Nokogiri",
+	}
+
+	adjust := func(purlType, s string) string {
+		switch purlType {
+		case packageurl.TypeGolang, packageurl.TypeGithub, packageurl.TypeBitbucket, packageurl.TypeComposer:
+			return strings.ToLower(s)
+		case packageurl.TypePyPi:
+			return strings.ToLower(strings.ReplaceAll(s, "_", "-"))
+		}
+		return s
+	}
+
+	for _, purl := range purls {
+		t.Run(purl, func(t *testing.T) {
+			parsed, err := packageurl.FromString(purl)
+			require.NoError(t, err)
+			typ, namespace, name, version, err := purlObservedCoordinates(purl)
+			require.NoError(t, err)
+
+			assert.Equal(t, parsed.Namespace, adjust(parsed.Type, namespace))
+			assert.Equal(t, parsed.Name, adjust(parsed.Type, name))
+			assert.Equal(t, parsed.Version, version)
+			assert.Equal(t, parsed.Type, typ)
+		})
+	}
 }

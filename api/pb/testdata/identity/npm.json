@@ -1,0 +1,25 @@
+{
+  "ecosystem": "ECOSYSTEM_NPM",
+  "rule_version": 0,
+  "source": "npm package moniker rules, https://blog.npmjs.org/post/168978377570/new-package-moniker-rules.html. JSONStream@1.0.3 and jsonstream@1.0.3 are two packages with two tarballs on registry.npmjs.org, checked on 2026-09-18.",
+  "versions": [
+    { "input": "1.0.3", "canonical": "1.0.3", "parsed": false },
+    { "input": "v1.0.3", "canonical": "v1.0.3", "parsed": false }
+  ],
+  "names": [
+    { "input": "JSONStream", "canonical": "JSONStream" },
+    { "input": "jsonstream", "canonical": "jsonstream" },
+    { "input": "@Vue/Reactivity", "canonical": "@Vue/Reactivity" },
+    { "input": "socket.io", "canonical": "socket.io" }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    ["1.0.3", "1.0.4"],
+    ["1.0.3", "v1.0.3"]
+  ],
+  "name_groups": [],
+  "name_distinct": [
+    ["JSONStream", "jsonstream"],
+    ["@Vue/Reactivity", "@vue/reactivity"]
+  ]
+}

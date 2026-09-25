@@ -1,0 +1,703 @@
+{
+  "ecosystem": "ECOSYSTEM_PYPI",
+  "rule_version": 1,
+  "source": "packaging 26.3: packaging.utils.canonicalize_version and canonicalize_name",
+  "generator": "scripts/identity-fixtures/pypi.py",
+  "versions": [
+    {
+      "input": "1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.0.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "01.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "v1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "V1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "0!1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "0!v01.00.0",
+      "canonical": "0!v01.00.0",
+      "parsed": false
+    },
+    {
+      "input": "000!1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.0rc1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0rc1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1rc1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.post1",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.0.post1",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.dev0",
+      "canonical": "1.dev0",
+      "parsed": true
+    },
+    {
+      "input": "1.0+local.1",
+      "canonical": "1+local.1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.0+local.1",
+      "canonical": "1+local.1",
+      "parsed": true
+    },
+    {
+      "input": "01!002.00",
+      "canonical": "1!2",
+      "parsed": true
+    },
+    {
+      "input": "1!2",
+      "canonical": "1!2",
+      "parsed": true
+    },
+    {
+      "input": "2!1.0",
+      "canonical": "2!1",
+      "parsed": true
+    },
+    {
+      "input": "1.0RC1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0alpha",
+      "canonical": "1a0",
+      "parsed": true
+    },
+    {
+      "input": "1.0a",
+      "canonical": "1a0",
+      "parsed": true
+    },
+    {
+      "input": "1.0_beta_02",
+      "canonical": "1b2",
+      "parsed": true
+    },
+    {
+      "input": "1.0b2",
+      "canonical": "1b2",
+      "parsed": true
+    },
+    {
+      "input": "1.0c1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0preview1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0pre1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0-rc.1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.rc1",
+      "canonical": "1rc1",
+      "parsed": true
+    },
+    {
+      "input": "1.0-01",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0-1",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0R02",
+      "canonical": "1.post2",
+      "parsed": true
+    },
+    {
+      "input": "1.0rev",
+      "canonical": "1.post0",
+      "parsed": true
+    },
+    {
+      "input": "1.0.post",
+      "canonical": "1.post0",
+      "parsed": true
+    },
+    {
+      "input": "1.0post1",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.r1",
+      "canonical": "1.post1",
+      "parsed": true
+    },
+    {
+      "input": "1.0DEV",
+      "canonical": "1.dev0",
+      "parsed": true
+    },
+    {
+      "input": "1.0.dev",
+      "canonical": "1.dev0",
+      "parsed": true
+    },
+    {
+      "input": "1.0-dev1",
+      "canonical": "1.dev1",
+      "parsed": true
+    },
+    {
+      "input": "1.0dev1",
+      "canonical": "1.dev1",
+      "parsed": true
+    },
+    {
+      "input": "V01.0RC01.POST02.DEV03+LOCAL_004-ABC",
+      "canonical": "1rc1.post2.dev3+local.4.abc",
+      "parsed": true
+    },
+    {
+      "input": "1.0+ubuntu-1",
+      "canonical": "1+ubuntu.1",
+      "parsed": true
+    },
+    {
+      "input": "1.0+ubuntu.1",
+      "canonical": "1+ubuntu.1",
+      "parsed": true
+    },
+    {
+      "input": "1.0+abc.007",
+      "canonical": "1+abc.7",
+      "parsed": true
+    },
+    {
+      "input": " 1.0\n",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\t2.0 ",
+      "canonical": "2",
+      "parsed": true
+    },
+    {
+      "input": "999999999999999999999999999!1.0",
+      "canonical": "999999999999999999999999999!1",
+      "parsed": true
+    },
+    {
+      "input": "1.000000000000000000001",
+      "canonical": "1.1",
+      "parsed": true
+    },
+    {
+      "input": "1",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.1",
+      "canonical": "1.1",
+      "parsed": true
+    },
+    {
+      "input": "1.0.1",
+      "canonical": "1.0.1",
+      "parsed": true
+    },
+    {
+      "input": "2.0",
+      "canonical": "2",
+      "parsed": true
+    },
+    {
+      "input": "1.0rc2",
+      "canonical": "1rc2",
+      "parsed": true
+    },
+    {
+      "input": "1.0.post2",
+      "canonical": "1.post2",
+      "parsed": true
+    },
+    {
+      "input": "1.0.dev1",
+      "canonical": "1.dev1",
+      "parsed": true
+    },
+    {
+      "input": "1.0+other",
+      "canonical": "1+other",
+      "parsed": true
+    },
+    {
+      "input": "1.0_1",
+      "canonical": "1.0_1",
+      "parsed": false
+    },
+    {
+      "input": "1.0final",
+      "canonical": "1.0final",
+      "parsed": false
+    },
+    {
+      "input": "1.0rc1rc2",
+      "canonical": "1.0rc1rc2",
+      "parsed": false
+    },
+    {
+      "input": "1.0.dev1.post1",
+      "canonical": "1.0.dev1.post1",
+      "parsed": false
+    },
+    {
+      "input": "1!2!1.0",
+      "canonical": "1!2!1.0",
+      "parsed": false
+    },
+    {
+      "input": "1.0+local..1",
+      "canonical": "1.0+local..1",
+      "parsed": false
+    },
+    {
+      "input": "1.0+",
+      "canonical": "1.0+",
+      "parsed": false
+    },
+    {
+      "input": "",
+      "canonical": "",
+      "parsed": false
+    },
+    {
+      "input": "abc",
+      "canonical": "abc",
+      "parsed": false
+    },
+    {
+      "input": "1.0.0-py3-none-any",
+      "canonical": "1.0.0-py3-none-any",
+      "parsed": false
+    },
+    {
+      "input": "latest",
+      "canonical": "latest",
+      "parsed": false
+    },
+    {
+      "input": "1+\u212a",
+      "canonical": "1+\u212a",
+      "parsed": false
+    },
+    {
+      "input": "1.0\u00a0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u0661.0",
+      "canonical": "\u0661.0",
+      "parsed": false
+    },
+    {
+      "input": "\u001c1.0\u001c",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u001d1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0\u001e",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u001f1.0\u001f",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u000b1.0\f",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u20281.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\u00851.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "\ufeff1.0",
+      "canonical": "\ufeff1.0",
+      "parsed": false
+    },
+    {
+      "input": "\u200b1.0",
+      "canonical": "\u200b1.0",
+      "parsed": false
+    },
+    {
+      "input": "1.0po\u017ft1",
+      "canonical": "1.0po\u017ft1",
+      "parsed": false
+    },
+    {
+      "input": "1.0.po\u017ft",
+      "canonical": "1.0.po\u017ft",
+      "parsed": false
+    },
+    {
+      "input": "1.0prev\u0131ew1",
+      "canonical": "1.0prev\u0131ew1",
+      "parsed": false
+    },
+    {
+      "input": "1.0PREV\u0130EW1",
+      "canonical": "1.0PREV\u0130EW1",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u212a",
+      "canonical": "1.0+\u212a",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u017f",
+      "canonical": "1.0+\u017f",
+      "parsed": false
+    },
+    {
+      "input": "1.0+\u0131",
+      "canonical": "1.0+\u0131",
+      "parsed": false
+    },
+    {
+      "input": "1.0\u212a",
+      "canonical": "1.0\u212a",
+      "parsed": false
+    },
+    {
+      "input": "v0!1.0",
+      "canonical": "1",
+      "parsed": true
+    },
+    {
+      "input": "1.0p1",
+      "canonical": "1.0p1",
+      "parsed": false
+    },
+    {
+      "input": "1.0.p1",
+      "canonical": "1.0.p1",
+      "parsed": false
+    },
+    {
+      "input": "1.0po1",
+      "canonical": "1.0po1",
+      "parsed": false
+    },
+    {
+      "input": "1.0ev1",
+      "canonical": "1.0ev1",
+      "parsed": false
+    },
+    {
+      "input": "1.0de1",
+      "canonical": "1.0de1",
+      "parsed": false
+    },
+    {
+      "input": "1.0alp1",
+      "canonical": "1.0alp1",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "DataToolKit",
+      "canonical": "datatoolkit"
+    },
+    {
+      "input": "datatoolkit",
+      "canonical": "datatoolkit"
+    },
+    {
+      "input": "Data_Tool.Kit",
+      "canonical": "data-tool-kit"
+    },
+    {
+      "input": "data-tool-kit",
+      "canonical": "data-tool-kit"
+    },
+    {
+      "input": "Flask",
+      "canonical": "flask"
+    },
+    {
+      "input": "flask",
+      "canonical": "flask"
+    },
+    {
+      "input": "Flask_RESTful",
+      "canonical": "flask-restful"
+    },
+    {
+      "input": "flask-restful",
+      "canonical": "flask-restful"
+    },
+    {
+      "input": "flask.restful",
+      "canonical": "flask-restful"
+    },
+    {
+      "input": "FLASK__RESTFUL",
+      "canonical": "flask-restful"
+    },
+    {
+      "input": "zope.interface",
+      "canonical": "zope-interface"
+    },
+    {
+      "input": "Zope._-.Interface",
+      "canonical": "zope-interface"
+    },
+    {
+      "input": "name.",
+      "canonical": "name-"
+    },
+    {
+      "input": "",
+      "canonical": ""
+    },
+    {
+      "input": "\u0130nvoke",
+      "canonical": "\u0130nvoke"
+    },
+    {
+      "input": "\u212aeras",
+      "canonical": "\u212aeras"
+    },
+    {
+      "input": "\u017fix",
+      "canonical": "\u017fix"
+    },
+    {
+      "input": "caf\u00e9",
+      "canonical": "caf\u00e9"
+    }
+  ],
+  "version_groups": [
+    [
+      "1.0",
+      "1.0.0",
+      "1.0.0.0",
+      "01.0",
+      "v1.0",
+      "V1.0",
+      "0!1.0",
+      "000!1.0",
+      " 1.0\n",
+      "\u001c1.0\u001c",
+      "\u001f1.0\u001f"
+    ],
+    [
+      "1.0.0rc1",
+      "1.0rc1",
+      "1rc1",
+      "1.0RC1",
+      "1.0c1",
+      "1.0preview1",
+      "1.0pre1",
+      "1.0-rc.1",
+      "1.0.rc1"
+    ],
+    [
+      "1.0.post1",
+      "1.0.0.post1",
+      "1.0-01",
+      "1.0-1",
+      "1.0post1",
+      "1.0.r1"
+    ],
+    [
+      "1.0+local.1",
+      "1.0.0+local.1"
+    ],
+    [
+      "01!002.00",
+      "1!2"
+    ]
+  ],
+  "version_distinct": [
+    [
+      "1.0",
+      "1.1"
+    ],
+    [
+      "1.0",
+      "1.0.1"
+    ],
+    [
+      "1.0",
+      "1.0rc1"
+    ],
+    [
+      "1.0rc1",
+      "1.0rc2"
+    ],
+    [
+      "1.0",
+      "1.0.post1"
+    ],
+    [
+      "1.0.post1",
+      "1.0.post2"
+    ],
+    [
+      "1.0",
+      "1.0.dev0"
+    ],
+    [
+      "1.0.dev0",
+      "1.0.dev1"
+    ],
+    [
+      "1.0+local.1",
+      "1.0+other"
+    ],
+    [
+      "1!2",
+      "2!1.0"
+    ],
+    [
+      "1.0",
+      "1.0+local.1"
+    ],
+    [
+      "1.0",
+      "1.0_1"
+    ],
+    [
+      "1.0po\u017ft1",
+      "1.0.post1"
+    ],
+    [
+      "1.0+\u212a",
+      "1.0+k"
+    ],
+    [
+      "1.0prev\u0131ew1",
+      "1.0rc1"
+    ],
+    [
+      "1.0.post1",
+      "1.0_1"
+    ]
+  ],
+  "name_groups": [
+    [
+      "DataToolKit",
+      "datatoolkit"
+    ],
+    [
+      "Flask_RESTful",
+      "flask-restful",
+      "flask.restful",
+      "FLASK__RESTFUL"
+    ],
+    [
+      "zope.interface",
+      "Zope._-.Interface"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "datatoolkit",
+      "data-tool-kit"
+    ],
+    [
+      "datatoolkit",
+      "Data_Tool.Kit"
+    ],
+    [
+      "\u0130nvoke",
+      "invoke"
+    ],
+    [
+      "\u212aeras",
+      "keras"
+    ],
+    [
+      "\u017fix",
+      "six"
+    ]
+  ]
+}

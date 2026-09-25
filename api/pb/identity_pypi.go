@@ -1,0 +1,154 @@
+package pb
+
+import (
+	"regexp"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+// pep440Pattern is the PEP 440 grammar in its permissive form, the one
+// packaging.version.Version accepts. Case, separators, leading zeros and the
+// long pre-release spellings are all allowed here and folded below.
+var pep440Pattern = regexp.MustCompile(`(?i)^v?(?:(?P<epoch>[0-9]+)!)?` +
+	`(?P<release>[0-9]+(?:\.[0-9]+)*)` +
+	`(?:[._-]?(?P<pre>a|b|c|rc|alpha|beta|pre|preview)[._-]?(?P<preN>[0-9]+)?)?` +
+	`(?:-(?P<postImplicit>[0-9]+)|[._-]?(?P<post>post|rev|r)[._-]?(?P<postN>[0-9]+)?)?` +
+	`(?:[._-]?(?P<dev>dev)[._-]?(?P<devN>[0-9]+)?)?` +
+	`(?:\+(?P<local>[a-z0-9]+(?:[._-][a-z0-9]+)*))?$`)
+
+// pypiNameSeparators matches a run of the characters PEP 503 folds to one
+// hyphen. See https://peps.python.org/pep-0503/#normalized-names.
+var pypiNameSeparators = regexp.MustCompile(`[-_.]+`)
+
+// pep503Name folds a PyPI project name: lower case, and every run of the
+// separators - _ . becomes one hyphen. Two names with one fold name one
+// project on PyPI.
+func pep503Name(name string) string {
+	return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
+}
+
+// pypiIdentityName is the name fold of the PyPI rule. PEP 508 names are
+// ASCII and PyPI rejects any other, so a non-ASCII name stays raw and matches
+// only itself. Go's simple case map and Python's str.lower disagree on some
+// non-ASCII letters, so folding one would not match packaging.
+func pypiIdentityName(name string) string {
+	if !isASCII(name) {
+		return name
+	}
+	return pep503Name(name)
+}
+
+// pep440Version folds a version string to the form
+// packaging.utils.canonicalize_version produces: no leading v, no zero epoch,
+// no leading zeros in a number, no trailing zero release segments, lower case,
+// one spelling per pre, post and dev segment, dots between local segments.
+// PyPI resolves a release by this form, so two strings with one canonical form
+// name one release. A string the grammar rejects comes back unchanged with
+// false, so the fold is total.
+func pep440Version(version string) (string, bool) {
+	trimmed := strings.TrimFunc(version, isPep440Space)
+	if !isASCII(trimmed) {
+		// PEP 440 is an ASCII grammar. Go's case-insensitive match folds
+		// Unicode too, so the Kelvin sign would match [a-z] and collide
+		// with the ASCII k that packaging accepts.
+		return version, false
+	}
+
+	matches := pep440Pattern.FindStringSubmatch(trimmed)
+	if matches == nil {
+		return version, false
+	}
+
+	part := func(name string) string {
+		return strings.ToLower(matches[pep440Pattern.SubexpIndex(name)])
+	}
+
+	result := pep440Release(part("release"))
+
+	if epoch := pep440Number(part("epoch")); epoch != "0" {
+		result = epoch + "!" + result
+	}
+
+	if pre := part("pre"); pre != "" {
+		result += pep440PreLabel(pre) + pep440Number(part("preN"))
+	}
+
+	if implicit := part("postImplicit"); implicit != "" {
+		result += ".post" + pep440Number(implicit)
+	} else if part("post") != "" {
+		result += ".post" + pep440Number(part("postN"))
+	}
+
+	if part("dev") != "" {
+		result += ".dev" + pep440Number(part("devN"))
+	}
+
+	if local := part("local"); local != "" {
+		result += "+" + pep440Local(local)
+	}
+
+	return result, true
+}
+
+// pep440Release folds a release segment: no leading zeros in a number and no
+// trailing zero numbers after the first.
+func pep440Release(release string) string {
+	numbers := strings.Split(release, ".")
+	for i := range numbers {
+		numbers[i] = pep440Number(numbers[i])
+	}
+	for len(numbers) > 1 && numbers[len(numbers)-1] == "0" {
+		numbers = numbers[:len(numbers)-1]
+	}
+	return strings.Join(numbers, ".")
+}
+
+// pep440PreLabel is the one spelling of a pre-release label.
+func pep440PreLabel(pre string) string {
+	switch pre {
+	case "alpha":
+		return "a"
+	case "beta":
+		return "b"
+	case "c", "pre", "preview":
+		return "rc"
+	}
+	return pre
+}
+
+// pep440Local folds a local version label: dots between segments and no
+// leading zeros in a numeric segment.
+func pep440Local(local string) string {
+	segments := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
+	for i, segment := range segments {
+		if strings.Trim(segment, "0123456789") == "" {
+			segments[i] = pep440Number(segment)
+		}
+	}
+	return strings.Join(segments, ".")
+}
+
+// isPep440Space is Python's str.isspace, which packaging uses around a
+// version. It is Go's unicode.IsSpace plus the four information separators
+// U+001C to U+001F, which Python counts as whitespace and Go does not.
+func isPep440Space(r rune) bool {
+	return unicode.IsSpace(r) || (r >= '\x1c' && r <= '\x1f')
+}
+
+func isASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+func pep440Number(number string) string {
+	number = strings.TrimLeft(number, "0")
+	if number == "" {
+		return "0"
+	}
+	return number
+}

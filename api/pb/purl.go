@@ -1,9 +1,11 @@
 package pb
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
@@ -14,24 +16,116 @@ type purlPackageVersionHelper struct {
 	pv *packagev1.PackageVersion
 }
 
+// NewPurlPackageVersion parses a purl into the proto form. Its output is
+// frozen: existing callers store the names it returns and look them up again,
+// so a change here before those callers move to PackageVersion would give one
+// package two names. TestNewPurlPackageVersionIsFrozen pins the output. Use
+// NewPackageVersionFromPurl to obtain an identity to compare, key or send.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid purl: %v", err)
+		return nil, fmt.Errorf("invalid purl: %w", err)
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
-	name := purlMapName(ecosystem, p)
-
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
 			Ecosystem: ecosystem,
-			Name:      name,
+			Name:      purlMapName(ecosystem, p),
 		},
 		Version: p.Version,
 	}
 
 	return &purlPackageVersionHelper{pv: pv}, nil
+}
+
+// parsePurl parses a purl and keeps the namespace, name and version as
+// written, percent-decoded. packageurl-go rewrites them for some types before
+// any SafeDep rule runs: it lower-cases golang, github, bitbucket and
+// composer, and folds pypi underscores. The identity rules own every fold,
+// and a Go module path is case-sensitive, so the parser must not apply its
+// own.
+func parsePurl(purl string) (packageurl.PackageURL, error) {
+	p, err := packageurl.FromString(purl)
+	if err != nil {
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %w", err)
+	}
+
+	var typ string
+	typ, p.Namespace, p.Name, p.Version, err = purlObservedCoordinates(purl)
+	if err != nil {
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: %w", err)
+	}
+
+	// The ecosystem must come from the type as written. A purl whose parsed
+	// type differs from it is rejected, so one ecosystem's rule never folds
+	// another's coordinates.
+	if !strings.EqualFold(typ, p.Type) {
+		return packageurl.PackageURL{}, fmt.Errorf("invalid purl: type %q is written as %q", p.Type, typ)
+	}
+
+	return p, nil
+}
+
+// purlObservedCoordinates splits a purl as written, the way
+// packageurl.FromString splits the opaque pkg:type/... form, before the
+// parser adjusts the result for the type. For pkg:/ and pkg:// the parser
+// splits the decoded path instead, so an escaped separator would move the
+// split; splitting the raw string keeps every spelling of a purl one
+// identity. The caller has already validated the purl with the parser.
+func purlObservedCoordinates(purl string) (typ, namespace, name, version string, err error) {
+	_, rest, ok := strings.Cut(purl, ":")
+	if !ok {
+		return "", "", "", "", errors.New("purl is missing its scheme")
+	}
+	rest, _, _ = strings.Cut(rest, "#")
+	rest, _, _ = strings.Cut(rest, "?")
+	rest = strings.TrimLeft(rest, "/")
+
+	typ, rest, ok = strings.Cut(rest, "/")
+	if !ok {
+		return "", "", "", "", errors.New("purl is missing type or name")
+	}
+
+	name = rest
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		if namespace, err = purlNamespace(name[:i]); err != nil {
+			return "", "", "", "", err
+		}
+		name = name[i+1:]
+	}
+
+	if i := strings.LastIndex(name, "@"); i >= 0 {
+		name, version = name[:i], name[i+1:]
+		if version, err = url.PathUnescape(version); err != nil {
+			return "", "", "", "", err
+		}
+	}
+
+	if name, err = url.PathUnescape(name); err != nil {
+		return "", "", "", "", err
+	}
+
+	return typ, namespace, name, version, nil
+}
+
+// purlNamespace decodes a raw namespace and drops its empty segments, as the
+// purl spec requires. packageurl.FromString keeps them, so it reads
+// github.com//Azure where ToString writes github.com/Azure, and an identity
+// that kept them would not survive a round trip through URN.
+func purlNamespace(raw string) (string, error) {
+	segments := make([]string, 0, strings.Count(raw, "/")+1)
+	for segment := range strings.SplitSeq(raw, "/") {
+		if segment == "" {
+			continue
+		}
+		decoded, err := url.PathUnescape(segment)
+		if err != nil {
+			return "", err
+		}
+		segments = append(segments, decoded)
+	}
+	return strings.Join(segments, "/"), nil
 }
 
 var githubHostRegexp = regexp.MustCompile(`^github(\.[a-zA-Z0-9-]+)?\.com$`)
@@ -43,12 +137,12 @@ func NewPurlPackageVersionFromGithubUrl(githubUrl string) (*purlPackageVersionHe
 	}
 
 	if !githubHostRegexp.MatchString(parsedUrl.Host) {
-		return nil, fmt.Errorf("invalid GitHub repository URL host")
+		return nil, errors.New("invalid GitHub repository URL host")
 	}
 
 	parts := strings.Split(strings.Trim(parsedUrl.Path, "/"), "/")
 	if len(parts) < 2 || (len(parts) > 3 && parts[2] != "tree") {
-		return nil, fmt.Errorf("invalid GitHub repository URL format")
+		return nil, errors.New("invalid GitHub repository URL format")
 	}
 
 	owner := parts[0]
@@ -75,15 +169,15 @@ func (p *purlPackageVersionHelper) PackageVersion() *packagev1.PackageVersion {
 }
 
 func (p *purlPackageVersionHelper) Ecosystem() packagev1.Ecosystem {
-	return p.pv.Package.Ecosystem
+	return p.pv.GetPackage().GetEcosystem()
 }
 
 func (p *purlPackageVersionHelper) Name() string {
-	return p.pv.Package.Name
+	return p.pv.GetPackage().GetName()
 }
 
 func (p *purlPackageVersionHelper) Version() string {
-	return p.pv.Version
+	return p.pv.GetVersion()
 }
 
 func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
@@ -120,6 +214,9 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 	}
 }
 
+// purlMapName joins the purl namespace and name the way NewPurlPackageVersion
+// always has. It drops the Composer vendor. That is a defect, but the frozen
+// helper keeps it until its writers move to PackageVersion.
 func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) string {
 	if purl.Namespace == "" {
 		return purl.Name
@@ -139,21 +236,25 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 }
 
-// pypiNameSeparators matches a run of the characters PEP 503 folds to one
-// hyphen. See https://peps.python.org/pep-0503/#normalized-names.
-var pypiNameSeparators = regexp.MustCompile(`[-_.]+`)
+// purlIdentityName joins the namespace and name for PackageVersion. It keeps
+// the Composer vendor, which purlMapName drops, so two vendors' packages of
+// one name stay two identities and URN() round-trips.
+func purlIdentityName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) string {
+	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST && purl.Namespace != "" {
+		return purl.Namespace + "/" + purl.Name
+	}
+	return purlMapName(ecosystem, purl)
+}
 
-// CanonicalPackageName returns the one spelling of a package name for its
-// ecosystem, so two producers that disagree on case or separators still name
-// one package. A registry that treats names case-sensitively, and every
-// ecosystem this does not rule on, keeps the raw name.
-//
-// packageurl-go typeAdjustName is close but does not fit: for PyPI it folds
-// only `_`, and it lower-cases Go and GitHub names, which stay case-sensitive.
+// CanonicalPackageName is the name fold that existing callers store today.
+// Its output is frozen, for the same reason as NewPurlPackageVersion. The fold
+// rules of PackageVersion live in identityRules and differ from this one for
+// npm, which is case-sensitive. Callers move to PackageVersion, and the npm
+// change lands with that move.
 func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
 	switch ecosystem {
 	case packagev1.Ecosystem_ECOSYSTEM_PYPI:
-		return pypiNameSeparators.ReplaceAllString(strings.ToLower(name), "-")
+		return pep503Name(name)
 
 	case packagev1.Ecosystem_ECOSYSTEM_NPM,
 		packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
@@ -216,11 +317,15 @@ func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 // "group:artifact", go/github "owner/repo"). It returns an error for an
 // ecosystem with no purl type or an empty name rather than emitting a malformed
 // purl.
+//
+// Its output is frozen, like NewPurlPackageVersion: existing callers build
+// keys from it. TestPurlIsFrozen pins the output. PackageVersion
+// builds its URN with identityPurl instead.
 func Purl(pv *packagev1.PackageVersion) (string, error) {
 	pkg := pv.GetPackage()
 	name := pkg.GetName()
 	if name == "" {
-		return "", fmt.Errorf("cannot build purl: empty package name")
+		return "", errors.New("cannot build purl: empty package name")
 	}
 
 	purlType, err := EcosystemToPurlType(pkg.GetEcosystem())
@@ -230,6 +335,41 @@ func Purl(pv *packagev1.PackageVersion) (string, error) {
 
 	namespace, shortName := purlSplitName(pkg.GetEcosystem(), name)
 	return packageurl.NewPackageURL(purlType, namespace, shortName, pv.GetVersion(), nil, "").ToString(), nil
+}
+
+// identityPurl builds the purl of a PackageVersion. It splits the name with
+// purlIdentitySplitName, the inverse of purlIdentityName, so the Composer
+// vendor becomes the namespace. It returns an error for a name a purl cannot
+// hold, so every URN parses back to the identity that built it.
+func identityPurl(ecosystem packagev1.Ecosystem, name, version string) (string, error) {
+	if name == "" {
+		return "", errors.New("cannot build purl: empty package name")
+	}
+
+	purlType, err := EcosystemToPurlType(ecosystem)
+	if err != nil {
+		return "", err
+	}
+
+	namespace, shortName := purlIdentitySplitName(ecosystem, name)
+	if !purlRepresentable(name, namespace, shortName) {
+		return "", fmt.Errorf("cannot build purl: package name %q has an empty namespace segment or name", name)
+	}
+	return packageurl.NewPackageURL(purlType, namespace, shortName, version, nil, "").ToString(), nil
+}
+
+// purlRepresentable reports whether a purl can hold the split of a name.
+// ToString drops empty namespace segments, so the names a//b and a/b, and the
+// Maven names :a and a, would each render one purl, and a/ would render a purl
+// with no name.
+func purlRepresentable(name, namespace, shortName string) bool {
+	if shortName == "" {
+		return false
+	}
+	if namespace == "" {
+		return shortName == name
+	}
+	return !slices.Contains(strings.Split(namespace, "/"), "")
 }
 
 // purlSplitName is the inverse of purlMapName: it splits a safedep package name
@@ -250,6 +390,20 @@ func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) 
 		if i := strings.LastIndex(name, "/"); i >= 0 {
 			return name[:i], name[i+1:]
 		}
+	default:
+		// The other ecosystems keep no namespace in the name.
 	}
 	return "", name
+}
+
+// purlIdentitySplitName is the inverse of purlIdentityName. It differs from
+// purlSplitName only for Packagist, whose vendor is the purl namespace.
+func purlIdentitySplitName(ecosystem packagev1.Ecosystem, name string) (string, string) {
+	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST {
+		if i := strings.LastIndex(name, "/"); i >= 0 {
+			return name[:i], name[i+1:]
+		}
+		return "", name
+	}
+	return purlSplitName(ecosystem, name)
 }

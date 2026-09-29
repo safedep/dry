@@ -148,6 +148,17 @@ func (p *prometheusMetricsProvider) NewGauge(name, desc string) Gauge {
 	}
 }
 
+// withHistogramBuckets sets the bounds of a Prometheus histogram. A copy of
+// the slice goes into the options, so a caller that later edits its slice
+// does not change the histogram.
+func withHistogramBuckets(buckets []float64) ProviderSpecificOptsEditor {
+	return func(opts ProviderSpecificOpts) {
+		if histogramOpts, ok := opts.(*prometheus.HistogramOpts); ok {
+			histogramOpts.Buckets = append([]float64(nil), buckets...)
+		}
+	}
+}
+
 func (p *prometheusMetricsProvider) NewHistogram(name, desc string,
 	opts ...ProviderSpecificOptsEditor) Histogram {
 	histogramOpts := prometheus.HistogramOpts{

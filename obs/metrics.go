@@ -113,6 +113,14 @@ func NewHistogram(name, desc string) Histogram {
 	return __provider.NewHistogram(name, desc)
 }
 
+// NewHistogramWithBuckets declares a histogram with its own upper bounds, in
+// ascending order. Use it when the Prometheus defaults, which stop at 10, do
+// not cover the values the histogram records, such as row counts. A provider
+// that has no bucket concept ignores the bounds.
+func NewHistogramWithBuckets(name, desc string, buckets []float64) Histogram {
+	return __provider.NewHistogram(name, desc, withHistogramBuckets(buckets))
+}
+
 // InitPrometheusMetricsProvider switches the default metrics provider to the
 // Prometheus Go SDK. Metrics declared before this call, including package-level
 // declarations in packages that Go initialised earlier, are bound to real

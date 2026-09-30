@@ -1,6 +1,12 @@
 package obs
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 func TestPrometheusMetricsProvider(t *testing.T) {
 	p := NewPrometheusMetricsProvider("test", "test")
@@ -33,4 +39,27 @@ func TestPrometheusGaugeVec(t *testing.T) {
 	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Set(1)
 	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Add(1)
 	g.WithLabels(map[string]string{"label1": "1", "label2": "2"}).Sub(1)
+}
+
+func TestPrometheusHistogramBuckets(t *testing.T) {
+	p := NewPrometheusMetricsProvider("test", "test")
+	bounds := []float64{10, 100, 1000}
+
+	h := p.NewHistogram("test_h_buckets_1", "test", withHistogramBuckets(bounds))
+	h.Observe(50)
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+
+	var got []float64
+	for _, family := range families {
+		if family.GetName() != "test_test_test_h_buckets_1" {
+			continue
+		}
+		for _, bucket := range family.GetMetric()[0].GetHistogram().GetBucket() {
+			got = append(got, bucket.GetUpperBound())
+		}
+	}
+
+	assert.Equal(t, bounds, got)
 }

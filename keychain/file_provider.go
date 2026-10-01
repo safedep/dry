@@ -187,15 +187,23 @@ func localStateDir() (string, error) {
 // path of earlier releases, <config dir>/<appName>/creds.json, moves to it on
 // first use. If the move fails, the old path stays in use.
 func defaultFilePath(appName string) (string, error) {
+	legacyDir, legacyErr := legacyFallbackDir()
+
 	stateDir, err := localStateDir()
 	if err != nil {
-		return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+		// Earlier releases need only the config directory. For example, an
+		// absolute XDG_CONFIG_HOME with no HOME resolves it but not the
+		// state directory. Such a setup keeps the old path.
+		if legacyErr != nil {
+			return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+		}
+		log.Warnf("keychain: failed to get the state directory, using %s: %v", legacyDir, err)
+		return filepath.Join(legacyDir, appName, credsFileName), nil
 	}
 	path := filepath.Join(stateDir, appName, credsFileName)
 
-	legacyDir, err := legacyFallbackDir()
-	if err != nil {
-		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", err)
+	if legacyErr != nil {
+		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", legacyErr)
 		return path, nil
 	}
 	legacy := filepath.Join(legacyDir, appName, credsFileName)
@@ -215,6 +223,13 @@ func moveLegacyFile(legacy, path string) string {
 			log.Warnf("keychain: failed to check %s: %v", legacy, err)
 		}
 		return path
+	}
+
+	// A run as another user, such as root under sudo with HOME kept, must
+	// not move the file. The move would leave a file and directories that
+	// the owner cannot read, and lock the owner out.
+	if !ownedByCurrentUser(before) {
+		return legacy
 	}
 
 	if _, err := os.Stat(path); err == nil {

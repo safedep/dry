@@ -59,6 +59,10 @@ When the old and new paths differ, a file at the old path moves to the new path 
 - If both files exist, the provider uses the new file and logs a warning that names the old one.
 - If the old file changes during the move, the provider keeps it and logs a warning.
 - If the move fails, the provider uses the old path.
+- If another user owns the old file, for example when root runs with sudo and keeps `HOME`, the
+  provider uses the old path and does not move the file.
+- If the state directory cannot be resolved, for example with `XDG_CONFIG_HOME` set and `HOME`
+  unset, the provider uses the old path.
 
 Override the path with `FilePath`:
 
@@ -90,11 +94,17 @@ import "github.com/safedep/dry/cloud"
 
 // Store credentials (e.g. during login)
 store, err := cloud.NewKeychainCredentialStore()
+if err != nil {
+    return err
+}
 defer store.Close()
 store.SaveAPIKeyCredential("sk-abc123", "my-tenant")
 
 // Resolve credentials (any tool)
 resolver, err := cloud.NewKeychainCredentialResolver(cloud.CredentialTypeAPIKey)
+if err != nil {
+    return err
+}
 defer resolver.Close()
 creds, err := resolver.Resolve()
 
@@ -109,6 +119,9 @@ serves every tool:
 
 ```go
 resolver, err := cloud.NewDefaultCredentialResolver(cloud.CredentialTypeAPIKey)
+if err != nil {
+    return err
+}
 defer resolver.Close()
 creds, err := resolver.Resolve()
 if err != nil {

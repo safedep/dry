@@ -186,6 +186,21 @@ func TestFileProviderDefaultPath(t *testing.T) {
 	})
 }
 
+func TestFileProviderDefaultPathWithoutHome(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("only Linux resolves the config directory from XDG_CONFIG_HOME alone")
+	}
+
+	configDir := t.TempDir()
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_STATE_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+
+	fp, err := newFileProvider("myapp", "")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(configDir, "myapp", credsFileName), fp.filePath)
+}
+
 func TestFileProviderMovesLegacyFile(t *testing.T) {
 	const store = `{"version":1,"secrets":{"default/api_key":{"Value":"sk-legacy"}}}`
 

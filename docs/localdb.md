@@ -1,7 +1,7 @@
 # localdb
 
-Shared local SQLite database for a tool's modules. One file, one connection
-pool. Each module owns its own tables and migrations. The file is created lazily
+Shared local SQLite database for a tool's modules. One file, one write pool
+with one connection, and an optional read pool. Each module owns its own tables and migrations. The file is created lazily
 on first use and lives at `<Config.Dir>/<FileName>` (`FileName` defaults to
 `local.db`).
 
@@ -40,7 +40,7 @@ reconstructible (cache-like) data, point `Dir` at a cache directory.
 
 - `ReadConns` greater than zero opens a second pool of that size for
   `Store.ReadDB`. Its connections are `query_only`. Writes still go through the
-  single-connection pool that `Store.DB` returns. Use it only when one process
+  write pool that `Store.DB` returns. Use it only when one process
   owns the file. Zero keeps one pool with one connection.
 - `RejectNetworkFS` runs `CheckLocalFilesystem` on `Dir` before the first open.
   The default is `false`.
@@ -101,7 +101,8 @@ type FileManager interface {
   `-journal` siblings. Missing files count as zero.
 - `Vacuum` runs `VACUUM`, then `PRAGMA wal_checkpoint(TRUNCATE)`. It holds the
   write lock for the whole rebuild. It does nothing when the file does not
-  exist.
+  exist. It fails with `ErrCodeVacuumFailure` when another connection keeps the
+  WAL from truncation.
 - `Remove` calls `Close`, then deletes the file and its siblings. The manager
   stays closed. Other processes must not have the file open.
 
@@ -232,7 +233,7 @@ and proceeds; a fail-closed consumer may abort.
 ## Constraints
 
 - `Config.Dir` must be on a **local filesystem**. WAL mode is unsafe over network
-  filesystems (NFS/SMB/overlay) and can corrupt the DB there. Set
+  filesystems (NFS/SMB) and can corrupt the DB there. Set
   `Config.RejectNetworkFS` to fail fast.
 - Treat stored data as reconstructible for cache-like use — a cache directory
   may be wiped at any time.

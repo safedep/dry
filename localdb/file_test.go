@@ -2,6 +2,7 @@ package localdb
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -171,6 +172,29 @@ func TestVacuum(t *testing.T) {
 		assert.Zero(t, wal.Size())
 	})
 
+	t.Run("fails when another connection keeps the WAL", func(t *testing.T) {
+		mgr := NewFileManager(Config{Dir: t.TempDir()})
+		t.Cleanup(func() { assert.NoError(t, mgr.Close()) })
+
+		store, err := mgr.Store(ctx, itemsDescriptor)
+		require.NoError(t, err)
+		_, err = store.DB().ExecContext(ctx, `INSERT INTO items_rows (v) VALUES ('a')`)
+		require.NoError(t, err)
+
+		other, err := sql.Open(driverName, "file:"+mgr.Path()+"?"+pragmaQuery)
+		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, other.Close()) })
+
+		tx, err := other.BeginTx(ctx, nil)
+		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, tx.Rollback()) })
+
+		var n int
+		require.NoError(t, tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM items_rows`).Scan(&n))
+
+		assertErrCode(t, mgr.Vacuum(ctx), ErrCodeVacuumFailure)
+	})
+
 	t.Run("fails after close", func(t *testing.T) {
 		mgr := NewFileManager(Config{Dir: t.TempDir()})
 		require.NoError(t, mgr.Close())
@@ -204,10 +228,19 @@ func TestRemove(t *testing.T) {
 		require.NoError(t, mgr.Remove())
 	})
 
-	t.Run("rejects a file name with a path separator", func(t *testing.T) {
-		mgr := NewFileManager(Config{Dir: t.TempDir(), FileName: "../escape.db"})
-		assertErrCode(t, mgr.Remove(), ErrCodeInvalidDescriptor)
-	})
+	for _, fn := range []string{"../escape.db", ".", ".."} {
+		t.Run("rejects file name "+fn, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "state")
+			require.NoError(t, os.Mkdir(dir, 0o700))
+
+			mgr := NewFileManager(Config{Dir: dir, FileName: fn})
+			assertErrCode(t, mgr.Remove(), ErrCodeInvalidDescriptor)
+			assert.DirExists(t, dir)
+
+			_, err := mgr.Store(ctx, itemsDescriptor)
+			assertErrCode(t, err, ErrCodeInvalidDescriptor)
+		})
+	}
 }
 
 func TestCheckLocalFilesystem(t *testing.T) {

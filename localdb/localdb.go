@@ -101,7 +101,7 @@ type Config struct {
 
 	// ReadConns sets the size of a separate read pool that Store.ReadDB
 	// returns. Its connections are query_only. Zero means no read pool, and
-	// ReadDB returns the single-connection pool that DB returns. Use it only
+	// ReadDB returns the write pool that DB returns. Use it only
 	// when one process owns the file.
 	ReadConns int
 
@@ -259,13 +259,18 @@ func (m *manager) Close() error {
 		return nil
 	}
 
+	var readErr error
 	if m.read != nil {
 		if err := m.read.Close(); err != nil {
-			log.Warnf("localdb: failed to close read pool: %v", err)
+			readErr = newError(ErrCodeCloseFailure, "close read pool", err)
 		}
 	}
 
-	db := m.db
+	return errors.Join(readErr, closeWritePool(m.db))
+}
+
+// closeWritePool checkpoints the WAL, then closes the write pool.
+func closeWritePool(db *sql.DB) error {
 
 	// wal_checkpoint reports its outcome in a result row (busy, log,
 	// checkpointed) rather than as a SQL error. A busy=1 result means another
@@ -438,6 +443,11 @@ func (m *manager) validateFileName() error {
 	fn := m.cfg.FileName
 	if fn == "" {
 		return nil
+	}
+
+	if fn == "." || fn == ".." {
+		return newError(ErrCodeInvalidDescriptor,
+			fmt.Sprintf("FileName %q is not a file name", fn), nil)
 	}
 
 	if strings.ContainsAny(fn, `/\`) || fn != filepath.Base(fn) {

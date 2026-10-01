@@ -23,7 +23,8 @@ type FileManager interface {
 
 	// Vacuum rebuilds the database file to release free pages, then truncates
 	// the WAL. It is a no-op when the file does not exist. It takes the write
-	// lock for the whole rebuild.
+	// lock for the whole rebuild. It fails with ErrCodeVacuumFailure when
+	// another connection keeps the WAL from truncation.
 	Vacuum(ctx context.Context) error
 
 	// Remove closes the manager, then deletes the database file and its -wal,
@@ -105,6 +106,11 @@ func (m *manager) Vacuum(ctx context.Context) error {
 	row := m.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 	if err := row.Scan(&busy, &logFrames, &checkpointed); err != nil {
 		return newError(ErrCodeVacuumFailure, "wal_checkpoint(TRUNCATE)", err)
+	}
+
+	if busy != 0 {
+		return newError(ErrCodeVacuumFailure,
+			"wal_checkpoint(TRUNCATE) did not truncate the WAL because another connection holds it", nil)
 	}
 
 	return nil

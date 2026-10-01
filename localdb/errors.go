@@ -28,6 +28,19 @@ const (
 	// The stored schema version is ahead of what this binary/descriptor knows
 	// (a downgrade or truncated migration list). Not retryable.
 	ErrCodeIncompatibleSchema = "localdb_incompatible_schema"
+
+	// Config.Dir is on a network file system and Config.RejectNetworkFS is set,
+	// or CheckLocalFilesystem found a network file system.
+	ErrCodeUnsafeFilesystem = "localdb_unsafe_filesystem"
+
+	// VACUUM or its WAL checkpoint failed.
+	ErrCodeVacuumFailure = "localdb_vacuum_failure"
+
+	// A database file could not be inspected for Size.
+	ErrCodeSizeFailure = "localdb_size_failure"
+
+	// A database file could not be deleted by Remove.
+	ErrCodeRemoveFailure = "localdb_remove_failure"
 )
 
 // newError builds a usefulerror with the given code and message, optionally

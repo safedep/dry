@@ -229,38 +229,47 @@ func TestFileProviderMovesLegacyFile(t *testing.T) {
 		assert.Equal(t, "sk-current", secret.Value)
 	})
 
-	t.Run("another process moved the file first", func(t *testing.T) {
+	t.Run("a file another process writes first is not replaced", func(t *testing.T) {
 		stateDir, legacyDir := isolateDirs(t)
 		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
 		current := filepath.Join(stateDir, "myapp", credsFileName)
 		writeFile(t, legacy, store)
 
-		renameFile = func(oldPath, newPath string) error {
-			if err := os.Rename(oldPath, newPath); err != nil {
-				return err
-			}
-			return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: os.ErrNotExist}
+		const other = `{"version":1,"secrets":{"default/api_key":{"Value":"sk-other"}}}`
+		linkFile = func(oldPath, newPath string) error {
+			writeFile(t, newPath, other)
+			return os.Link(oldPath, newPath)
 		}
-		t.Cleanup(func() { renameFile = os.Rename })
+		t.Cleanup(func() { linkFile = os.Link })
 
 		fp, err := newFileProvider("myapp", "")
 		require.NoError(t, err)
 		assert.Equal(t, current, fp.filePath)
+
+		secret, err := fp.get(context.Background(), "default/api_key")
+		require.NoError(t, err)
+		assert.Equal(t, "sk-other", secret.Value)
+		assert.FileExists(t, legacy)
 	})
 
 	t.Run("failed move keeps the old path", func(t *testing.T) {
-		_, legacyDir := isolateDirs(t)
+		stateDir, legacyDir := isolateDirs(t)
 		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
 		writeFile(t, legacy, store)
 
-		renameFile = func(oldPath, newPath string) error {
-			return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: os.ErrPermission}
+		linkFile = func(oldPath, newPath string) error {
+			return &os.LinkError{Op: "link", Old: oldPath, New: newPath, Err: os.ErrPermission}
 		}
-		t.Cleanup(func() { renameFile = os.Rename })
+		t.Cleanup(func() { linkFile = os.Link })
 
 		fp, err := newFileProvider("myapp", "")
 		require.NoError(t, err)
 		assert.Equal(t, legacy, fp.filePath)
+		assert.FileExists(t, legacy)
+
+		entries, err := os.ReadDir(filepath.Join(stateDir, "myapp"))
+		require.NoError(t, err)
+		assert.Empty(t, entries, "the temp file must be removed")
 	})
 
 	t.Run("explicit path skips the move", func(t *testing.T) {

@@ -3,6 +3,7 @@ package keychain
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -169,8 +170,8 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 	return nil
 }
 
-// renameFile is a variable so that tests can simulate a concurrent move.
-var renameFile = os.Rename
+// linkFile is a variable so that tests can simulate a concurrent move.
+var linkFile = os.Link
 
 // localStateDir returns the per-user directory for machine-local state. An
 // absolute XDG_STATE_HOME wins on every platform. A relative value is
@@ -223,14 +224,9 @@ func moveLegacyFile(legacy, path string) string {
 		return path
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), dirPermissions); err != nil {
-		log.Warnf("keychain: failed to create %s, using %s: %v", filepath.Dir(path), legacy, err)
-		return legacy
-	}
-
-	if err := renameFile(legacy, path); err != nil {
-		// Another process can move the file between the checks and the
-		// rename. Its result is then at path.
+	if err := copyNoReplace(legacy, path); err != nil {
+		// Another process can create path between the checks and the copy.
+		// Its file wins, and this process uses it.
 		if _, statErr := os.Stat(path); statErr == nil {
 			return path
 		}
@@ -238,6 +234,51 @@ func moveLegacyFile(legacy, path string) string {
 		return legacy
 	}
 
+	if err := os.Remove(legacy); err != nil && !os.IsNotExist(err) {
+		log.Warnf("keychain: copied %s to %s, but failed to delete the old file: %v", legacy, path, err)
+		return path
+	}
+
 	log.Infof("keychain: moved the plaintext credential file from %s to %s", legacy, path)
 	return path
+}
+
+// copyNoReplace copies src to dst and fails if dst exists. os.Rename
+// replaces an existing file on Unix, so a move by rename could overwrite a
+// file that another process wrote. The copy goes to a temp file next to dst
+// first, so that dst never holds a partial file. A hard link then puts it at
+// dst, and the link fails if dst exists.
+func copyNoReplace(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, dirPermissions); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, ".creds-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			log.Warnf("keychain: failed to remove %s: %v", tmpPath, err)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, filePermissions); err != nil {
+		return err
+	}
+
+	return linkFile(tmpPath, dst)
 }

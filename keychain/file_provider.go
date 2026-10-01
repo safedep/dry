@@ -229,16 +229,16 @@ func moveLegacyFile(legacy, path string) string {
 		return path
 	}
 
+	if _, err := os.Stat(path); err == nil {
+		warnLegacyLeft(legacy)
+		return path
+	}
+
 	// A run as another user, such as root under sudo with HOME kept, must
 	// not move the file. The move would leave a file and directories that
 	// the owner cannot read, and lock the owner out.
 	if !fileOwnedByCurrentUser(before) {
 		return legacy
-	}
-
-	if _, err := os.Stat(path); err == nil {
-		warnLegacyLeft(legacy)
-		return path
 	}
 
 	if err := copyNoReplace(legacy, path); err != nil {

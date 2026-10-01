@@ -305,6 +305,21 @@ func TestFileProviderMovesLegacyFile(t *testing.T) {
 		assert.NoDirExists(t, filepath.Join(stateDir, "myapp"))
 	})
 
+	t.Run("the new file wins over a file of another user", func(t *testing.T) {
+		stateDir, legacyDir := isolateDirs(t)
+		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
+		current := filepath.Join(stateDir, "myapp", credsFileName)
+		writeFile(t, legacy, store)
+		writeFile(t, current, store)
+
+		fileOwnedByCurrentUser = func(os.FileInfo) bool { return false }
+		t.Cleanup(func() { fileOwnedByCurrentUser = ownedByCurrentUser })
+
+		fp, err := newFileProvider("myapp", "")
+		require.NoError(t, err)
+		assert.Equal(t, current, fp.filePath)
+	})
+
 	t.Run("failed move keeps the old path", func(t *testing.T) {
 		stateDir, legacyDir := isolateDirs(t)
 		legacy := filepath.Join(legacyDir, "myapp", credsFileName)

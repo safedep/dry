@@ -173,6 +173,10 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 // linkFile is a variable so that tests can simulate a concurrent move.
 var linkFile = os.Link
 
+// fileOwnedByCurrentUser is a variable so that tests can simulate a file of
+// another user without root.
+var fileOwnedByCurrentUser = ownedByCurrentUser
+
 // localStateDir returns the per-user directory for machine-local state. An
 // absolute XDG_STATE_HOME wins on every platform. A relative value is
 // ignored, as the XDG specification requires.
@@ -187,15 +191,23 @@ func localStateDir() (string, error) {
 // path of earlier releases, <config dir>/<appName>/creds.json, moves to it on
 // first use. If the move fails, the old path stays in use.
 func defaultFilePath(appName string) (string, error) {
+	legacyDir, legacyErr := legacyFallbackDir()
+
 	stateDir, err := localStateDir()
 	if err != nil {
-		return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+		// Earlier releases need only the config directory. For example, an
+		// absolute XDG_CONFIG_HOME with no HOME resolves it but not the
+		// state directory. Such a setup keeps the old path.
+		if legacyErr != nil {
+			return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+		}
+		log.Warnf("keychain: failed to get the state directory, using %s: %v", legacyDir, err)
+		return filepath.Join(legacyDir, appName, credsFileName), nil
 	}
 	path := filepath.Join(stateDir, appName, credsFileName)
 
-	legacyDir, err := legacyFallbackDir()
-	if err != nil {
-		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", err)
+	if legacyErr != nil {
+		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", legacyErr)
 		return path, nil
 	}
 	legacy := filepath.Join(legacyDir, appName, credsFileName)
@@ -220,6 +232,13 @@ func moveLegacyFile(legacy, path string) string {
 	if _, err := os.Stat(path); err == nil {
 		warnLegacyLeft(legacy)
 		return path
+	}
+
+	// A run as another user, such as root under sudo with HOME kept, must
+	// not move the file. The move would leave a file and directories that
+	// the owner cannot read, and lock the owner out.
+	if !fileOwnedByCurrentUser(before) {
+		return legacy
 	}
 
 	if err := copyNoReplace(legacy, path); err != nil {

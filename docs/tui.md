@@ -63,7 +63,8 @@ The library picks one of three modes per call, based on environment:
 Mode detection order (first match wins):
 
 1. `output.SetMode(...)` / `--mode=rich|plain|agent`
-2. `SAFEDEP_OUTPUT`, `CLAUDE_CODE`, `ANTHROPIC_AGENT` env vars
+2. `SAFEDEP_OUTPUT`, then the agent markers `CLAUDECODE` (set by Claude Code),
+   `AI_AGENT`, `CLAUDE_CODE` and `ANTHROPIC_AGENT`
 3. `TERM=dumb`
 4. `CI=true`
 5. Not a TTY → Plain

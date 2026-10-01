@@ -74,6 +74,12 @@ func resetMode() {
 	modeMu.Unlock()
 }
 
+// agentEnvVars are the environment variables that coding agents set when they
+// run a command. Claude Code sets CLAUDECODE. AI_AGENT is a shared convention
+// across agents. CLAUDE_CODE and ANTHROPIC_AGENT stay for callers that set
+// them by hand.
+var agentEnvVars = []string{"CLAUDE_CODE", "ANTHROPIC_AGENT", "CLAUDECODE", "AI_AGENT"}
+
 // autoDetectMode resolves the Mode per the spec's ordered rules.
 // The isTTY callback is injected so tests can force either branch without
 // touching the real terminal.
@@ -88,8 +94,7 @@ func autoDetectMode(isTTY func() bool) Mode {
 			return Rich
 		}
 	}
-	// Known agent-environment markers.
-	for _, k := range []string{"CLAUDE_CODE", "ANTHROPIC_AGENT"} {
+	for _, k := range agentEnvVars {
 		if os.Getenv(k) != "" {
 			return Agent
 		}

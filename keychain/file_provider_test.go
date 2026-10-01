@@ -229,6 +229,40 @@ func TestFileProviderMovesLegacyFile(t *testing.T) {
 		assert.Equal(t, "sk-current", secret.Value)
 	})
 
+	t.Run("another process moved the file first", func(t *testing.T) {
+		stateDir, legacyDir := isolateDirs(t)
+		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
+		current := filepath.Join(stateDir, "myapp", credsFileName)
+		writeFile(t, legacy, store)
+
+		renameFile = func(oldPath, newPath string) error {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return err
+			}
+			return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: os.ErrNotExist}
+		}
+		t.Cleanup(func() { renameFile = os.Rename })
+
+		fp, err := newFileProvider("myapp", "")
+		require.NoError(t, err)
+		assert.Equal(t, current, fp.filePath)
+	})
+
+	t.Run("failed move keeps the old path", func(t *testing.T) {
+		_, legacyDir := isolateDirs(t)
+		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
+		writeFile(t, legacy, store)
+
+		renameFile = func(oldPath, newPath string) error {
+			return &os.LinkError{Op: "rename", Old: oldPath, New: newPath, Err: os.ErrPermission}
+		}
+		t.Cleanup(func() { renameFile = os.Rename })
+
+		fp, err := newFileProvider("myapp", "")
+		require.NoError(t, err)
+		assert.Equal(t, legacy, fp.filePath)
+	})
+
 	t.Run("explicit path skips the move", func(t *testing.T) {
 		_, legacyDir := isolateDirs(t)
 		legacy := filepath.Join(legacyDir, "myapp", credsFileName)

@@ -169,6 +169,9 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 	return nil
 }
 
+// renameFile is a variable so that tests can simulate a concurrent move.
+var renameFile = os.Rename
+
 // localStateDir returns the per-user directory for machine-local state. An
 // absolute XDG_STATE_HOME wins on every platform. A relative value is
 // ignored, as the XDG specification requires.
@@ -225,7 +228,12 @@ func moveLegacyFile(legacy, path string) string {
 		return legacy
 	}
 
-	if err := os.Rename(legacy, path); err != nil {
+	if err := renameFile(legacy, path); err != nil {
+		// Another process can move the file between the checks and the
+		// rename. Its result is then at path.
+		if _, statErr := os.Stat(path); statErr == nil {
+			return path
+		}
 		log.Warnf("keychain: failed to move %s to %s, using the old path: %v", legacy, path, err)
 		return legacy
 	}

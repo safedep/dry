@@ -173,6 +173,10 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 // linkFile is a variable so that tests can simulate a concurrent move.
 var linkFile = os.Link
 
+// fileOwnedByCurrentUser is a variable so that tests can simulate a file of
+// another user without root.
+var fileOwnedByCurrentUser = ownedByCurrentUser
+
 // localStateDir returns the per-user directory for machine-local state. An
 // absolute XDG_STATE_HOME wins on every platform. A relative value is
 // ignored, as the XDG specification requires.
@@ -228,7 +232,7 @@ func moveLegacyFile(legacy, path string) string {
 	// A run as another user, such as root under sudo with HOME kept, must
 	// not move the file. The move would leave a file and directories that
 	// the owner cannot read, and lock the owner out.
-	if !ownedByCurrentUser(before) {
+	if !fileOwnedByCurrentUser(before) {
 		return legacy
 	}
 

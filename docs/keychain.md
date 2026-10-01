@@ -39,7 +39,28 @@ kc, err := keychain.New(keychain.Config{
 })
 ```
 
-Secrets are stored in `$HOME/.config/<AppName>/creds.json`. Override the path with `FilePath`:
+The file provider stores secrets in the per-user state directory:
+
+| Platform | Default path |
+|----------|--------------|
+| Linux, macOS | `$XDG_STATE_HOME/<AppName>/creds.json`, default `~/.local/state/<AppName>/creds.json` |
+| Windows | `%LOCALAPPDATA%\<AppName>\creds.json` |
+
+An absolute `XDG_STATE_HOME` wins on every platform. A relative value is ignored.
+
+Earlier releases used `$XDG_CONFIG_HOME/<AppName>/creds.json`, default
+`~/.config/<AppName>/creds.json`, on Linux and `~/Library/Application Support/<AppName>/creds.json`
+on macOS. On Windows the old and new paths are
+the same, unless an absolute `XDG_STATE_HOME` is set.
+
+When the old and new paths differ, a file at the old path moves to the new path on first use:
+
+- The move never replaces a file at the new path.
+- If both files exist, the provider uses the new file and logs a warning that names the old one.
+- If the old file changes during the move, the provider keeps it and logs a warning.
+- If the move fails, the provider uses the old path.
+
+Override the path with `FilePath`:
 
 ```go
 kc, err := keychain.New(keychain.Config{
@@ -80,6 +101,35 @@ creds, err := resolver.Resolve()
 // Chain with env fallback
 chain := cloud.NewChainCredentialResolver(resolver, envResolver)
 ```
+
+### Shared resolver
+
+`NewDefaultCredentialResolver` builds the chain that SafeDep tools share, so that one sign-in
+serves every tool:
+
+```go
+resolver, err := cloud.NewDefaultCredentialResolver(cloud.CredentialTypeAPIKey)
+defer resolver.Close()
+creds, err := resolver.Resolve()
+if err != nil {
+    return err
+}
+creds.Source() // cloud.CredentialSourceEnvironment or cloud.CredentialSourceKeychain
+```
+
+1. For `CredentialTypeAPIKey`, it reads `SAFEDEP_API_KEY` and `SAFEDEP_TENANT_ID` first. Both must
+   be set, or neither.
+2. Then it reads the keychain profile from `cloud.ResolveProfile("")`: `SAFEDEP_PROFILE`, else
+   `default`. Pass `cloud.WithProfile(cloud.ResolveProfile(flagValue))` to let a `--profile` flag
+   win.
+
+A source that holds half a credential (an API key with no tenant) returns
+`ErrIncompleteCredentials` and stops the chain. `ErrIncompleteCredentials` wraps
+`ErrMissingCredentials`, so existing `errors.Is` checks still match.
+
+A keychain that cannot open does not fail construction. The environment still works on a machine
+with no keychain. `Resolve` reports the keychain error only when the environment has no
+credentials.
 
 Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
 

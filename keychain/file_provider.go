@@ -3,6 +3,7 @@ package keychain
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 )
 
 const (
+	credsFileName       = "creds.json"
 	fileProviderVersion = 1
 	dirPermissions      = 0o700
 	filePermissions     = 0o600
@@ -29,11 +31,11 @@ type fileProvider struct {
 
 func newFileProvider(appName, filePath string) (*fileProvider, error) {
 	if filePath == "" {
-		configDir, err := localConfigDir()
+		var err error
+		filePath, err = defaultFilePath(appName)
 		if err != nil {
-			return nil, fmt.Errorf("keychain: failed to get config directory: %w", err)
+			return nil, err
 		}
-		filePath = filepath.Join(configDir, appName, "creds.json")
 	}
 
 	log.Warnf("Using insecure plaintext credential storage at %s", filePath)
@@ -166,4 +168,133 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 
 	committed = true
 	return nil
+}
+
+// linkFile is a variable so that tests can simulate a concurrent move.
+var linkFile = os.Link
+
+// localStateDir returns the per-user directory for machine-local state. An
+// absolute XDG_STATE_HOME wins on every platform. A relative value is
+// ignored, as the XDG specification requires.
+func localStateDir() (string, error) {
+	if dir := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
+		return dir, nil
+	}
+	return platformStateDir()
+}
+
+// defaultFilePath returns <state dir>/<appName>/creds.json. A file at the
+// path of earlier releases, <config dir>/<appName>/creds.json, moves to it on
+// first use. If the move fails, the old path stays in use.
+func defaultFilePath(appName string) (string, error) {
+	stateDir, err := localStateDir()
+	if err != nil {
+		return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+	}
+	path := filepath.Join(stateDir, appName, credsFileName)
+
+	legacyDir, err := legacyFallbackDir()
+	if err != nil {
+		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", err)
+		return path, nil
+	}
+	legacy := filepath.Join(legacyDir, appName, credsFileName)
+	if legacy == path {
+		return path, nil
+	}
+
+	return moveLegacyFile(legacy, path), nil
+}
+
+// moveLegacyFile moves legacy to path when only legacy exists, and returns
+// the path to use.
+func moveLegacyFile(legacy, path string) string {
+	before, err := os.Stat(legacy)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Warnf("keychain: failed to check %s: %v", legacy, err)
+		}
+		return path
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		warnLegacyLeft(legacy)
+		return path
+	}
+
+	if err := copyNoReplace(legacy, path); err != nil {
+		// Another process can create path between the checks and the copy.
+		// Its file wins, and this process uses it.
+		if _, statErr := os.Stat(path); statErr == nil {
+			warnLegacyLeft(legacy)
+			return path
+		}
+		log.Warnf("keychain: failed to move %s to %s, using the old path: %v", legacy, path, err)
+		return legacy
+	}
+
+	// A writer that still uses the old path, such as an older release, can
+	// replace the file during the copy. Its file is then newer than the copy,
+	// so it must not be deleted. A window remains between this check and the
+	// delete. Closing it needs a lock that older releases do not take.
+	if after, err := os.Stat(legacy); err != nil || !sameFileState(before, after) {
+		log.Warnf("keychain: %s changed during the move to %s. Both files exist. Keep the one with your credentials and delete the other.", legacy, path)
+		return path
+	}
+
+	if err := os.Remove(legacy); err != nil && !os.IsNotExist(err) {
+		log.Warnf("keychain: copied %s to %s, but failed to delete the old file: %v", legacy, path, err)
+		return path
+	}
+
+	log.Infof("keychain: moved the plaintext credential file from %s to %s", legacy, path)
+	return path
+}
+
+func warnLegacyLeft(legacy string) {
+	log.Warnf("keychain: %s is not in use and holds plaintext secrets. Delete it.", legacy)
+}
+
+func sameFileState(a, b os.FileInfo) bool {
+	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
+}
+
+// copyNoReplace copies src to dst and fails if dst exists. os.Rename
+// replaces an existing file on Unix, so a move by rename could overwrite a
+// file that another process wrote. The copy goes to a temp file next to dst
+// first, so that dst never holds a partial file. A hard link then puts it at
+// dst, and the link fails if dst exists.
+func copyNoReplace(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(dst)
+	if err := os.MkdirAll(dir, dirPermissions); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, ".creds-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		if err := os.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+			log.Warnf("keychain: failed to remove %s: %v", tmpPath, err)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		return errors.Join(err, tmp.Close())
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, filePermissions); err != nil {
+		return err
+	}
+
+	return linkFile(tmpPath, dst)
 }

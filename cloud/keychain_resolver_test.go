@@ -47,6 +47,7 @@ func TestKeychainCredentialResolver_APIKey(t *testing.T) {
 		tenant, err := creds.GetTenantDomain()
 		require.NoError(t, err)
 		assert.Equal(t, "tenant-123", tenant)
+		assert.Equal(t, CredentialSourceKeychain, creds.Source())
 	})
 
 	t.Run("missing API key returns error", func(t *testing.T) {

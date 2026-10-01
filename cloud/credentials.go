@@ -11,6 +11,26 @@ const (
 	CredentialTypeToken                      // Control plane (cloud.safedep.io)
 )
 
+// CredentialSource identifies where a resolver found credentials.
+type CredentialSource int
+
+const (
+	CredentialSourceUnspecified CredentialSource = iota
+	CredentialSourceEnvironment
+	CredentialSourceKeychain
+)
+
+func (s CredentialSource) String() string {
+	switch s {
+	case CredentialSourceEnvironment:
+		return "environment"
+	case CredentialSourceKeychain:
+		return "keychain"
+	default:
+		return "unspecified"
+	}
+}
+
 // Credentials holds SafeDep Cloud authentication details.
 // Fields are private. Use constructors to create, getters to access.
 type Credentials struct {
@@ -19,6 +39,7 @@ type Credentials struct {
 	token        string
 	refreshToken string
 	tenantDomain string
+	source       CredentialSource
 }
 
 // NewAPIKeyCredential creates data plane credentials.
@@ -88,4 +109,10 @@ func (c *Credentials) GetTenantDomain() (string, error) {
 		return "", fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
 	}
 	return c.tenantDomain, nil
+}
+
+// Source returns where a resolver found the credentials. Credentials built
+// directly with a constructor return CredentialSourceUnspecified.
+func (c *Credentials) Source() CredentialSource {
+	return c.source
 }

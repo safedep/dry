@@ -26,6 +26,7 @@ func TestEnvCredentialResolver(t *testing.T) {
 		tenant, err := creds.GetTenantDomain()
 		require.NoError(t, err)
 		assert.Equal(t, "tenant-123", tenant)
+		assert.Equal(t, CredentialSourceEnvironment, creds.Source())
 	})
 
 	t.Run("missing API key returns error on resolve", func(t *testing.T) {

@@ -5,6 +5,11 @@ import (
 	"os"
 )
 
+const (
+	apiKeyEnvVar = "SAFEDEP_API_KEY"
+	tenantEnvVar = "SAFEDEP_TENANT_ID"
+)
+
 // CredentialResolver resolves SafeDep Cloud credentials.
 type CredentialResolver interface {
 	Resolve() (*Credentials, error)
@@ -20,7 +25,12 @@ func NewEnvCredentialResolver() (CredentialResolver, error) {
 }
 
 func (r *envCredentialResolver) Resolve() (*Credentials, error) {
-	return NewAPIKeyCredential(os.Getenv("SAFEDEP_API_KEY"), os.Getenv("SAFEDEP_TENANT_ID"))
+	creds, err := NewAPIKeyCredential(os.Getenv(apiKeyEnvVar), os.Getenv(tenantEnvVar))
+	if err != nil {
+		return nil, err
+	}
+	creds.source = CredentialSourceEnvironment
+	return creds, nil
 }
 
 // chainCredentialResolver tries resolvers in order, returning the first success.

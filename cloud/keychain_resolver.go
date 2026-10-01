@@ -64,12 +64,12 @@ func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 		return nil, err
 	}
 
-	tenantDomain, err := r.getField(ctx, fieldTenantDomain)
+	tenantDomain, err := r.getTenantDomain(ctx, fieldAPIKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewAPIKeyCredential(apiKey, tenantDomain)
+	return r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
 }
 
 func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {
@@ -85,12 +85,30 @@ func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {
 		return nil, err
 	}
 
-	tenantDomain, err := r.getField(ctx, fieldTenantDomain)
+	tenantDomain, err := r.getTenantDomain(ctx, fieldToken)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewTokenCredential(token, refreshToken, tenantDomain)
+	return r.withSource(NewTokenCredential(token, refreshToken, tenantDomain))
+}
+
+// getTenantDomain reads the tenant of a credential whose secret field is
+// already present. A missing tenant then means half a credential.
+func (r *keychainCredentialResolver) getTenantDomain(ctx context.Context, secretField string) (string, error) {
+	tenantDomain, err := r.getField(ctx, fieldTenantDomain)
+	if errors.Is(err, ErrMissingCredentials) {
+		return "", fmt.Errorf("%w: keychain has %s but no %s", ErrIncompleteCredentials, secretField, fieldTenantDomain)
+	}
+	return tenantDomain, err
+}
+
+func (r *keychainCredentialResolver) withSource(creds *Credentials, err error) (*Credentials, error) {
+	if err != nil {
+		return nil, err
+	}
+	creds.source = CredentialSourceKeychain
+	return creds, nil
 }
 
 func (r *keychainCredentialResolver) getField(ctx context.Context, field string) (string, error) {

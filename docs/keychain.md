@@ -48,8 +48,9 @@ The file provider stores secrets in the per-user state directory:
 
 An absolute `XDG_STATE_HOME` wins on every platform. A relative value is ignored.
 
-Earlier releases used `~/.config/<AppName>/creds.json` on Linux and
-`~/Library/Application Support/<AppName>/creds.json` on macOS. On Windows the old and new paths are
+Earlier releases used `$XDG_CONFIG_HOME/<AppName>/creds.json`, default
+`~/.config/<AppName>/creds.json`, on Linux and `~/Library/Application Support/<AppName>/creds.json`
+on macOS. On Windows the old and new paths are
 the same, unless an absolute `XDG_STATE_HOME` is set.
 
 When the old and new paths differ, a file at the old path moves to the new path on first use:

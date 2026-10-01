@@ -12,6 +12,7 @@ import (
 )
 
 const (
+	credsFileName       = "creds.json"
 	fileProviderVersion = 1
 	dirPermissions      = 0o700
 	filePermissions     = 0o600
@@ -29,11 +30,11 @@ type fileProvider struct {
 
 func newFileProvider(appName, filePath string) (*fileProvider, error) {
 	if filePath == "" {
-		configDir, err := localConfigDir()
+		var err error
+		filePath, err = defaultFilePath(appName)
 		if err != nil {
-			return nil, fmt.Errorf("keychain: failed to get config directory: %w", err)
+			return nil, err
 		}
-		filePath = filepath.Join(configDir, appName, "creds.json")
 	}
 
 	log.Warnf("Using insecure plaintext credential storage at %s", filePath)
@@ -166,4 +167,69 @@ func (f *fileProvider) writeStore(store *fileStore) error {
 
 	committed = true
 	return nil
+}
+
+// localStateDir returns the per-user directory for machine-local state. An
+// absolute XDG_STATE_HOME wins on every platform. A relative value is
+// ignored, as the XDG specification requires.
+func localStateDir() (string, error) {
+	if dir := os.Getenv("XDG_STATE_HOME"); filepath.IsAbs(dir) {
+		return dir, nil
+	}
+	return platformStateDir()
+}
+
+// defaultFilePath returns <state dir>/<appName>/creds.json.
+//
+// Earlier releases kept the file in the config directory. Users often keep
+// that directory in a dotfile repository, where a plaintext secret can leak.
+// A file at the old path moves to the new path on first use. If the move
+// fails, the old path stays in use, so the user stays signed in.
+func defaultFilePath(appName string) (string, error) {
+	stateDir, err := localStateDir()
+	if err != nil {
+		return "", fmt.Errorf("keychain: failed to get state directory: %w", err)
+	}
+	path := filepath.Join(stateDir, appName, credsFileName)
+
+	legacyDir, err := legacyFallbackDir()
+	if err != nil {
+		log.Warnf("keychain: failed to resolve the legacy credential directory: %v", err)
+		return path, nil
+	}
+	legacy := filepath.Join(legacyDir, appName, credsFileName)
+	if legacy == path {
+		return path, nil
+	}
+
+	return moveLegacyFile(legacy, path), nil
+}
+
+// moveLegacyFile moves legacy to path when only legacy exists, and returns
+// the path to use.
+func moveLegacyFile(legacy, path string) string {
+	if _, err := os.Stat(legacy); err != nil {
+		if !os.IsNotExist(err) {
+			log.Warnf("keychain: failed to check %s: %v", legacy, err)
+		}
+		return path
+	}
+
+	if _, err := os.Stat(path); err == nil {
+		log.Warnf("keychain: %s is not in use and holds plaintext secrets. Delete it.", legacy)
+		return path
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), dirPermissions); err != nil {
+		log.Warnf("keychain: failed to create %s, using %s: %v", filepath.Dir(path), legacy, err)
+		return legacy
+	}
+
+	if err := os.Rename(legacy, path); err != nil {
+		log.Warnf("keychain: failed to move %s to %s, using the old path: %v", legacy, path, err)
+		return legacy
+	}
+
+	log.Infof("keychain: moved the plaintext credential file from %s to %s", legacy, path)
+	return path
 }

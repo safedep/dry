@@ -2,12 +2,25 @@
 
 package keychain
 
-import "os"
+import (
+	"os"
+	"path/filepath"
+)
 
-// localConfigDir returns the platform-appropriate config directory.
-// On non-Windows platforms, this delegates to os.UserConfigDir which returns:
+// legacyFallbackDir is where releases before the state directory kept the
+// plaintext file. It delegates to os.UserConfigDir, which returns:
 //   - macOS: ~/Library/Application Support
 //   - Linux: $XDG_CONFIG_HOME (defaults to ~/.config)
-func localConfigDir() (string, error) {
+func legacyFallbackDir() (string, error) {
 	return os.UserConfigDir()
+}
+
+// platformStateDir returns the XDG default state directory, ~/.local/state.
+// macOS uses the same path, as the SafeDep tools do.
+func platformStateDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "state"), nil
 }

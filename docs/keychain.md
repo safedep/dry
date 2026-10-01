@@ -39,7 +39,20 @@ kc, err := keychain.New(keychain.Config{
 })
 ```
 
-Secrets are stored in `$HOME/.config/<AppName>/creds.json`. Override the path with `FilePath`:
+Secrets are stored in the per-user state directory, not the config directory. Users often keep the
+config directory in a dotfile repository, where a plaintext secret can leak.
+
+| Platform | Default path |
+|----------|--------------|
+| Linux, macOS | `$XDG_STATE_HOME/<AppName>/creds.json`, default `~/.local/state/<AppName>/creds.json` |
+| Windows | `%LOCALAPPDATA%\<AppName>\creds.json` (unchanged) |
+
+An absolute `XDG_STATE_HOME` wins on every platform. A relative value is ignored.
+
+Earlier releases used `os.UserConfigDir()/<AppName>/creds.json`. A file at that path moves to the
+new path on first use. If both files exist, the new one is used and a warning names the old one.
+
+Override the path with `FilePath`:
 
 ```go
 kc, err := keychain.New(keychain.Config{
@@ -80,6 +93,32 @@ creds, err := resolver.Resolve()
 // Chain with env fallback
 chain := cloud.NewChainCredentialResolver(resolver, envResolver)
 ```
+
+### Shared resolver
+
+`NewDefaultCredentialResolver` builds the chain that SafeDep tools share, so that one sign-in
+serves every tool:
+
+```go
+resolver, err := cloud.NewDefaultCredentialResolver(cloud.CredentialTypeAPIKey)
+defer resolver.Close()
+creds, err := resolver.Resolve()
+creds.Source() // cloud.CredentialSourceEnvironment or cloud.CredentialSourceKeychain
+```
+
+1. For `CredentialTypeAPIKey`, it reads `SAFEDEP_API_KEY` and `SAFEDEP_TENANT_ID` first. Both must
+   be set, or neither.
+2. Then it reads the keychain profile from `cloud.ResolveProfile("")`: `SAFEDEP_PROFILE`, else
+   `default`. Pass `cloud.WithProfile(cloud.ResolveProfile(flagValue))` to let a `--profile` flag
+   win.
+
+A source that holds half a credential (an API key with no tenant) returns
+`ErrIncompleteCredentials` and stops the chain. `ErrIncompleteCredentials` wraps
+`ErrMissingCredentials`, so existing `errors.Is` checks still match.
+
+A keychain that cannot open does not fail construction. The environment still works on a machine
+with no keychain. `Resolve` reports the keychain error only when the environment has no
+credentials.
 
 Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
 

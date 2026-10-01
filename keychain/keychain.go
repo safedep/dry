@@ -24,7 +24,9 @@ type Config struct {
 	InsecureFileFallback bool
 
 	// FilePath overrides the default file path for the insecure
-	// file provider. Defaults to $HOME/.config/<AppName>/creds.json.
+	// file provider. Defaults to <state dir>/<AppName>/creds.json: an
+	// absolute $XDG_STATE_HOME, else ~/.local/state on Linux and macOS,
+	// else %LOCALAPPDATA% on Windows.
 	FilePath string
 }
 

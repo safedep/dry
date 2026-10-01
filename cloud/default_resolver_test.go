@@ -197,9 +197,11 @@ func TestDefaultCredentialResolver(t *testing.T) {
 	}
 }
 
-func TestDefaultCredentialResolver_UnspecifiedType(t *testing.T) {
-	_, err := NewDefaultCredentialResolver(CredentialTypeUnspecified)
-	assert.ErrorIs(t, err, ErrInvalidCredentialType)
+func TestDefaultCredentialResolver_UnsupportedType(t *testing.T) {
+	for _, ct := range []CredentialType{CredentialTypeUnspecified, CredentialType(99)} {
+		_, err := NewDefaultCredentialResolver(ct, WithKeychainHandle(newMemKeychain(nil)))
+		assert.ErrorIs(t, err, ErrInvalidCredentialType)
+	}
 }
 
 func TestDefaultCredentialResolver_NoKeychain(t *testing.T) {

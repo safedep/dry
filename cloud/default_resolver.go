@@ -46,8 +46,8 @@ type defaultCredentialResolver struct {
 // still works on a machine with no keychain, and Resolve reports the keychain
 // error only when the environment has no credentials.
 func NewDefaultCredentialResolver(credType CredentialType, opts ...KeychainOption) (CloseableCredentialResolver, error) {
-	if credType == CredentialTypeUnspecified {
-		return nil, fmt.Errorf("%w: credential type must be specified", ErrInvalidCredentialType)
+	if credType != CredentialTypeAPIKey && credType != CredentialTypeToken {
+		return nil, fmt.Errorf("%w: unsupported credential type %d", ErrInvalidCredentialType, credType)
 	}
 
 	opts = append([]KeychainOption{WithProfile(ResolveProfile(""))}, opts...)

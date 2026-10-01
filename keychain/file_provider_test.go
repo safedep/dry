@@ -252,6 +252,29 @@ func TestFileProviderMovesLegacyFile(t *testing.T) {
 		assert.FileExists(t, legacy)
 	})
 
+	t.Run("an old file replaced during the move is kept", func(t *testing.T) {
+		stateDir, legacyDir := isolateDirs(t)
+		legacy := filepath.Join(legacyDir, "myapp", credsFileName)
+		writeFile(t, legacy, store)
+
+		const newer = `{"version":1,"secrets":{"default/api_key":{"Value":"sk-newer"}}}`
+		linkFile = func(oldPath, newPath string) error {
+			replacement := legacy + ".tmp"
+			writeFile(t, replacement, newer)
+			require.NoError(t, os.Rename(replacement, legacy))
+			return os.Link(oldPath, newPath)
+		}
+		t.Cleanup(func() { linkFile = os.Link })
+
+		fp, err := newFileProvider("myapp", "")
+		require.NoError(t, err)
+		assert.Equal(t, filepath.Join(stateDir, "myapp", credsFileName), fp.filePath)
+
+		data, err := os.ReadFile(legacy)
+		require.NoError(t, err)
+		assert.Equal(t, newer, string(data))
+	})
+
 	t.Run("failed move keeps the old path", func(t *testing.T) {
 		stateDir, legacyDir := isolateDirs(t)
 		legacy := filepath.Join(legacyDir, "myapp", credsFileName)

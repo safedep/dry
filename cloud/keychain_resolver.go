@@ -97,7 +97,7 @@ func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {
 // already present. A missing tenant then means half a credential.
 func (r *keychainCredentialResolver) getTenantDomain(ctx context.Context, secretField string) (string, error) {
 	tenantDomain, err := r.getField(ctx, fieldTenantDomain)
-	if errors.Is(err, ErrMissingCredentials) {
+	if errors.Is(err, ErrMissingCredentials) || (err == nil && tenantDomain == "") {
 		return "", fmt.Errorf("%w: keychain has %s but no %s", ErrIncompleteCredentials, secretField, fieldTenantDomain)
 	}
 	return tenantDomain, err

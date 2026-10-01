@@ -183,12 +183,9 @@ func localStateDir() (string, error) {
 	return platformStateDir()
 }
 
-// defaultFilePath returns <state dir>/<appName>/creds.json.
-//
-// Earlier releases kept the file in the config directory. Users often keep
-// that directory in a dotfile repository, where a plaintext secret can leak.
-// A file at the old path moves to the new path on first use. If the move
-// fails, the old path stays in use, so the user stays signed in.
+// defaultFilePath returns <state dir>/<appName>/creds.json. A file at the
+// path of earlier releases, <config dir>/<appName>/creds.json, moves to it on
+// first use. If the move fails, the old path stays in use.
 func defaultFilePath(appName string) (string, error) {
 	stateDir, err := localStateDir()
 	if err != nil {
@@ -212,7 +209,8 @@ func defaultFilePath(appName string) (string, error) {
 // moveLegacyFile moves legacy to path when only legacy exists, and returns
 // the path to use.
 func moveLegacyFile(legacy, path string) string {
-	if _, err := os.Stat(legacy); err != nil {
+	before, err := os.Stat(legacy)
+	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Warnf("keychain: failed to check %s: %v", legacy, err)
 		}
@@ -220,7 +218,7 @@ func moveLegacyFile(legacy, path string) string {
 	}
 
 	if _, err := os.Stat(path); err == nil {
-		log.Warnf("keychain: %s is not in use and holds plaintext secrets. Delete it.", legacy)
+		warnLegacyLeft(legacy)
 		return path
 	}
 
@@ -228,10 +226,20 @@ func moveLegacyFile(legacy, path string) string {
 		// Another process can create path between the checks and the copy.
 		// Its file wins, and this process uses it.
 		if _, statErr := os.Stat(path); statErr == nil {
+			warnLegacyLeft(legacy)
 			return path
 		}
 		log.Warnf("keychain: failed to move %s to %s, using the old path: %v", legacy, path, err)
 		return legacy
+	}
+
+	// A writer that still uses the old path, such as an older release, can
+	// replace the file during the copy. Its file is then newer than the copy,
+	// so it must not be deleted. A window remains between this check and the
+	// delete. Closing it needs a lock that older releases do not take.
+	if after, err := os.Stat(legacy); err != nil || !sameFileState(before, after) {
+		log.Warnf("keychain: %s changed during the move to %s. Both files exist. Keep the one with your credentials and delete the other.", legacy, path)
+		return path
 	}
 
 	if err := os.Remove(legacy); err != nil && !os.IsNotExist(err) {
@@ -241,6 +249,14 @@ func moveLegacyFile(legacy, path string) string {
 
 	log.Infof("keychain: moved the plaintext credential file from %s to %s", legacy, path)
 	return path
+}
+
+func warnLegacyLeft(legacy string) {
+	log.Warnf("keychain: %s is not in use and holds plaintext secrets. Delete it.", legacy)
+}
+
+func sameFileState(a, b os.FileInfo) bool {
+	return os.SameFile(a, b) && a.Size() == b.Size() && a.ModTime().Equal(b.ModTime())
 }
 
 // copyNoReplace copies src to dst and fails if dst exists. os.Rename

@@ -39,13 +39,12 @@ kc, err := keychain.New(keychain.Config{
 })
 ```
 
-Secrets are stored in the per-user state directory, not the config directory. Users often keep the
-config directory in a dotfile repository, where a plaintext secret can leak.
+The file provider stores secrets in the per-user state directory:
 
 | Platform | Default path |
 |----------|--------------|
 | Linux, macOS | `$XDG_STATE_HOME/<AppName>/creds.json`, default `~/.local/state/<AppName>/creds.json` |
-| Windows | `%LOCALAPPDATA%\<AppName>\creds.json` (unchanged) |
+| Windows | `%LOCALAPPDATA%\<AppName>\creds.json` |
 
 An absolute `XDG_STATE_HOME` wins on every platform. A relative value is ignored.
 
@@ -53,9 +52,12 @@ Earlier releases used `~/.config/<AppName>/creds.json` on Linux and
 `~/Library/Application Support/<AppName>/creds.json` on macOS. On Windows the old and new paths are
 the same, unless an absolute `XDG_STATE_HOME` is set.
 
-When the old and new paths differ, a file at the old path moves to the new path on first use. The
-move never replaces an existing file at the new path. If both files exist, the new one is used and
-a warning names the old one. If the move fails, the old path stays in use.
+When the old and new paths differ, a file at the old path moves to the new path on first use:
+
+- The move never replaces a file at the new path.
+- If both files exist, the provider uses the new file and logs a warning that names the old one.
+- If the old file changes during the move, the provider keeps it and logs a warning.
+- If the move fails, the provider uses the old path.
 
 Override the path with `FilePath`:
 
@@ -108,6 +110,9 @@ serves every tool:
 resolver, err := cloud.NewDefaultCredentialResolver(cloud.CredentialTypeAPIKey)
 defer resolver.Close()
 creds, err := resolver.Resolve()
+if err != nil {
+    return err
+}
 creds.Source() // cloud.CredentialSourceEnvironment or cloud.CredentialSourceKeychain
 ```
 

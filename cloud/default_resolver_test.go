@@ -152,6 +152,18 @@ func TestDefaultCredentialResolver(t *testing.T) {
 			wantSource: CredentialSourceKeychain,
 		},
 		{
+			name:     "API key in keychain with an empty tenant is incomplete",
+			credType: CredentialTypeAPIKey,
+			secrets:  map[string]string{"default/api_key": "sk-kc", "default/tenant_domain": ""},
+			wantErr:  ErrIncompleteCredentials,
+		},
+		{
+			name:     "token in keychain with an empty tenant is incomplete",
+			credType: CredentialTypeToken,
+			secrets:  map[string]string{"default/token": "tok", "default/tenant_domain": ""},
+			wantErr:  ErrIncompleteCredentials,
+		},
+		{
 			name:     "token in keychain without tenant is incomplete",
 			credType: CredentialTypeToken,
 			secrets:  map[string]string{"default/token": "tok"},

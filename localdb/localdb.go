@@ -98,17 +98,51 @@ type Config struct {
 	// FileName overrides the DB file name. Defaults to "local.db" when empty.
 	// Must be a bare file name — a path separator is rejected at first Store.
 	FileName string
+
+	// ReadConns sets the size of a separate read pool that Store.ReadDB
+	// returns. Its connections are query_only. Zero means no read pool, and
+	// ReadDB returns the write pool that DB returns. Use it only
+	// when one process owns the file.
+	ReadConns int
+
+	// RejectNetworkFS makes the first Store fail with ErrCodeUnsafeFilesystem
+	// when Dir is on a network file system. See CheckLocalFilesystem.
+	RejectNetworkFS bool
 }
 
 // Store is a module's handle to the shared database.
 type Store struct {
-	db *sql.DB
+	name string
+	db   *sql.DB
+	read *sql.DB
 }
 
 // DB returns the shared *sql.DB connection pool. The module runs its own SQL
 // against its own tables.
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+// ReadDB returns the read pool when Config.ReadConns is positive, and the pool
+// that DB returns otherwise. Writes through the read pool fail.
+func (s *Store) ReadDB() *sql.DB {
+	if s.read != nil {
+		return s.read
+	}
+
+	return s.db
+}
+
+// SchemaVersion returns the number of the module's migrations that the file
+// records as applied.
+func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
+	v, err := readModuleVersion(ctx, s.db, s.name)
+	if err != nil {
+		return 0, newError(ErrCodeMigrationFailure,
+			fmt.Sprintf("read schema version for module %q", s.name), err)
+	}
+
+	return v, nil
 }
 
 // cachedStore records a returned *Store together with the migrations slice it
@@ -126,6 +160,7 @@ type manager struct {
 
 	mu     sync.Mutex
 	db     *sql.DB // nil until the first Store opens it
+	read   *sql.DB // nil unless Config.ReadConns is positive
 	stores map[string]*cachedStore
 	closed bool
 }
@@ -133,6 +168,11 @@ type manager struct {
 // New returns a Manager bound to <Config.Dir>/<FileName> (FileName defaults to
 // "local.db"). It touches no disk until the first Store call.
 func New(cfg Config) Manager {
+	return NewFileManager(cfg)
+}
+
+// NewFileManager returns the same manager as New, typed as a FileManager.
+func NewFileManager(cfg Config) FileManager {
 	return &manager{
 		cfg:    cfg,
 		stores: make(map[string]*cachedStore),
@@ -192,7 +232,7 @@ func (m *manager) Store(ctx context.Context, d Descriptor) (*Store, error) {
 		return nil, err
 	}
 
-	store := &Store{db: m.db}
+	store := &Store{name: d.Name, db: m.db, read: m.read}
 	m.stores[d.Name] = &cachedStore{
 		store:      store,
 		migrations: slices.Clone(d.Migrations),
@@ -219,7 +259,18 @@ func (m *manager) Close() error {
 		return nil
 	}
 
-	db := m.db
+	var readErr error
+	if m.read != nil {
+		if err := m.read.Close(); err != nil {
+			readErr = newError(ErrCodeCloseFailure, "close read pool", err)
+		}
+	}
+
+	return errors.Join(readErr, closeWritePool(m.db))
+}
+
+// closeWritePool checkpoints the WAL, then closes the write pool.
+func closeWritePool(db *sql.DB) error {
 
 	// wal_checkpoint reports its outcome in a result row (busy, log,
 	// checkpointed) rather than as a SQL error. A busy=1 result means another
@@ -263,6 +314,12 @@ func (m *manager) ensureOpen(ctx context.Context) error {
 		}
 	}
 
+	if m.cfg.RejectNetworkFS {
+		if err := CheckLocalFilesystem(m.cfg.Dir); err != nil {
+			return err
+		}
+	}
+
 	db, err := sql.Open(driverName, m.dsn())
 	if err != nil {
 		return newError(ErrCodeOpenFailure, "open database", err)
@@ -288,8 +345,7 @@ func (m *manager) ensureOpen(ctx context.Context) error {
 
 		err := bootstrapOnce(ctx, db)
 		if err == nil {
-			m.db = db
-			return nil
+			return m.openReadPool(db)
 		}
 
 		if !isSQLiteBusy(err) || attempt >= openMaxRetries {
@@ -302,6 +358,24 @@ func (m *manager) ensureOpen(ctx context.Context) error {
 			return berr
 		}
 	}
+}
+
+// openReadPool opens the read pool after bootstrap, so the file is already in
+// WAL mode. On failure it closes db and leaves m.db nil.
+func (m *manager) openReadPool(db *sql.DB) error {
+	if m.cfg.ReadConns > 0 {
+		read, err := sql.Open(driverName, m.dsn()+"&_pragma=query_only(1)")
+		if err != nil {
+			closeQuietly(db)
+			return newError(ErrCodeOpenFailure, "open read pool", err)
+		}
+
+		read.SetMaxOpenConns(m.cfg.ReadConns)
+		m.read = read
+	}
+
+	m.db = db
+	return nil
 }
 
 func bootstrapOnce(ctx context.Context, db *sql.DB) error {
@@ -369,6 +443,11 @@ func (m *manager) validateFileName() error {
 	fn := m.cfg.FileName
 	if fn == "" {
 		return nil
+	}
+
+	if fn == "." || fn == ".." {
+		return newError(ErrCodeInvalidDescriptor,
+			fmt.Sprintf("FileName %q is not a file name", fn), nil)
 	}
 
 	if strings.ContainsAny(fn, `/\`) || fn != filepath.Base(fn) {
@@ -500,9 +579,14 @@ func readUserVersion(ctx context.Context, conn *sql.Conn) (int, error) {
 	return v, nil
 }
 
-func readModuleVersion(ctx context.Context, conn *sql.Conn, name string) (int, error) {
+// rowQuerier is the part of *sql.DB and *sql.Conn that reads one row.
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func readModuleVersion(ctx context.Context, q rowQuerier, name string) (int, error) {
 	var v int
-	err := conn.QueryRowContext(ctx,
+	err := q.QueryRowContext(ctx,
 		`SELECT version FROM `+trackerTable+` WHERE module = ?`, name).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil

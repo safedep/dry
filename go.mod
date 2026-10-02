@@ -62,6 +62,7 @@ require (
 	golang.org/x/mod v0.33.0
 	golang.org/x/net v0.51.0
 	golang.org/x/oauth2 v0.36.0
+	golang.org/x/sys v0.43.0
 	golang.org/x/term v0.42.0
 	google.golang.org/api v0.235.0
 	google.golang.org/genai v1.21.0
@@ -253,7 +254,6 @@ require (
 	golang.org/x/arch v0.20.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect

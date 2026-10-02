@@ -1,6 +1,6 @@
 // Package localdb is a shared local SQLite database framework for a tool's
 // modules. Multiple independent modules persist into one shared SQLite file
-// with a single connection pool; each module owns its own tables and an
+// with one write pool and an optional read pool; each module owns its own tables and an
 // append-only migration list but does not manage the database file, connection
 // pool, or lifecycle.
 //
@@ -39,9 +39,10 @@
 //
 // Concurrency and durability: the file uses WAL mode with busy_timeout,
 // synchronous=NORMAL, and foreign_keys=ON, applied per connection, with the
-// pool limited to a single connection. Multiple processes may safely share the
-// file on a local filesystem; Config.Dir must not be a network filesystem
-// (NFS/SMB/overlay), where WAL is unsafe. Consumers must keep write
+// write pool limited to a single connection. Config.ReadConns adds a
+// query_only read pool. Multiple processes may safely share the file on a
+// local filesystem; Config.Dir must not be a network filesystem (NFS/SMB),
+// where WAL is unsafe. Consumers must keep write
 // transactions tiny and short-lived. See the package design for the full
 // contract.
 package localdb

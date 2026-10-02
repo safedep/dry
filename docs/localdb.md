@@ -1,7 +1,7 @@
 # localdb
 
-Shared local SQLite database for a tool's modules. One file, one connection
-pool. Each module owns its own tables and migrations. The file is created lazily
+Shared local SQLite database for a tool's modules. One file, one write pool
+with one connection, and an optional read pool. Each module owns its own tables and migrations. The file is created lazily
 on first use and lives at `<Config.Dir>/<FileName>` (`FileName` defaults to
 `local.db`).
 
@@ -28,13 +28,22 @@ import "github.com/safedep/dry/localdb"
 
 ```go
 type Config struct {
-    Dir      string // directory holding the DB file
-    FileName string // optional; defaults to "local.db"
+    Dir             string // directory holding the DB file
+    FileName        string // optional; defaults to "local.db"
+    ReadConns       int    // optional; size of a separate read pool
+    RejectNetworkFS bool   // optional; fail the first Store on a network file system
 }
 ```
 
 The consumer chooses `Dir`; `localdb` has no knowledge of any config system. For
 reconstructible (cache-like) data, point `Dir` at a cache directory.
+
+- `ReadConns` greater than zero opens a second pool of that size for
+  `Store.ReadDB`. Its connections are `query_only`. Writes still go through the
+  write pool that `Store.DB` returns. Use it only when one process
+  owns the file. Zero keeps one pool with one connection.
+- `RejectNetworkFS` runs `CheckLocalFilesystem` on `Dir` before the first open.
+  The default is `false`.
 
 ### func New
 
@@ -44,6 +53,15 @@ func New(cfg Config) Manager
 
 Returns a Manager bound to `<cfg.Dir>/<cfg.FileName>`. Touches no disk until the
 first `Store`.
+
+### func NewFileManager
+
+```go
+func NewFileManager(cfg Config) FileManager
+```
+
+Returns the same manager as `New`, typed as a `FileManager`. A `Manager` from
+`New` also satisfies `FileManager` through a type assertion.
 
 ### type Manager
 
@@ -65,6 +83,39 @@ type Manager interface {
 - `Close` flushes committed writes to disk and closes the pool. Call it once at
   process shutdown (e.g. `defer mgr.Close()`). Idempotent, and safe to call if
   the DB was never opened. Quiesce module DB activity before calling it.
+
+### type FileManager
+
+```go
+type FileManager interface {
+    Manager
+    Path() string
+    Size() (int64, error)
+    Vacuum(ctx context.Context) error
+    Remove() error
+}
+```
+
+- `Path` returns `<Dir>/<FileName>`.
+- `Size` returns the total bytes of the file and its `-wal`, `-shm` and
+  `-journal` siblings. Missing files count as zero.
+- `Vacuum` runs `VACUUM`, then `PRAGMA wal_checkpoint(TRUNCATE)`. It holds the
+  write lock for the whole rebuild. It does nothing when the file does not
+  exist. It fails with `ErrCodeVacuumFailure` when another connection keeps the
+  WAL from truncation.
+- `Remove` calls `Close`, then deletes the file and its siblings. The manager
+  stays closed. Other processes must not have the file open.
+
+### func CheckLocalFilesystem
+
+```go
+func CheckLocalFilesystem(dir string) error
+```
+
+Returns an `ErrCodeUnsafeFilesystem` error when `dir` is on a network file
+system. Linux checks the `statfs` type against NFS, SMB, CIFS, AFS, 9P, Ceph,
+Lustre and GPFS. macOS checks the `MNT_LOCAL` flag. On other systems the check
+always passes.
 
 ### type Descriptor
 
@@ -89,6 +140,16 @@ func (s *Store) DB() *sql.DB
 
 `DB` returns the shared connection pool. Run your own SQL against your own
 tables.
+
+```go
+func (s *Store) ReadDB() *sql.DB
+func (s *Store) SchemaVersion(ctx context.Context) (int, error)
+```
+
+- `ReadDB` returns the read pool when `Config.ReadConns` is greater than zero.
+  Otherwise it returns the pool that `DB` returns.
+- `SchemaVersion` returns the number of the module's migrations that the file
+  records as applied.
 
 ## Usage
 
@@ -172,7 +233,8 @@ and proceeds; a fail-closed consumer may abort.
 ## Constraints
 
 - `Config.Dir` must be on a **local filesystem**. WAL mode is unsafe over network
-  filesystems (NFS/SMB/overlay) and can corrupt the DB there.
+  filesystems (NFS/SMB) and can corrupt the DB there. Set
+  `Config.RejectNetworkFS` to fail fast.
 - Treat stored data as reconstructible for cache-like use — a cache directory
   may be wiped at any time.
 - Tables are isolated by naming convention (`<name>_*`), not enforced. Do not

@@ -134,9 +134,10 @@ func (s *Store) ReadDB() *sql.DB {
 }
 
 // SchemaVersion returns the number of the module's migrations that the file
-// records as applied.
+// records as applied. It reads through ReadDB, so an open write transaction
+// does not block it when Config.ReadConns is positive.
 func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
-	v, err := readModuleVersion(ctx, s.db, s.name)
+	v, err := readModuleVersion(ctx, s.ReadDB(), s.name)
 	if err != nil {
 		return 0, newError(ErrCodeMigrationFailure,
 			fmt.Sprintf("read schema version for module %q", s.name), err)

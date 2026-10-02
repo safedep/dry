@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -99,6 +100,29 @@ func TestSchemaVersion(t *testing.T) {
 
 	_, err = store.SchemaVersion(ctx)
 	assertErrCode(t, err, ErrCodeMigrationFailure)
+}
+
+func TestSchemaVersionUsesReadPool(t *testing.T) {
+	ctx := context.Background()
+	mgr := New(Config{Dir: t.TempDir(), ReadConns: 2})
+	t.Cleanup(func() { assert.NoError(t, mgr.Close()) })
+
+	store, err := mgr.Store(ctx, itemsDescriptor)
+	require.NoError(t, err)
+
+	tx, err := store.DB().BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, tx.Rollback()) })
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO items_rows (v) VALUES ('a')`)
+	require.NoError(t, err)
+
+	readCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	v, err := store.SchemaVersion(readCtx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, v)
 }
 
 func TestPath(t *testing.T) {

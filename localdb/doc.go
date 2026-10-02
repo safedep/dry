@@ -39,10 +39,10 @@
 //
 // Concurrency and durability: the file uses WAL mode with busy_timeout,
 // synchronous=NORMAL, and foreign_keys=ON, applied per connection, with the
-// write pool limited to a single connection. Config.ReadConns adds a
-// query_only read pool. Multiple processes may safely share the file on a
-// local filesystem; Config.Dir must not be a network filesystem (NFS/SMB),
-// where WAL is unsafe. Consumers must keep write
-// transactions tiny and short-lived. See the package design for the full
-// contract.
+// write pool limited to a single connection. With Config.ReadConns at zero,
+// multiple processes may safely share the file on a local filesystem.
+// Config.ReadConns adds a query_only read pool, for a file that one process
+// owns. Config.Dir must not be a network filesystem (NFS/SMB), where WAL is
+// unsafe. Consumers must keep write transactions tiny and short-lived. See the
+// package design for the full contract.
 package localdb

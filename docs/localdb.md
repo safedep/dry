@@ -149,7 +149,8 @@ func (s *Store) SchemaVersion(ctx context.Context) (int, error)
 - `ReadDB` returns the read pool when `Config.ReadConns` is greater than zero.
   Otherwise it returns the pool that `DB` returns.
 - `SchemaVersion` returns the number of the module's migrations that the file
-  records as applied.
+  records as applied. It reads through `ReadDB`, so an open write transaction
+  does not block it when `Config.ReadConns` is greater than zero.
 
 ## Usage
 

@@ -53,17 +53,60 @@ func Badge(r theme.Role, text string) string {
 		return fmt.Sprintf("[%s]", text)
 	}
 	pal := theme.Default().Palette()
-	bg, ok := pal.ColorByRole(badgeBgFor(r))
+	bgRole := badgeBgFor(r)
+	bg, ok := pal.ColorByRole(bgRole)
 	if !ok {
 		return fmt.Sprintf("[%s]", text)
 	}
 	fg, _ := pal.ColorByRole(theme.RoleBadgeText)
+	bgColor, fgColor := badgeColors(bgRole, bg, fg)
 	return lipgloss.NewStyle().
-		Background(bg).
-		Foreground(fg).
+		Background(bgColor).
+		Foreground(fgColor).
 		Padding(0, 1).
 		Bold(true).
 		Render(text)
+}
+
+// badgeCodes are the 256-colour and 16-colour codes of the SafeDep badge
+// backgrounds, with a text colour that a person can read on each.
+// lipgloss maps a hex colour to the nearest code, and the orange of high
+// and the amber of medium map to the same code in both tables. A badge
+// with its own codes keeps the severities apart on every terminal.
+var badgeCodes = map[theme.Role]struct{ bg256, bg16, fg16 string }{
+	theme.RoleBgCritical: {bg256: "124", bg16: "1", fg16: "15"},
+	theme.RoleBgHigh:     {bg256: "166", bg16: "9", fg16: "15"},
+	theme.RoleBgMedium:   {bg256: "136", bg16: "3", fg16: "0"},
+	theme.RoleBgLow:      {bg256: "240", bg16: "8", fg16: "15"},
+	theme.RoleBgInfo:     {bg256: "30", bg16: "6", fg16: "0"},
+	theme.RoleBgSuccess:  {bg256: "28", bg16: "2", fg16: "0"},
+}
+
+// badgeColors returns the colours of a badge. An unchanged SafeDep
+// background gets its own 256-colour and 16-colour codes, and so does an
+// unchanged text colour on it. A colour that a theme sets keeps the nearest
+// code of lipgloss. A colour that is the same on a light and a dark
+// terminal becomes a plain colour, so lipgloss does not ask the terminal
+// for its background.
+func badgeColors(role theme.Role, bg, fg lipgloss.AdaptiveColor) (lipgloss.TerminalColor, lipgloss.TerminalColor) {
+	codes, ok := badgeCodes[role]
+	base, _ := theme.SafeDep().Palette().ColorByRole(role)
+	if !ok || bg != base || bg.Light != bg.Dark {
+		return plainColor(bg), plainColor(fg)
+	}
+	bgColor := lipgloss.CompleteColor{TrueColor: bg.Dark, ANSI256: codes.bg256, ANSI: codes.bg16}
+	baseFG, _ := theme.SafeDep().Palette().ColorByRole(theme.RoleBadgeText)
+	if fg != baseFG || fg.Light != fg.Dark {
+		return bgColor, plainColor(fg)
+	}
+	return bgColor, lipgloss.CompleteColor{TrueColor: fg.Dark, ANSI256: "15", ANSI: codes.fg16}
+}
+
+func plainColor(c lipgloss.AdaptiveColor) lipgloss.TerminalColor {
+	if c.Light == c.Dark {
+		return lipgloss.Color(c.Dark)
+	}
+	return c
 }
 
 // badgeBgFor maps a semantic/severity role to its matching Bg* role.

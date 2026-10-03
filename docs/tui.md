@@ -73,6 +73,21 @@ Mode detection order (first match wins):
 Color stripping is separate: `NO_COLOR=1` strips colors without changing
 layout. Respects [no-color.org](https://no-color.org/).
 
+An adaptive color needs the background of the terminal. lipgloss asks the
+terminal for it (an OSC 11 query and a cursor position query) the first time
+it renders one. A terminal that does not answer shows the queries as text.
+dry sends no query when the environment gives the background:
+
+1. `SAFEDEP_THEME=dark` or `SAFEDEP_THEME=light`
+2. `COLORFGBG`, which ends with the background color code
+3. `TERM=linux`, the Linux console, which is dark and does not answer
+
+Severity badges name their own 256-color and 16-color codes, so critical,
+high, medium, low and info keep different backgrounds on every terminal. A
+theme can change the badge background or the badge text. The badge then
+keeps the codes of each colour that the theme does not change. A badge
+colour that is the same on light and dark terminals sends no query.
+
 ## Writers — stderr vs stdout
 
 - Human chatter (Info/Success/Warning/Error, spinners, progress, banner) →

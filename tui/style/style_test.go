@@ -5,9 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/safedep/dry/tui/output"
 	"github.com/safedep/dry/tui/theme"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStyleStripsColorInPlainMode(t *testing.T) {
@@ -41,4 +43,61 @@ func TestStyleRichEmitsAnsiUnlessNoColor(t *testing.T) {
 
 func TestErrorBadgeUsesDarkBackground(t *testing.T) {
 	assert.Equal(t, theme.RoleBgCritical, badgeBgFor(theme.RoleError))
+}
+
+func TestBadgeColorsKeepTheSeveritiesApart(t *testing.T) {
+	pal := theme.SafeDep().Palette()
+	fg, _ := pal.ColorByRole(theme.RoleBadgeText)
+	seen256, seen16 := map[string]theme.Role{}, map[string]theme.Role{}
+	for _, role := range []theme.Role{theme.RoleBgCritical, theme.RoleBgHigh, theme.RoleBgMedium, theme.RoleBgLow, theme.RoleBgInfo} {
+		bg, _ := pal.ColorByRole(role)
+		bgColor, fgColor := badgeColors(role, bg, fg)
+		c, ok := bgColor.(lipgloss.CompleteColor)
+		require.True(t, ok, "role %d gets its own codes", role)
+		assert.Equal(t, bg.Dark, c.TrueColor, "the true colour stays the palette colour")
+		assert.NotContains(t, seen256, c.ANSI256, "role %d shares a 256-colour code with role %d", role, seen256[c.ANSI256])
+		assert.NotContains(t, seen16, c.ANSI, "role %d shares a 16-colour code with role %d", role, seen16[c.ANSI])
+		seen256[c.ANSI256], seen16[c.ANSI] = role, role
+		_, ok = fgColor.(lipgloss.CompleteColor)
+		assert.True(t, ok)
+	}
+}
+
+func TestBadgeColorsKeepAThemeColor(t *testing.T) {
+	pal := theme.SafeDep().Palette()
+	cases := []struct {
+		name   string
+		bg, fg lipgloss.AdaptiveColor
+		wantBG lipgloss.TerminalColor
+		wantFG lipgloss.TerminalColor
+	}{
+		{
+			name:   "background override",
+			bg:     pal.BgInfo,
+			fg:     pal.BadgeText,
+			wantBG: lipgloss.Color(pal.BgInfo.Dark),
+			wantFG: lipgloss.Color(pal.BadgeText.Dark),
+		},
+		{
+			name:   "text override",
+			bg:     pal.BgHigh,
+			fg:     pal.BgLow,
+			wantBG: lipgloss.CompleteColor{TrueColor: pal.BgHigh.Dark, ANSI256: "166", ANSI: "9"},
+			wantFG: lipgloss.Color(pal.BgLow.Dark),
+		},
+		{
+			name:   "adaptive override",
+			bg:     pal.Muted,
+			fg:     pal.BadgeText,
+			wantBG: pal.Muted,
+			wantFG: lipgloss.Color(pal.BadgeText.Dark),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bgColor, fgColor := badgeColors(theme.RoleBgHigh, tc.bg, tc.fg)
+			assert.Equal(t, tc.wantBG, bgColor)
+			assert.Equal(t, tc.wantFG, fgColor)
+		})
+	}
 }

@@ -64,8 +64,40 @@ func TestBadgeColorsKeepTheSeveritiesApart(t *testing.T) {
 }
 
 func TestBadgeColorsKeepAThemeColor(t *testing.T) {
-	custom := lipgloss.AdaptiveColor{Light: "#123456", Dark: "#123456"}
-	fg, _ := theme.SafeDep().Palette().ColorByRole(theme.RoleBadgeText)
-	bgColor, _ := badgeColors(theme.RoleBgHigh, custom, fg)
-	assert.Equal(t, custom, bgColor)
+	pal := theme.SafeDep().Palette()
+	cases := []struct {
+		name   string
+		bg, fg lipgloss.AdaptiveColor
+		wantBG lipgloss.TerminalColor
+		wantFG lipgloss.TerminalColor
+	}{
+		{
+			name:   "background override",
+			bg:     pal.BgInfo,
+			fg:     pal.BadgeText,
+			wantBG: lipgloss.Color(pal.BgInfo.Dark),
+			wantFG: lipgloss.Color(pal.BadgeText.Dark),
+		},
+		{
+			name:   "text override",
+			bg:     pal.BgHigh,
+			fg:     pal.BgLow,
+			wantBG: lipgloss.CompleteColor{TrueColor: pal.BgHigh.Dark, ANSI256: "166", ANSI: "9"},
+			wantFG: lipgloss.Color(pal.BgLow.Dark),
+		},
+		{
+			name:   "adaptive override",
+			bg:     pal.Muted,
+			fg:     pal.BadgeText,
+			wantBG: pal.Muted,
+			wantFG: lipgloss.Color(pal.BadgeText.Dark),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bgColor, fgColor := badgeColors(theme.RoleBgHigh, tc.bg, tc.fg)
+			assert.Equal(t, tc.wantBG, bgColor)
+			assert.Equal(t, tc.wantFG, fgColor)
+		})
+	}
 }

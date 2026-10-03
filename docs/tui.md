@@ -84,8 +84,9 @@ dry sends no query when the environment gives the background:
 
 Severity badges name their own 256-color and 16-color codes, so critical,
 high, medium, low and info keep different backgrounds on every terminal. A
-badge background does not depend on the terminal background, so a badge
-sends no query.
+theme can change the badge background or the badge text. The badge then
+keeps the codes of each colour that the theme does not change. A badge
+colour that is the same on light and dark terminals sends no query.
 
 ## Writers — stderr vs stdout
 

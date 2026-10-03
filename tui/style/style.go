@@ -82,20 +82,31 @@ var badgeCodes = map[theme.Role]struct{ bg256, bg16, fg16 string }{
 	theme.RoleBgSuccess:  {bg256: "28", bg16: "2", fg16: "0"},
 }
 
-// badgeColors returns the colours of a badge. A badge of the SafeDep
-// palette gets its own 256-colour and 16-colour codes. A badge colour that
-// a theme sets keeps the nearest code of lipgloss. A badge background is
-// the same on a light and a dark terminal, so the colours do not need the
-// background of the terminal, and lipgloss does not ask the terminal for it.
+// badgeColors returns the colours of a badge. An unchanged SafeDep
+// background gets its own 256-colour and 16-colour codes, and so does an
+// unchanged text colour on it. A colour that a theme sets keeps the nearest
+// code of lipgloss. A colour that is the same on a light and a dark
+// terminal becomes a plain colour, so lipgloss does not ask the terminal
+// for its background.
 func badgeColors(role theme.Role, bg, fg lipgloss.AdaptiveColor) (lipgloss.TerminalColor, lipgloss.TerminalColor) {
 	codes, ok := badgeCodes[role]
 	base, _ := theme.SafeDep().Palette().ColorByRole(role)
-	baseFG, _ := theme.SafeDep().Palette().ColorByRole(theme.RoleBadgeText)
-	if !ok || bg != base || fg != baseFG || bg.Light != bg.Dark || fg.Light != fg.Dark {
-		return bg, fg
+	if !ok || bg != base || bg.Light != bg.Dark {
+		return plainColor(bg), plainColor(fg)
 	}
-	return lipgloss.CompleteColor{TrueColor: bg.Dark, ANSI256: codes.bg256, ANSI: codes.bg16},
-		lipgloss.CompleteColor{TrueColor: fg.Dark, ANSI256: "15", ANSI: codes.fg16}
+	bgColor := lipgloss.CompleteColor{TrueColor: bg.Dark, ANSI256: codes.bg256, ANSI: codes.bg16}
+	baseFG, _ := theme.SafeDep().Palette().ColorByRole(theme.RoleBadgeText)
+	if fg != baseFG || fg.Light != fg.Dark {
+		return bgColor, plainColor(fg)
+	}
+	return bgColor, lipgloss.CompleteColor{TrueColor: fg.Dark, ANSI256: "15", ANSI: codes.fg16}
+}
+
+func plainColor(c lipgloss.AdaptiveColor) lipgloss.TerminalColor {
+	if c.Light == c.Dark {
+		return lipgloss.Color(c.Dark)
+	}
+	return c
 }
 
 // badgeBgFor maps a semantic/severity role to its matching Bg* role.

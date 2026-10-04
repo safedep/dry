@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
-	"github.com/google/osv-scalibr/semantic"
+	"github.com/safedep/dry/api/pb/internal/semantic"
 )
 
 var (
@@ -18,27 +18,35 @@ var (
 	ErrDifferentPackages = errors.New("versions of different packages")
 )
 
-// osvEcosystems maps each ecosystem with a version order to the OSV ecosystem
-// whose order applies. dry uses the OSV order because OSV holds the affected
-// ranges that the vulnerability data comes from. An order that differs from
-// OSV would put a version on the wrong side of a fix. Terraform, VS Code and
-// Open VSX have no OSV ecosystem. Their versions are semver, so they use the
-// npm order.
-var osvEcosystems = map[packagev1.Ecosystem]string{
-	packagev1.Ecosystem_ECOSYSTEM_MAVEN:              "Maven",
-	packagev1.Ecosystem_ECOSYSTEM_NPM:                "npm",
-	packagev1.Ecosystem_ECOSYSTEM_PYPI:               "PyPI",
-	packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:           "RubyGems",
-	packagev1.Ecosystem_ECOSYSTEM_NUGET:              "NuGet",
-	packagev1.Ecosystem_ECOSYSTEM_CARGO:              "crates.io",
-	packagev1.Ecosystem_ECOSYSTEM_GO:                 "Go",
-	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:          "Packagist",
-	packagev1.Ecosystem_ECOSYSTEM_PUB:                "Pub",
-	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM:          "npm",
-	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_MODULE:   "npm",
-	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER: "npm",
-	packagev1.Ecosystem_ECOSYSTEM_VSCODE:             "npm",
-	packagev1.Ecosystem_ECOSYSTEM_OPENVSX:            "npm",
+type versionParser func(string) (semantic.Version, error)
+
+func parser[V semantic.Version](parse func(string) V) versionParser {
+	return func(s string) (semantic.Version, error) { return parse(s), nil }
+}
+
+// versionParsers holds the parser of each ecosystem with a version order. It
+// is the OSV order, because the affected ranges of the vulnerability data come
+// from OSV. An order that differs from OSV would put a version on the wrong
+// side of a fix. npm, Cargo and Go share the semver order. Terraform, VS Code
+// and Open VSX have no OSV ecosystem. Their versions are semver, so they use
+// the semver order too.
+var versionParsers = map[packagev1.Ecosystem]versionParser{
+	packagev1.Ecosystem_ECOSYSTEM_MAVEN:     parser(semantic.ParseMavenVersion),
+	packagev1.Ecosystem_ECOSYSTEM_NUGET:     parser(semantic.ParseNuGetVersion),
+	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST: parser(semantic.ParsePackagistVersion),
+	packagev1.Ecosystem_ECOSYSTEM_PUB:       parser(semantic.ParsePubVersion),
+	packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS:  parser(semantic.ParseRubyGemsVersion),
+	packagev1.Ecosystem_ECOSYSTEM_PYPI: func(s string) (semantic.Version, error) {
+		return semantic.ParsePyPIVersion(s)
+	},
+	packagev1.Ecosystem_ECOSYSTEM_NPM:                parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_CARGO:              parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_GO:                 parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM:          parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_MODULE:   parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER: parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_VSCODE:             parser(semantic.ParseSemverVersion),
+	packagev1.Ecosystem_ECOSYSTEM_OPENVSX:            parser(semantic.ParseSemverVersion),
 }
 
 // CompareVersions orders two versions under the rule of the ecosystem. It
@@ -49,7 +57,7 @@ var osvEcosystems = map[packagev1.Ecosystem]string{
 // gets an error must not claim an order, for example an upgrade or a
 // downgrade.
 func CompareVersions(ecosystem packagev1.Ecosystem, a, b string) (int, error) {
-	osvEcosystem, ok := osvEcosystems[ecosystem]
+	parse, ok := versionParsers[ecosystem]
 	if !ok {
 		return 0, fmt.Errorf("%w: %s", ErrNoVersionOrder, ecosystem)
 	}
@@ -57,7 +65,7 @@ func CompareVersions(ecosystem packagev1.Ecosystem, a, b string) (int, error) {
 		return 0, errors.New("cannot order an empty version")
 	}
 
-	va, err := semantic.Parse(a, osvEcosystem)
+	va, err := parse(a)
 	if err != nil {
 		return 0, fmt.Errorf("parse %s version %q: %w", ecosystem, a, err)
 	}
@@ -71,7 +79,7 @@ func CompareVersions(ecosystem packagev1.Ecosystem, a, b string) (int, error) {
 
 // HasVersionOrder reports whether the ecosystem has a version order.
 func HasVersionOrder(ecosystem packagev1.Ecosystem) bool {
-	_, ok := osvEcosystems[ecosystem]
+	_, ok := versionParsers[ecosystem]
 	return ok
 }
 

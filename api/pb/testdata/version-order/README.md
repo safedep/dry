@@ -6,5 +6,6 @@ The `-generated` files hold version pairs that OSV took from the registries. Eac
 `<a> <op> <b>`, where `<op>` is `<`, `=` or `>`.
 
 `TestVersionOrderConformance` runs every pair through `CompareVersions`. dry uses the OSV order,
-because the affected ranges of the vulnerability data come from OSV. Update the files when dry
-moves to a newer osv-scalibr.
+because the affected ranges of the vulnerability data come from OSV. `api/pb/internal/semantic`
+holds a copy of the osv-scalibr parsers from the same release. Update the parsers and these files
+together.

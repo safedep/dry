@@ -45,7 +45,3 @@ func fetch(slice []string, i int, def string) string {
 func isASCIIDigit(c rune) bool {
 	return c >= 48 && c <= 57
 }
-
-// isASCIILetter returns true if the given rune is an ASCII letter.
-//
-// Unicode letters are not considered ASCII letters by this function.

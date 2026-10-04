@@ -336,6 +336,30 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"Newtonsoft.Json",
 		},
 		{
+			"githubactions type of vet",
+			"pkg:githubactions/github/codeql-action@v3#init",
+			packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			"github/codeql-action",
+			"v3",
+			"github/codeql-action",
+		},
+		{
+			"terraform provider keeps its registry and namespace",
+			"pkg:terraform/registry.terraform.io/hashicorp/aws@5.31.0",
+			packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER,
+			"registry.terraform.io/hashicorp/aws",
+			"5.31.0",
+			"registry.terraform.io/hashicorp/aws",
+		},
+		{
+			"pub",
+			"pkg:pub/http@1.2.0",
+			packagev1.Ecosystem_ECOSYSTEM_PUB,
+			"http",
+			"1.2.0",
+			"http",
+		},
+		{
 			"no version",
 			"pkg:golang/example.com/Owner/Library",
 			packagev1.Ecosystem_ECOSYSTEM_GO,
@@ -537,6 +561,37 @@ func TestPackageVersionKeyFormat(t *testing.T) {
 	}
 }
 
+func TestPackageVersionNameKey(t *testing.T) {
+	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
+
+	t.Run("format", func(t *testing.T) {
+		assert.Equal(t, "ECOSYSTEM_PYPI/1/flask-restful",
+			NewPackageVersionFromParts(pypi, "Flask_RESTful", "0.3.10").NameKey())
+		assert.Equal(t, "ECOSYSTEM_NPM/0/%40scope%2Fpkg",
+			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "@scope/pkg", "1.0.0").NameKey())
+	})
+
+	t.Run("groups the versions of one package", func(t *testing.T) {
+		a := NewPackageVersionFromParts(pypi, "Flask_RESTful", "0.3.10")
+		b := NewPackageVersionFromParts(pypi, "flask.restful", "0.4.0")
+		assert.Equal(t, a.NameKey(), b.NameKey())
+		assert.NotEqual(t, a.Key(), b.Key())
+	})
+
+	t.Run("keeps two packages apart", func(t *testing.T) {
+		goEco := packagev1.Ecosystem_ECOSYSTEM_GO
+		a := NewPackageVersionFromParts(goEco, "github.com/Masterminds/goutils", "v1.1.0")
+		b := NewPackageVersionFromParts(goEco, "github.com/masterminds/goutils", "v1.1.0")
+		assert.NotEqual(t, a.NameKey(), b.NameKey())
+	})
+
+	t.Run("never equals a key", func(t *testing.T) {
+		pv := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "a@b", "")
+		assert.NotContains(t, pv.NameKey(), "@")
+		assert.NotEqual(t, pv.Key(), pv.NameKey())
+	})
+}
+
 func TestPep440Version(t *testing.T) {
 	cases := []struct {
 		input string
@@ -652,7 +707,7 @@ func TestNewPackageVersionFromPurlRejectsDroppedNamespace(t *testing.T) {
 		"pkg:pypi/ns/requests@2.0", "pkg://pypi/ns/requests@2.0", "pkg:pip/a/b/requests@2.0",
 		"pkg:cargo/bottlerocket/update-operator@1.0.0", "pkg:gem/ns/rails@7.0.0",
 		"pkg:nuget/ns/Newtonsoft.Json@13.0.1", "pkg:vscode/ms-python/python@1.0.0",
-		"pkg:openvsx/ns/solargraph@0.24.1",
+		"pkg:openvsx/ns/solargraph@0.24.1", "pkg:pub/ns/http@1.2.0",
 	} {
 		_, err := NewPackageVersionFromPurl(purl)
 		require.Error(t, err, purl)
@@ -668,6 +723,7 @@ func TestNewPackageVersionFromPurlRejectsDroppedNamespace(t *testing.T) {
 		"pkg:maven/org.apache.commons/compress@1.20", "pkg:composer/vendor-a/library@1.0.0",
 		"pkg:github/actions/checkout@v4", "pkg:gitlab/inkscape/inkscape@1.2",
 		"pkg:bitbucket/birkenfeld/pygments-main@244fd47",
+		"pkg:githubactions/actions/checkout@v4", "pkg:terraform/registry.terraform.io/hashicorp/aws@5.31.0",
 	} {
 		_, err := NewPackageVersionFromPurl(purl)
 		assert.NoError(t, err, purl)

@@ -65,7 +65,7 @@ func NewPackageVersionFromPurl(purl string) (PackageVersion, error) {
 		return PackageVersion{}, err
 	}
 
-	ecosystem := purlMapEcosystem(p.Type)
+	ecosystem := identityPurlEcosystem(p.Type)
 	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED {
 		return PackageVersion{}, fmt.Errorf("unsupported purl type: %q", p.Type)
 	}
@@ -160,6 +160,14 @@ func (p PackageVersion) URN() (string, error) {
 func (p PackageVersion) Key() string {
 	return fmt.Sprintf("%s/%d/%s@%s", p.ecosystem.String(), p.ruleVersion,
 		url.QueryEscape(p.name), url.QueryEscape(p.version))
+}
+
+// NameKey is a string for maps of a package with no version. It groups the
+// versions of one package, for example to pair the old and the new version of
+// a dependency. The name is query-escaped and holds no "@", so a NameKey never
+// equals a Key. The format is stable, because a persistent store can hold it.
+func (p PackageVersion) NameKey() string {
+	return fmt.Sprintf("%s/%d/%s", p.ecosystem.String(), p.ruleVersion, url.QueryEscape(p.name))
 }
 
 // Equal compares the canonical forms of two values under the same rule.

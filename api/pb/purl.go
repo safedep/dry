@@ -236,11 +236,49 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 }
 
+// identityPurlEcosystem maps a purl type for PackageVersion. It extends the
+// frozen purlMapEcosystem with the types that the frozen helpers do not know:
+// githubactions, which vet writes for an action, terraform for a provider in
+// a dependency lock file, and pub.
+func identityPurlEcosystem(purlType string) packagev1.Ecosystem {
+	switch purlType {
+	case "githubactions":
+		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
+	case "terraform":
+		return packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER
+	case "pub":
+		return packagev1.Ecosystem_ECOSYSTEM_PUB
+	default:
+		return purlMapEcosystem(purlType)
+	}
+}
+
+// identityPurlType is the inverse of identityPurlEcosystem. It extends the
+// frozen EcosystemToPurlType in the same way.
+func identityPurlType(ecosystem packagev1.Ecosystem) (string, error) {
+	switch ecosystem {
+	case packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER:
+		return "terraform", nil
+	case packagev1.Ecosystem_ECOSYSTEM_PUB:
+		return "pub", nil
+	default:
+		return EcosystemToPurlType(ecosystem)
+	}
+}
+
+// identityKeepsNamespace reports the ecosystems whose purl namespace
+// purlMapName drops but PackageVersion keeps in the name: the Composer
+// vendor, and the registry host and namespace of a Terraform provider.
+// Without it two vendors' packages of one name would be one identity.
+func identityKeepsNamespace(ecosystem packagev1.Ecosystem) bool {
+	return ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST ||
+		ecosystem == packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER
+}
+
 // purlIdentityName joins the namespace and name for PackageVersion. It keeps
-// the Composer vendor, which purlMapName drops, so two vendors' packages of
-// one name stay two identities and URN() round-trips.
+// the namespaces that purlMapName drops, so URN() round-trips.
 func purlIdentityName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) string {
-	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST && purl.Namespace != "" {
+	if identityKeepsNamespace(ecosystem) && purl.Namespace != "" {
 		return purl.Namespace + "/" + purl.Name
 	}
 	return purlMapName(ecosystem, purl)
@@ -346,7 +384,7 @@ func identityPurl(ecosystem packagev1.Ecosystem, name, version string) (string, 
 		return "", errors.New("cannot build purl: empty package name")
 	}
 
-	purlType, err := EcosystemToPurlType(ecosystem)
+	purlType, err := identityPurlType(ecosystem)
 	if err != nil {
 		return "", err
 	}
@@ -397,9 +435,9 @@ func purlSplitName(ecosystem packagev1.Ecosystem, name string) (string, string) 
 }
 
 // purlIdentitySplitName is the inverse of purlIdentityName. It differs from
-// purlSplitName only for Packagist, whose vendor is the purl namespace.
+// purlSplitName only for the ecosystems of identityKeepsNamespace.
 func purlIdentitySplitName(ecosystem packagev1.Ecosystem, name string) (string, string) {
-	if ecosystem == packagev1.Ecosystem_ECOSYSTEM_PACKAGIST {
+	if identityKeepsNamespace(ecosystem) {
 		if i := strings.LastIndex(name, "/"); i >= 0 {
 			return name[:i], name[i+1:]
 		}

@@ -1,0 +1,23 @@
+{
+  "ecosystem": "ECOSYSTEM_GO",
+  "rule_version": 0,
+  "source": "Go module paths are case-sensitive: the module proxy escapes each upper-case letter (https://go.dev/ref/mod#goproxy-protocol). OSV returns GHSA-xg2h-wx96-xgxr and GO-2022-0411 for github.com/Masterminds/goutils at 1.1.0 and nothing for github.com/masterminds/goutils, checked on 2026-10-04.",
+  "versions": [
+    { "input": "v1.1.0", "canonical": "v1.1.0", "parsed": false },
+    { "input": "v0.0.0-20230101000000-abcdefabcdef", "canonical": "v0.0.0-20230101000000-abcdefabcdef", "parsed": false }
+  ],
+  "names": [
+    { "input": "github.com/Masterminds/goutils", "canonical": "github.com/Masterminds/goutils" },
+    { "input": "github.com/masterminds/goutils", "canonical": "github.com/masterminds/goutils" }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    ["v1.1.0", "v1.1.1"],
+    ["v1.1.0", "1.1.0"]
+  ],
+  "name_groups": [],
+  "name_distinct": [
+    ["github.com/Masterminds/goutils", "github.com/masterminds/goutils"],
+    ["github.com/BurntSushi/toml", "github.com/burntsushi/toml"]
+  ]
+}

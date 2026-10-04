@@ -47,7 +47,8 @@ bash scripts/check-tui-discipline.sh    # the tui rules, also in CI
 package versions as OSV does. dry copies the code and does not import osv-scalibr, because its
 `go.mod` would raise the dependencies of every dry user.
 
-- Do not edit the copied files. Fix an order bug upstream, then copy the new release.
+- Do not change the logic of the copied files. Fix an order bug upstream, then copy the new release.
+  The only local edits are the differences that the package doc lists.
 - The package doc (`api/pb/internal/semantic/doc.go`) lists the differences from the original and
   the steps to move to a newer release.
 - `TestVersionOrderConformance` runs the OSV test data in `api/pb/testdata/version-order`. It must

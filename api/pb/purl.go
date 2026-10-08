@@ -209,6 +209,12 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 		return packagev1.Ecosystem_ECOSYSTEM_VSCODE
 	case "openvsx":
 		return packagev1.Ecosystem_ECOSYSTEM_OPENVSX
+	// https://github.com/package-url/purl-spec/blob/main/types/chrome-extension-definition.json
+	case "chrome-extension":
+		return packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION
+	// The purl spec has no Firefox type. The name is the add-on's Gecko ID.
+	case "firefox-extension":
+		return packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION
 	default:
 		return packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED
 	}
@@ -297,7 +303,8 @@ func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
 	case packagev1.Ecosystem_ECOSYSTEM_NPM,
 		packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS,
 		packagev1.Ecosystem_ECOSYSTEM_CARGO,
-		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
+		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
+		packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION:
 		return strings.ToLower(name)
 
 	default:
@@ -343,6 +350,10 @@ func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 		return "vscode", nil
 	case packagev1.Ecosystem_ECOSYSTEM_OPENVSX:
 		return "openvsx", nil
+	case packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION:
+		return "chrome-extension", nil
+	case packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION:
+		return "firefox-extension", nil
 	default:
 		return "", fmt.Errorf("no purl type for ecosystem: %s", ecosystem)
 	}

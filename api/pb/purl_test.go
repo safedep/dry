@@ -147,6 +147,32 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "0.24.1",
 		},
 		{
+			name:          "chrome extension",
+			purl:          "pkg:chrome-extension/cjpalhdlnbpafiamejdnhcphjbkeiagm@1.58.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION,
+			wantName:      "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+			wantVersion:   "1.58.0",
+		},
+		{
+			name:          "chrome extension without version",
+			purl:          "pkg:chrome-extension/cjpalhdlnbpafiamejdnhcphjbkeiagm",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION,
+			wantName:      "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+		},
+		{
+			name:          "firefox extension with an email gecko id",
+			purl:          "pkg:firefox-extension/uBlock0%40raymondhill.net@1.58.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION,
+			wantName:      "uBlock0@raymondhill.net",
+			wantVersion:   "1.58.0",
+		},
+		{
+			name:          "firefox extension with a uuid gecko id",
+			purl:          "pkg:firefox-extension/%7B446900e4-71c2-419f-a6a7-df9c091e268b%7D",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION,
+			wantName:      "{446900e4-71c2-419f-a6a7-df9c091e268b}",
+		},
+		{
 			name: "invalid purl",
 			purl: "pkg:invalid",
 			err:  errors.New("invalid purl"),
@@ -322,6 +348,8 @@ func TestEcosystemToPurlType(t *testing.T) {
 		{"bitbucket repository", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, packageurl.TypeBitbucket, false},
 		{"vscode", packagev1.Ecosystem_ECOSYSTEM_VSCODE, "vscode", false},
 		{"openvsx", packagev1.Ecosystem_ECOSYSTEM_OPENVSX, "openvsx", false},
+		{"chrome extension", packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION, "chrome-extension", false},
+		{"firefox extension", packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION, "firefox-extension", false},
 		{"unspecified errors", packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "", true},
 	}
 
@@ -409,6 +437,18 @@ func TestPurl(t *testing.T) {
 			"pkg:vscode/ms-python.python@2024.0.0",
 			false,
 		},
+		{
+			"chrome extension",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION, "cjpalhdlnbpafiamejdnhcphjbkeiagm", "1.58.0"),
+			"pkg:chrome-extension/cjpalhdlnbpafiamejdnhcphjbkeiagm@1.58.0",
+			false,
+		},
+		{
+			"firefox extension encodes the gecko id",
+			pv(packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION, "uBlock0@raymondhill.net", "1.58.0"),
+			"pkg:firefox-extension/uBlock0%40raymondhill.net@1.58.0",
+			false,
+		},
 		{"no version", pv(packagev1.Ecosystem_ECOSYSTEM_PYPI, "requests", ""), "pkg:pypi/requests", false},
 		{"unmapped ecosystem errors", pv(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"), "", true},
 		{"empty name errors", pv(packagev1.Ecosystem_ECOSYSTEM_NPM, "", "1"), "", true},
@@ -456,12 +496,24 @@ func TestCanonicalPackageName(t *testing.T) {
 		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Nokogiri", "nokogiri"},
 		{"cargo keeps underscore", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "serde_json"},
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "Monolog/Monolog", "monolog/monolog"},
+		{
+			"chrome extension id",
+			packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION,
+			"CJPALHDLNBPAFIAMEJDNHCPHJBKEIAGM",
+			"cjpalhdlnbpafiamejdnhcphjbkeiagm",
+		},
 
 		// No rule: the raw name survives, case and all.
 		{"maven", packagev1.Ecosystem_ECOSYSTEM_MAVEN, "com.google.Guava", "com.google.Guava"},
 		{"go", packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/safedep/Vet", "github.com/safedep/Vet"},
 		{"nuget", packagev1.Ecosystem_ECOSYSTEM_NUGET, "Newtonsoft.Json", "Newtonsoft.Json"},
 		{"vscode", packagev1.Ecosystem_ECOSYSTEM_VSCODE, "Publisher.Extension", "Publisher.Extension"},
+		{
+			"firefox gecko id is case-sensitive",
+			packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION,
+			"uBlock0@raymondhill.net",
+			"uBlock0@raymondhill.net",
+		},
 		{"unspecified", packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "Whatever", "Whatever"},
 	}
 

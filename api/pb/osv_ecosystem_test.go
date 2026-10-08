@@ -23,6 +23,7 @@ func TestOSVEcosystemNamesArePinned(t *testing.T) {
 		packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:      "Packagist",
 		packagev1.Ecosystem_ECOSYSTEM_VSCODE:         "VSCode",
 		packagev1.Ecosystem_ECOSYSTEM_PUB:            "Pub",
+		packagev1.Ecosystem_ECOSYSTEM_OPENVSX:        "VSCode:https://open-vsx.org",
 	}
 
 	got := map[packagev1.Ecosystem]string{}
@@ -43,7 +44,6 @@ func TestEveryEcosystemHasAnOSVDecision(t *testing.T) {
 		packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_MODULE:                true,
 		packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER:              true,
 		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:               true,
-		packagev1.Ecosystem_ECOSYSTEM_OPENVSX:                         true,
 		packagev1.Ecosystem_ECOSYSTEM_HOMEBREW:                        true,
 		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:               true,
 		packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY:            true,
@@ -92,6 +92,7 @@ func TestEcosystemFromOSVName(t *testing.T) {
 		{"crates.io", packagev1.Ecosystem_ECOSYSTEM_CARGO},
 		{"GitHub Actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS},
 		{"VSCode", packagev1.Ecosystem_ECOSYSTEM_VSCODE},
+		{"VSCode:https://open-vsx.org", packagev1.Ecosystem_ECOSYSTEM_OPENVSX},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -102,8 +103,12 @@ func TestEcosystemFromOSVName(t *testing.T) {
 	}
 
 	// pypi and cargo are SafeDep names, not OSV names. Debian:12 is an OSV
-	// ecosystem with a suffix, which no SafeDep ecosystem has.
-	for _, name := range []string{"", "pypi", "cargo", "github-actions", "Debian:12", "Debian", " npm"} {
+	// ecosystem with a suffix that no SafeDep ecosystem has. OSV writes the
+	// registry URL with no trailing slash.
+	for _, name := range []string{
+		"", "pypi", "cargo", "github-actions", "Debian:12", "Debian", " npm",
+		"VSCode:https://open-vsx.org/", "Maven:https://maven.google.com",
+	} {
 		t.Run("unknown "+name, func(t *testing.T) {
 			got, err := EcosystemFromOSVName(name)
 			assert.Error(t, err)

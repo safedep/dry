@@ -11,6 +11,11 @@ import (
 // names, and stored OSV data and OSV queries hold them. A wrong name loses
 // every record of the ecosystem with no error, so add names and never change
 // one. An ecosystem that OSV does not publish has no entry.
+//
+// OSV names a registry that shares the format of another ecosystem with a
+// suffix: the OpenVSX registry serves VS Code extensions, so its name is
+// VSCode with the registry URL. The OSV data dump keeps such records under
+// the name before the colon.
 var osvEcosystemNames = map[packagev1.Ecosystem]string{
 	packagev1.Ecosystem_ECOSYSTEM_MAVEN:          "Maven",
 	packagev1.Ecosystem_ECOSYSTEM_NPM:            "npm",
@@ -23,6 +28,7 @@ var osvEcosystemNames = map[packagev1.Ecosystem]string{
 	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:      "Packagist",
 	packagev1.Ecosystem_ECOSYSTEM_VSCODE:         "VSCode",
 	packagev1.Ecosystem_ECOSYSTEM_PUB:            "Pub",
+	packagev1.Ecosystem_ECOSYSTEM_OPENVSX:        "VSCode:https://open-vsx.org",
 }
 
 var ecosystemsByOSVName = func() map[string]packagev1.Ecosystem {
@@ -34,7 +40,8 @@ var ecosystemsByOSVName = func() map[string]packagev1.Ecosystem {
 }()
 
 // OSVEcosystemName returns the OSV name of an ecosystem, such as "crates.io"
-// for ECOSYSTEM_CARGO. It returns an error when OSV has no such ecosystem.
+// for ECOSYSTEM_CARGO, or "VSCode:https://open-vsx.org" for
+// ECOSYSTEM_OPENVSX. It returns an error when OSV has no such ecosystem.
 func OSVEcosystemName(ecosystem packagev1.Ecosystem) (string, error) {
 	name, ok := osvEcosystemNames[ecosystem]
 	if !ok {
@@ -45,8 +52,9 @@ func OSVEcosystemName(ecosystem packagev1.Ecosystem) (string, error) {
 
 // EcosystemFromOSVName returns the ecosystem of an OSV name. The match is
 // exact, unlike EcosystemFromName: OSV names are case-sensitive, and this
-// function reads names from OSV data, not names that a person types. A name
-// with a suffix, such as "Debian:12", returns an error.
+// function reads names from OSV data, not names that a person types. The
+// suffix is part of the name: "VSCode:https://open-vsx.org" is OpenVSX, and
+// a name with any other suffix, such as "Debian:12", returns an error.
 func EcosystemFromOSVName(name string) (packagev1.Ecosystem, error) {
 	ecosystem, ok := ecosystemsByOSVName[name]
 	if !ok {
@@ -56,7 +64,9 @@ func EcosystemFromOSVName(name string) (packagev1.Ecosystem, error) {
 }
 
 // OSVEcosystems returns every ecosystem that has an OSV name, in the order of
-// the enum values. A tool uses it to read OSV data one ecosystem at a time.
+// the enum values. A tool that reads the OSV data dump one ecosystem at a time
+// must use the name before the colon as the directory, and read a directory
+// once: OpenVSX records are in the VSCode directory.
 func OSVEcosystems() []packagev1.Ecosystem {
 	ecosystems := make([]packagev1.Ecosystem, 0, len(osvEcosystemNames))
 	for value := range len(packagev1.Ecosystem_name) {

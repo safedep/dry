@@ -45,3 +45,22 @@ func ExamplePackageVersion_versionParsed() {
 	// false false
 	// true false 1.0_1
 }
+
+// ExampleOSVEcosystemName shows that the OSV name of an ecosystem differs
+// from its SafeDep name, and that an ecosystem OSV does not publish has none.
+func ExampleOSVEcosystemName() {
+	osvName, _ := pb.OSVEcosystemName(packagev1.Ecosystem_ECOSYSTEM_CARGO)
+	safedepName, _ := pb.EcosystemName(packagev1.Ecosystem_ECOSYSTEM_CARGO)
+	fmt.Println(osvName, safedepName)
+
+	_, err := pb.OSVEcosystemName(packagev1.Ecosystem_ECOSYSTEM_HOMEBREW)
+	fmt.Println(err)
+
+	ecosystem, _ := pb.EcosystemFromOSVName("PyPI")
+	fmt.Println(ecosystem)
+
+	// Output:
+	// crates.io cargo
+	// ecosystem ECOSYSTEM_HOMEBREW has no OSV ecosystem
+	// ECOSYSTEM_PYPI
+}

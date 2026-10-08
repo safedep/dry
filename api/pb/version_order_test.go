@@ -136,6 +136,10 @@ func TestEveryEcosystemDecidesItsOrder(t *testing.T) {
 		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:    true,
 		packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: true,
 		packagev1.Ecosystem_ECOSYSTEM_HOMEBREW:             true,
+		// Chrome and Firefox version strings have their own formats, and no
+		// caller compares them yet.
+		packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION: true,
+		packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION:       true,
 	}
 	for value := range packagev1.Ecosystem_name {
 		ecosystem := packagev1.Ecosystem(value)

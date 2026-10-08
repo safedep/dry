@@ -3,8 +3,8 @@ module github.com/safedep/dry
 go 1.25.1
 
 require (
-	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261004053326-d1b3d9e09eae.1
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261004053326-d1b3d9e09eae.2
+	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261008101944-a7c8d044dfa5.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261008101944-a7c8d044dfa5.2
 	buf.build/go/protovalidate v1.2.0
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3

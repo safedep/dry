@@ -15,7 +15,8 @@ func TestEcosystemNamesArePinned(t *testing.T) {
 	assert.Equal(t, []string{
 		"maven", "npm", "pypi", "rubygems", "nuget", "cargo", "go", "github-actions", "packagist",
 		"terraform", "terraform-module", "terraform-provider", "vscode", "github-repository", "openvsx",
-		"homebrew", "gitlab-repository", "bitbucket-repository", "pub",
+		"homebrew", "gitlab-repository", "bitbucket-repository", "pub", "chrome-extension",
+		"firefox-extension",
 	}, EcosystemNames())
 }
 
@@ -62,6 +63,8 @@ func TestEcosystemFromName(t *testing.T) {
 		{"GitHub-Actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS},
 		{"terraform-provider", packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER},
 		{"pub", packagev1.Ecosystem_ECOSYSTEM_PUB},
+		{"chrome-extension", packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION},
+		{"Firefox-Extension", packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {

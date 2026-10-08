@@ -360,6 +360,22 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"http",
 		},
 		{
+			"chrome extension",
+			"pkg:chrome-extension/cjpalhdlnbpafiamejdnhcphjbkeiagm@1.58.0",
+			packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION,
+			"cjpalhdlnbpafiamejdnhcphjbkeiagm",
+			"1.58.0",
+			"cjpalhdlnbpafiamejdnhcphjbkeiagm",
+		},
+		{
+			"firefox extension keeps the gecko id",
+			"pkg:firefox-extension/uBlock0%40raymondhill.net@1.58.0",
+			packagev1.Ecosystem_ECOSYSTEM_FIREFOX_BROWSER_EXTENSION,
+			"uBlock0@raymondhill.net",
+			"1.58.0",
+			"uBlock0@raymondhill.net",
+		},
+		{
 			"no version",
 			"pkg:golang/example.com/Owner/Library",
 			packagev1.Ecosystem_ECOSYSTEM_GO,

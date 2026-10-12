@@ -12,6 +12,15 @@ import (
 	"github.com/package-url/packageurl-go"
 )
 
+// The purl spec has no type for a GitHub Action, so SafeDep defines one. vet
+// writes it. The spec type "github" is a repository.
+const (
+	PurlTypeGitHubActions = "githubactions"
+
+	// purlTypeGitHubActionsAlias is read as an action but never written.
+	purlTypeGitHubActionsAlias = "actions"
+)
+
 type purlPackageVersionHelper struct {
 	pv *packagev1.PackageVersion
 }
@@ -212,8 +221,7 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 		return packagev1.Ecosystem_ECOSYSTEM_PACKAGIST
 	case packageurl.TypeGithub:
 		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY
-	// The purl spec has no type for an action. vet writes githubactions.
-	case "githubactions", "actions":
+	case PurlTypeGitHubActions, purlTypeGitHubActionsAlias:
 		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
 	case packageurl.TypeGitlab:
 		return packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY
@@ -357,7 +365,7 @@ func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 	case packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
 		return packageurl.TypeComposer, nil
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:
-		return "githubactions", nil
+		return PurlTypeGitHubActions, nil
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		return packageurl.TypeGithub, nil
 	case packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:

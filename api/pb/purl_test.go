@@ -363,7 +363,7 @@ func TestEcosystemToPurlType(t *testing.T) {
 		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, packageurl.TypeGem, false},
 		{"cargo", packagev1.Ecosystem_ECOSYSTEM_CARGO, packageurl.TypeCargo, false},
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, packageurl.TypeComposer, false},
-		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "githubactions", false},
+		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, PurlTypeGitHubActions, false},
 		{"github repository", packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, packageurl.TypeGithub, false},
 		{"gitlab repository", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, packageurl.TypeGitlab, false},
 		{"bitbucket repository", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, packageurl.TypeBitbucket, false},

@@ -1,10 +1,13 @@
 package db
 
 import (
+	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/retry"
@@ -140,7 +143,38 @@ func postgresDialector(dsn string, disableStatementCache bool) (gorm.Dialector, 
 	if err != nil {
 		return nil, err
 	}
-	return postgres.New(postgres.Config{Conn: stdlib.OpenDB(*connConfig)}), nil
+	options, err := timeZoneOptions(dsn, connConfig)
+	if err != nil {
+		return nil, err
+	}
+	return postgres.New(postgres.Config{Conn: stdlib.OpenDB(*connConfig, options...)}), nil
+}
+
+// dsnTimeZone is the pattern the gorm driver uses to find the time zone of a DSN.
+var dsnTimeZone = regexp.MustCompile("(time_zone|TimeZone|timezone)=(.*?)($|&| )")
+
+// timeZoneOptions does for a pool that dry opens what the gorm driver does for
+// the pool it opens. It sets the session time zone of the DSN, and it scans a
+// timestamp without time zone in that zone. Without it pgx reads such a value
+// as UTC, and the uncached path returns a different instant than the default.
+func timeZoneOptions(dsn string, connConfig *pgx.ConnConfig) ([]stdlib.OptionOpenDB, error) {
+	match := dsnTimeZone.FindStringSubmatch(dsn)
+	if len(match) <= 2 {
+		return nil, nil
+	}
+	loc, err := time.LoadLocation(match[2])
+	if err != nil {
+		return nil, fmt.Errorf("failed to load the DSN time zone %q: %w", match[2], err)
+	}
+	connConfig.RuntimeParams["timezone"] = match[2]
+	return []stdlib.OptionOpenDB{stdlib.OptionAfterConnect(func(_ context.Context, conn *pgx.Conn) error {
+		conn.TypeMap().RegisterType(&pgtype.Type{
+			Name:  "timestamp",
+			OID:   pgtype.TimestampOID,
+			Codec: &pgtype.TimestampCodec{ScanLocation: loc},
+		})
+		return nil
+	})}, nil
 }
 
 // uncachedConnConfig parses dsn and makes pgx describe each query before it

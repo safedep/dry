@@ -110,6 +110,9 @@ func FuzzNewPackageVersionFromPurl(f *testing.F) {
 		"pkg:composer/Laravel/Framework@10.0",
 		"pkg:maven/org.apache/commons-lang3@3.0",
 		"pkg:mAven/:0",
+		"pkg:github/SafeDep/Vet@main",
+		"pkg:githubactions/Actions/Checkout@v4",
+		"pkg:actions/actions/checkout@v4",
 	} {
 		f.Add(seed)
 	}

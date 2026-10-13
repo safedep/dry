@@ -272,15 +272,23 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"Vendor-A/Library",
 		},
 		{
-			"github keeps case until its rule ships",
+			"github repository keeps case until its rule ships",
 			"pkg:github/Owner/Library@main",
+			packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
+			"Owner/Library",
+			"main",
+			"Owner/Library",
+		},
+		{
+			"github action keeps case until its rule ships",
+			"pkg:githubactions/Owner/Library@main",
 			packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			"Owner/Library",
 			"main",
 			"Owner/Library",
 		},
 		{
-			"github type alias",
+			"github action type alias",
 			"pkg:actions/Owner/Library@main",
 			packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			"Owner/Library",
@@ -528,6 +536,11 @@ func TestPackageVersionKeyDoesNotAlias(t *testing.T) {
 			name: "slash moves between name and version",
 			a:    NewPackageVersionFromParts(npm, "@scope/a", "1"),
 			b:    NewPackageVersionFromParts(npm, "@scope", "a@1"),
+		},
+		{
+			name: "github repository and action of one name",
+			a:    NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "actions/checkout", "v4"),
+			b:    NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"),
 		},
 		{
 			name: "scoped npm name keeps one key",

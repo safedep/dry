@@ -49,8 +49,22 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 			wantVersion:   "4.17.1",
 		},
 		{
+			name:          "github repository",
+			purl:          "pkg:github/safedep/vet@v1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
+			wantName:      "safedep/vet",
+			wantVersion:   "v1.0.0",
+		},
+		{
 			name:          "github actions",
-			purl:          "pkg:github/actions/setup-node@v2",
+			purl:          "pkg:githubactions/actions/setup-node@v2",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+			wantName:      "actions/setup-node",
+			wantVersion:   "v2",
+		},
+		{
+			name:          "github actions alias",
+			purl:          "pkg:actions/actions/setup-node@v2",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			wantName:      "actions/setup-node",
 			wantVersion:   "v2",
@@ -92,10 +106,17 @@ func TestPurlPackageVersionHelper(t *testing.T) {
 		},
 		{
 			name:          "github lower-cases owner and repository",
-			purl:          "pkg:github/Actions/Setup-Node@v2",
+			purl:          "pkg:github/SafeDep/Vet@v1.0.0",
+			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
+			wantName:      "safedep/vet",
+			wantVersion:   "v1.0.0",
+		},
+		{
+			name:          "githubactions lower-cases owner and action but not the ref",
+			purl:          "pkg:githubactions/Actions/Setup-Node@V2",
 			wantEcosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
 			wantName:      "actions/setup-node",
-			wantVersion:   "v2",
+			wantVersion:   "V2",
 		},
 		{
 			name:          "ruby gems",
@@ -342,7 +363,7 @@ func TestEcosystemToPurlType(t *testing.T) {
 		{"rubygems", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, packageurl.TypeGem, false},
 		{"cargo", packagev1.Ecosystem_ECOSYSTEM_CARGO, packageurl.TypeCargo, false},
 		{"packagist", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, packageurl.TypeComposer, false},
-		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, packageurl.TypeGithub, false},
+		{"github actions", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, PurlTypeGitHubActions, false},
 		{"github repository", packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, packageurl.TypeGithub, false},
 		{"gitlab repository", packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, packageurl.TypeGitlab, false},
 		{"bitbucket repository", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, packageurl.TypeBitbucket, false},
@@ -403,11 +424,12 @@ func TestPurl(t *testing.T) {
 			false,
 		},
 		// GitHub Actions names are "owner/action"; GitHub repositories "owner/repo".
-		// Both split the namespace on "/" and render under the "github" purl type.
+		// Both split the namespace on "/". Actions render under "githubactions",
+		// repositories under "github".
 		{
 			"github actions",
 			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "actions/checkout", "v4"),
-			"pkg:github/actions/checkout@v4",
+			"pkg:githubactions/actions/checkout@v4",
 			false,
 		},
 		{
@@ -540,26 +562,30 @@ func TestCanonicalPackageName(t *testing.T) {
 // only together with that move.
 func TestNewPurlPackageVersionIsFrozen(t *testing.T) {
 	cases := []struct {
-		purl string
-		want string
+		purl          string
+		wantEcosystem packagev1.Ecosystem
+		want          string
 	}{
-		{"pkg:pypi/zope.interface@1.0", "zope.interface"},
-		{"pkg:pypi/a__b@1", "a--b"},
-		{"pkg:pypi/Flask_RESTful@1.0", "flask-restful"},
-		{"pkg:golang/github.com/Azure/sdk@v1.0.0", "github.com/azure/sdk"},
-		{"pkg:composer/vendor-a/library@1.0.0", "library"},
-		{"pkg:composer/Vendor-A/Library@1.0.0", "library"},
-		{"pkg:gem/Rails@7", "Rails"},
-		{"pkg:cargo/Serde_Json@1", "Serde_Json"},
-		{"pkg:github/Owner/Library@main", "owner/library"},
-		{"pkg:bitbucket/Owner/Library@244fd47", "owner/library"},
-		{"pkg:npm/JSONStream@1.0.3", "JSONStream"},
+		{"pkg:pypi/zope.interface@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "zope.interface"},
+		{"pkg:pypi/a__b@1", packagev1.Ecosystem_ECOSYSTEM_PYPI, "a--b"},
+		{"pkg:pypi/Flask_RESTful@1.0", packagev1.Ecosystem_ECOSYSTEM_PYPI, "flask-restful"},
+		{"pkg:golang/github.com/Azure/sdk@v1.0.0", packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/azure/sdk"},
+		{"pkg:composer/vendor-a/library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"},
+		{"pkg:composer/Vendor-A/Library@1.0.0", packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, "library"},
+		{"pkg:gem/Rails@7", packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, "Rails"},
+		{"pkg:cargo/Serde_Json@1", packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_Json"},
+		{"pkg:github/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "owner/library"},
+		{"pkg:githubactions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner/library"},
+		{"pkg:actions/Owner/Library@main", packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner/library"},
+		{"pkg:bitbucket/Owner/Library@244fd47", packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, "owner/library"},
+		{"pkg:npm/JSONStream@1.0.3", packagev1.Ecosystem_ECOSYSTEM_NPM, "JSONStream"},
 	}
 
 	for _, test := range cases {
 		t.Run(test.purl, func(t *testing.T) {
 			h, err := NewPurlPackageVersion(test.purl)
 			require.NoError(t, err)
+			assert.Equal(t, test.wantEcosystem, h.Ecosystem())
 			assert.Equal(t, test.want, h.Name())
 		})
 	}
@@ -609,7 +635,12 @@ func TestPurlIsFrozen(t *testing.T) {
 		{
 			"github empty namespace segment",
 			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "owner//repo"),
-			"pkg:github/owner/repo@1.0",
+			"pkg:githubactions/owner/repo@1.0",
+		},
+		{
+			"github repository keeps case",
+			pv(packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "SafeDep/Vet"),
+			"pkg:github/SafeDep/Vet@1.0",
 		},
 	}
 
@@ -636,6 +667,8 @@ func TestPurlRoundTripThroughFrozenHelper(t *testing.T) {
 		{packagev1.Ecosystem_ECOSYSTEM_GO, "github.com/Azure/sdk", "github.com/azure/sdk"},
 		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, "org.apache.commons:compress", "org.apache.commons:compress"},
 		{packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "flask-restful"},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, "SafeDep/Vet", "safedep/vet"},
+		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, "Actions/Checkout", "actions/checkout"},
 	}
 
 	for _, test := range cases {
@@ -647,6 +680,7 @@ func TestPurlRoundTripThroughFrozenHelper(t *testing.T) {
 			require.NoError(t, err)
 			h, err := NewPurlPackageVersion(purl)
 			require.NoError(t, err)
+			assert.Equal(t, test.ecosystem, h.Ecosystem())
 			assert.Equal(t, test.want, h.Name())
 		})
 	}

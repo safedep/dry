@@ -12,6 +12,15 @@ import (
 	"github.com/package-url/packageurl-go"
 )
 
+// The purl spec has no type for a GitHub Action, so SafeDep defines one. vet
+// writes it. The spec type "github" is a repository.
+const (
+	PurlTypeGitHubActions = "githubactions"
+
+	// purlTypeGitHubActionsAlias is read as an action but never written.
+	purlTypeGitHubActionsAlias = "actions"
+)
+
 type purlPackageVersionHelper struct {
 	pv *packagev1.PackageVersion
 }
@@ -21,6 +30,10 @@ type purlPackageVersionHelper struct {
 // so a change here before those callers move to PackageVersion would give one
 // package two names. TestNewPurlPackageVersionIsFrozen pins the output. Use
 // NewPackageVersionFromPurl to obtain an identity to compare, key or send.
+//
+// The GitHub mapping is a deliberate exception to the freeze: pkg:github is a
+// repository and pkg:githubactions an action, and both names are lower case.
+// See the malysis spec docs/specs/2026-10-09-github-purl-types-design.md.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {
@@ -28,10 +41,18 @@ func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	}
 
 	ecosystem := purlMapEcosystem(p.Type)
+	name := purlMapName(ecosystem, p)
+
+	// packageurl-go lower-cases a pkg:github name but not a pkg:githubactions
+	// one. GitHub names are case-insensitive, so both types must give one name.
+	if isGitHubEcosystem(ecosystem) {
+		name = strings.ToLower(name)
+	}
+
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
 			Ecosystem: ecosystem,
-			Name:      purlMapName(ecosystem, p),
+			Name:      name,
 		},
 		Version: p.Version,
 	}
@@ -156,7 +177,7 @@ func NewPurlPackageVersionFromGithubUrl(githubUrl string) (*purlPackageVersionHe
 	pv := &packagev1.PackageVersion{
 		Package: &packagev1.Package{
 			Ecosystem: packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
-			Name:      owner + "/" + repo,
+			Name:      strings.ToLower(owner + "/" + repo),
 		},
 		Version: ref,
 	}
@@ -198,7 +219,9 @@ func purlMapEcosystem(ecosystem string) packagev1.Ecosystem {
 		return packagev1.Ecosystem_ECOSYSTEM_CARGO
 	case packageurl.TypeComposer:
 		return packagev1.Ecosystem_ECOSYSTEM_PACKAGIST
-	case packageurl.TypeGithub, "actions":
+	case packageurl.TypeGithub:
+		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY
+	case PurlTypeGitHubActions, purlTypeGitHubActionsAlias:
 		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
 	case packageurl.TypeGitlab:
 		return packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY
@@ -234,6 +257,7 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	case packagev1.Ecosystem_ECOSYSTEM_MAVEN:
 		return purl.Namespace + ":" + purl.Name
 	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
+		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY,
 		packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
 		packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY:
 		return purl.Namespace + "/" + purl.Name
@@ -242,14 +266,16 @@ func purlMapName(ecosystem packagev1.Ecosystem, purl packageurl.PackageURL) stri
 	}
 }
 
+func isGitHubEcosystem(ecosystem packagev1.Ecosystem) bool {
+	return ecosystem == packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS ||
+		ecosystem == packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY
+}
+
 // identityPurlEcosystem maps a purl type for PackageVersion. It extends the
 // frozen purlMapEcosystem with the types that the frozen helpers do not know:
-// githubactions, which vet writes for an action, terraform for a provider in
-// a dependency lock file, and pub.
+// terraform for a provider in a dependency lock file, and pub.
 func identityPurlEcosystem(purlType string) packagev1.Ecosystem {
 	switch purlType {
-	case "githubactions":
-		return packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS
 	case "terraform":
 		return packagev1.Ecosystem_ECOSYSTEM_TERRAFORM_PROVIDER
 	case "pub":
@@ -313,12 +339,11 @@ func CanonicalPackageName(ecosystem packagev1.Ecosystem, name string) string {
 }
 
 // EcosystemToPurlType maps a PackageVersion ecosystem to its canonical Package
-// URL type. It is the build-side counterpart of purlMapEcosystem, but not a
-// strict inverse: purlMapEcosystem collapses several purl types and aliases
-// onto one ecosystem (e.g. "golang"/"go", "pypi"/"pip", and both a bare
-// "github" and "actions" onto GITHUB_ACTIONS), and this helper maps both
-// ECOSYSTEM_GITHUB_ACTIONS and ECOSYSTEM_GITHUB_REPOSITORY to the "github"
-// type — so a round-trip through both is not guaranteed to be lossless.
+// URL type. It is the build-side counterpart of purlMapEcosystem. It is not a
+// strict inverse, because purlMapEcosystem maps aliases onto one ecosystem
+// (for example "golang" and "go", "pypi" and "pip", "githubactions" and
+// "actions"). GITHUB_REPOSITORY maps to "github" and GITHUB_ACTIONS to
+// "githubactions", so the two GitHub ecosystems never share a purl.
 // Ecosystems with no canonical purl type (including ECOSYSTEM_UNSPECIFIED)
 // return an error so callers never fabricate a purl.
 func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
@@ -339,8 +364,9 @@ func EcosystemToPurlType(ecosystem packagev1.Ecosystem) (string, error) {
 		return packageurl.TypeCargo, nil
 	case packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:
 		return packageurl.TypeComposer, nil
-	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS,
-		packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:
+		return PurlTypeGitHubActions, nil
+	case packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:
 		return packageurl.TypeGithub, nil
 	case packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:
 		return packageurl.TypeGitlab, nil

@@ -32,8 +32,8 @@
       "canonical": "tokio-util"
     },
     {
-      "input": "Keras",
-      "canonical": "Keras"
+      "input": "\u212aeras",
+      "canonical": "\u212aeras"
     }
   ],
   "version_groups": [],
@@ -64,7 +64,7 @@
       "serde_json"
     ],
     [
-      "Keras",
+      "\u212aeras",
       "keras"
     ]
   ]

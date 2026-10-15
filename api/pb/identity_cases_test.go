@@ -240,7 +240,7 @@ var identityDistinctCases = []identityDistinctCase{
 	},
 	{"npm v prefix is another version", identitySide{npm, "express", "1.0.3"}, identitySide{npm, "express", "v1.0.3"}},
 	{
-		"cargo hyphen and underscore differ",
+		"cargo keeps hyphen and underscore apart on purpose",
 		identitySide{cargo, "tokio-util", "1"},
 		identitySide{cargo, "tokio_util", "1"},
 	},

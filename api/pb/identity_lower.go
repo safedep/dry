@@ -10,9 +10,10 @@ import "strings"
 // matches only itself. A Unicode
 // fold would merge a homoglyph, such as the KELVIN SIGN, with a real name.
 //
-// crates.io also treats - and _ as one character. The fold keeps both, because
-// the registry returns the name as published (serde_json) and a fold to one
-// separator would change the name that callers store and show.
+// crates.io also treats - and _ as one character (serde-json resolves to
+// serde_json). The fold keeps both on purpose: callers store Name() as a key,
+// and a separator fold would re-key every crate with a hyphen. A lookup with
+// the other separator can miss, but two crates never merge.
 func asciiLowerIdentityName(name string) string {
 	if !isASCII(name) {
 		return name

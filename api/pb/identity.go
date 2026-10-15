@@ -148,6 +148,11 @@ func (p PackageVersion) RawProto() *packagev1.PackageVersion {
 // URN is the canonical Package URL. It fails for an ecosystem with no PURL
 // type, and for a name a PURL cannot hold, rather than fabricate one. A URN
 // parses back through NewPackageVersionFromPurl to the same identity.
+//
+// The URN is an identity key, not a registry coordinate: its name is the
+// canonical name, which need not be the published spelling. The crate
+// published as tokio-util has the URN pkg:cargo/tokio_util. Build a registry
+// URL or a query to another database from RawName.
 func (p PackageVersion) URN() (string, error) {
 	return identityPurl(p.ecosystem, p.name, p.version)
 }

@@ -37,14 +37,22 @@ func (r identityRule) fold(name, version string) (canonicalName, canonicalVersio
 // identityRules holds every ecosystem with a rule. An ecosystem absent from
 // the table has the identity rule at version 0: raw name, raw version.
 //
-// PyPI ships first. Every other ecosystem stays at version 0 until its
-// conformance fixture under testdata/identity lands, with positive groups and
-// at least one distinct pair taken from the registry. TestIdentityConformance
+// PyPI ships first, then GitHub, GitLab and Bitbucket. Every other ecosystem
+// stays at version 0 until its conformance fixture under testdata/identity
+// lands, with positive groups and at least one distinct pair taken from the
+// registry. TestIdentityConformance
 // fails on a rule with no such fixture. npm stays at version 0 on purpose:
 // its registry is case-sensitive, so JSONStream and jsonstream are two
 // packages with two artifacts, and a fold would merge them.
 var identityRules = map[packagev1.Ecosystem]identityRule{
 	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 1, foldName: pypiIdentityName, foldVersion: pep440Version},
+
+	// A git ref is case-sensitive (v4 and V4 are two tags), so these rules
+	// fold the name only.
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:       {version: 1, foldName: gitHubActionIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: {version: 1, foldName: gitHostIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
 }
 
 var identityRuleNone = identityRule{foldName: func(name string) string { return name }}

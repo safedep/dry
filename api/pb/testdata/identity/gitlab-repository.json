@@ -1,0 +1,63 @@
+{
+  "ecosystem": "ECOSYSTEM_GITLAB_REPOSITORY",
+  "rule_version": 1,
+  "source": "GitLab keeps a project path unique without regard to case and resolves it in any case: git ls-remote on gitlab.com/gitlab-org/gitlab-runner, gitlab.com/GitLab-Org/GitLab-Runner and gitlab.com/GITLAB-ORG/gitlab-runner returned one HEAD on 2026-10-15. A git ref is case sensitive, so the version stays raw.",
+  "versions": [
+    {
+      "input": "v1.2",
+      "canonical": "v1.2",
+      "parsed": false
+    },
+    {
+      "input": "V1.2",
+      "canonical": "V1.2",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "GitLab-Org/GitLab-Runner",
+      "canonical": "gitlab-org/gitlab-runner"
+    },
+    {
+      "input": "gitlab-org/gitlab-runner",
+      "canonical": "gitlab-org/gitlab-runner"
+    },
+    {
+      "input": "Inkscape/Inkscape",
+      "canonical": "inkscape/inkscape"
+    },
+    {
+      "input": "Group/Sub/Repo",
+      "canonical": "group/sub/repo"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "v1.2",
+      "V1.2"
+    ]
+  ],
+  "name_groups": [
+    [
+      "gitlab-org/gitlab-runner",
+      "GitLab-Org/GitLab-Runner",
+      "GITLAB-ORG/gitlab-runner"
+    ],
+    [
+      "Inkscape/Inkscape",
+      "inkscape/inkscape"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "gitlab-org/gitlab-runner",
+      "gitlab-org/gitlab"
+    ],
+    [
+      "group/sub/repo",
+      "group/repo"
+    ]
+  ]
+}

@@ -95,6 +95,46 @@ func FuzzPypiName(f *testing.F) {
 	})
 }
 
+// FuzzGitHostIdentityName checks that the git host fold merges two names
+// only when they differ in ASCII case. A Unicode fold would merge a homoglyph
+// such as the KELVIN SIGN with a real owner.
+func FuzzGitHostIdentityName(f *testing.F) {
+	f.Add("Azure/login", "azure/login")
+	f.Add("\u212aelvin/x", "kelvin/x")
+	f.Add("Azure/l\u043egin", "azure/login")
+	f.Fuzz(func(t *testing.T, a, b string) {
+		ca, cb := gitHostIdentityName(a), gitHostIdentityName(b)
+		require.Equal(t, ca, gitHostIdentityName(ca), "the fold is idempotent")
+		if !isASCII(a) {
+			require.Equal(t, a, ca, "a non-ASCII name stays raw")
+		}
+		merge := a == b || (isASCII(a) && isASCII(b) && strings.EqualFold(a, b))
+		require.Equal(t, merge, ca == cb, "%q vs %q", a, b)
+	})
+}
+
+// FuzzGitHubActionIdentityName checks that the action fold changes only the
+// owner and the repository, keeps the path in the repository raw, and merges
+// two names that differ only in the ASCII case of the owner and the repository.
+func FuzzGitHubActionIdentityName(f *testing.F) {
+	f.Add("Actions/Cache/Save")
+	f.Add("azure/login")
+	f.Add("Owner")
+	f.Fuzz(func(t *testing.T, name string) {
+		canonical := gitHubActionIdentityName(name)
+		require.Equal(t, canonical, gitHubActionIdentityName(canonical), "the fold is idempotent")
+		owner, rest, _ := strings.Cut(name, "/")
+		repo, path, hasPath := strings.Cut(rest, "/")
+		if hasPath {
+			require.True(t, strings.HasSuffix(canonical, "/"+path), "%q lost its path case in %q", name, canonical)
+			if repository := owner + "/" + repo; isASCII(repository) {
+				variant := strings.ToUpper(repository) + "/" + path
+				require.Equal(t, canonical, gitHubActionIdentityName(variant), "%q and %q name one action", name, variant)
+			}
+		}
+	})
+}
+
 // FuzzNewPackageVersionFromPurl checks the purl constructor against
 // packageurl-go, the parts constructor and its own URN.
 func FuzzNewPackageVersionFromPurl(f *testing.F) {

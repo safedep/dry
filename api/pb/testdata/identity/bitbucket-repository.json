@@ -1,0 +1,46 @@
+{
+  "ecosystem": "ECOSYSTEM_BITBUCKET_REPOSITORY",
+  "rule_version": 1,
+  "source": "The PURL spec says bitbucket names are not case sensitive and must be lower case. Bitbucket stores a repository slug in lower case. A git ref is case sensitive, so the version stays raw.",
+  "versions": [
+    {
+      "input": "244fd47",
+      "canonical": "244fd47",
+      "parsed": false
+    },
+    {
+      "input": "244FD47",
+      "canonical": "244FD47",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Birkenfeld/Pygments-Main",
+      "canonical": "birkenfeld/pygments-main"
+    },
+    {
+      "input": "birkenfeld/pygments-main",
+      "canonical": "birkenfeld/pygments-main"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "244fd47",
+      "244FD47"
+    ]
+  ],
+  "name_groups": [
+    [
+      "Birkenfeld/Pygments-Main",
+      "birkenfeld/pygments-main"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "birkenfeld/pygments-main",
+      "birkenfeld/pygments"
+    ]
+  ]
+}

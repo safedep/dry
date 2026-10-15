@@ -95,16 +95,16 @@ func FuzzPypiName(f *testing.F) {
 	})
 }
 
-// FuzzGitHostIdentityName checks that the git host fold merges two names
-// only when they differ in ASCII case. A Unicode fold would merge a homoglyph
+// FuzzASCIILowerIdentityName checks that the ASCII lower-case fold merges two
+// names only when they differ in ASCII case. A Unicode fold would merge a homoglyph
 // such as the KELVIN SIGN with a real owner.
-func FuzzGitHostIdentityName(f *testing.F) {
+func FuzzASCIILowerIdentityName(f *testing.F) {
 	f.Add("Azure/login", "azure/login")
 	f.Add("\u212aelvin/x", "kelvin/x")
 	f.Add("Azure/l\u043egin", "azure/login")
 	f.Fuzz(func(t *testing.T, a, b string) {
-		ca, cb := gitHostIdentityName(a), gitHostIdentityName(b)
-		require.Equal(t, ca, gitHostIdentityName(ca), "the fold is idempotent")
+		ca, cb := asciiLowerIdentityName(a), asciiLowerIdentityName(b)
+		require.Equal(t, ca, asciiLowerIdentityName(ca), "the fold is idempotent")
 		if !isASCII(a) {
 			require.Equal(t, a, ca, "a non-ASCII name stays raw")
 		}
@@ -212,7 +212,7 @@ for line in sys.stdin:
     if "v" in request:
         try:
             Version(request["v"])
-            answer = {"canonical": canonicalize_version(request["v"]), "parsed": True}
+            answer = {"canonical": canonicalize_version(request["v"], strip_trailing_zero=False), "parsed": True}
         except InvalidVersion:
             answer = {"canonical": request["v"], "parsed": False}
     else:

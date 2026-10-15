@@ -16,10 +16,11 @@ func TestIdentityRuleVersion(t *testing.T) {
 		ecosystem packagev1.Ecosystem
 		want      int
 	}{
-		{packagev1.Ecosystem_ECOSYSTEM_PYPI, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_PYPI, 2},
 		{packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, 0},
-		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 0},
-		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 1},
@@ -53,7 +54,7 @@ func TestNewPackageVersionFromProto(t *testing.T) {
 		fromParts := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "Flask_RESTful", "0!0.3.10.0")
 		assert.True(t, fromProto.Equal(fromParts))
 		assert.Equal(t, "flask-restful", fromProto.Name())
-		assert.Equal(t, "0.3.10", fromProto.Version())
+		assert.Equal(t, "0.3.10.0", fromProto.Version())
 	})
 }
 
@@ -62,12 +63,12 @@ func TestNewPackageVersionFromPurl(t *testing.T) {
 		pv, err := NewPackageVersionFromPurl("pkg:pypi/Flask_RESTful@0.3.10.0")
 		require.NoError(t, err)
 		assert.Equal(t, "flask-restful", pv.Name())
-		assert.Equal(t, "0.3.10", pv.Version())
+		assert.Equal(t, "0.3.10.0", pv.Version())
 		assert.Equal(t, "0.3.10.0", pv.RawVersion())
 
 		urn, err := pv.URN()
 		require.NoError(t, err)
-		assert.Equal(t, "pkg:pypi/flask-restful@0.3.10", urn)
+		assert.Equal(t, "pkg:pypi/flask-restful@0.3.10.0", urn)
 	})
 
 	t.Run("npm keeps case through the purl parser", func(t *testing.T) {
@@ -264,12 +265,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"@Vue/Reactivity",
 		},
 		{
-			"composer keeps case until its rule ships",
+			"composer folds case",
 			"pkg:composer/Vendor-A/Library@1.0.0",
 			packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
 			"Vendor-A/Library",
 			"1.0.0",
-			"Vendor-A/Library",
+			"vendor-a/library",
 		},
 		{
 			"github repository folds case",
@@ -328,12 +329,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"Nokogiri",
 		},
 		{
-			"cargo keeps case until its rule ships",
+			"cargo folds case",
 			"pkg:cargo/Serde_JSON@1.0.0",
 			packagev1.Ecosystem_ECOSYSTEM_CARGO,
 			"Serde_JSON",
 			"1.0.0",
-			"Serde_JSON",
+			"serde_json",
 		},
 		{
 			"nuget keeps case",
@@ -447,10 +448,10 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 			true,
 		},
 		{
-			"composer keeps case until its rule ships",
+			"composer name folds",
 			"pkg:composer/Vendor-A/Library@1.0.0",
 			"pkg:composer/vendor-a/library@1.0.0",
-			false,
+			true,
 		},
 		{"pypi name folds", "pkg:pypi/Flask_RESTful@1.0", "pkg:pypi/flask-restful@1.0", true},
 	}
@@ -480,13 +481,13 @@ func TestPackageVersionProtoIsFresh(t *testing.T) {
 	raw.Version = "mutated"
 
 	assert.Equal(t, "datatoolkit", pv.Name())
-	assert.Equal(t, "1", pv.Version())
+	assert.Equal(t, "1.0.0", pv.Version())
 	assert.Equal(t, "DataToolKit", pv.RawName())
 	assert.Equal(t, "1.0.0", pv.RawVersion())
 
 	again := pv.CanonicalProto()
 	assert.Equal(t, "datatoolkit", again.GetPackage().GetName())
-	assert.Equal(t, "1", again.GetVersion())
+	assert.Equal(t, "1.0.0", again.GetVersion())
 	assert.NotSame(t, canonical, again)
 
 	rawAgain := pv.RawProto()
@@ -505,13 +506,15 @@ func TestPackageVersionEqual(t *testing.T) {
 	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
 
 	a := NewPackageVersionFromParts(pypi, "DataToolKit", "1.0")
-	b := NewPackageVersionFromParts(pypi, "datatoolkit", "1.0.0")
+	b := NewPackageVersionFromParts(pypi, "datatoolkit", "v1.0")
+	published := NewPackageVersionFromParts(pypi, "datatoolkit", "1.0.0")
 	c := NewPackageVersionFromParts(pypi, "data-tool-kit", "1.0")
 	d := NewPackageVersionFromParts(pypi, "datatoolkit", "1.0rc1")
 	npm := NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "datatoolkit", "1")
 
 	assert.True(t, a.Equal(b))
 	assert.Equal(t, a.Key(), b.Key())
+	assert.False(t, a.Equal(published), "the published spelling is the identity")
 	assert.False(t, a.Equal(c), "a different package on PyPI")
 	assert.False(t, a.Equal(d), "a different release on PyPI")
 	assert.False(t, a.Equal(npm), "a different ecosystem")
@@ -569,17 +572,17 @@ func TestPackageVersionKeyFormat(t *testing.T) {
 		{NewPackageVersionFromParts(npm, "@scope/pkg", "1.0.0+build"), "ECOSYSTEM_NPM/0/%40scope%2Fpkg@1.0.0%2Bbuild"},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0"),
-			"ECOSYSTEM_PYPI/1/datatoolkit@1",
+			"ECOSYSTEM_PYPI/2/datatoolkit@1.0.0",
 		},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"),
-			"ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild",
+			"ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild",
 		},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"),
 			"ECOSYSTEM_GO/0/example.com%2FOwner%2FLibrary@v1.0.0",
 		},
-		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/1/@"},
+		{NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "", ""), "ECOSYSTEM_PYPI/2/@"},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, "x", "1"),
 			"ECOSYSTEM_UNSPECIFIED/0/x@1",
@@ -594,7 +597,7 @@ func TestPackageVersionNameKey(t *testing.T) {
 	pypi := packagev1.Ecosystem_ECOSYSTEM_PYPI
 
 	t.Run("format", func(t *testing.T) {
-		assert.Equal(t, "ECOSYSTEM_PYPI/1/flask-restful",
+		assert.Equal(t, "ECOSYSTEM_PYPI/2/flask-restful",
 			NewPackageVersionFromParts(pypi, "Flask_RESTful", "0.3.10").NameKey())
 		assert.Equal(t, "ECOSYSTEM_NPM/0/%40scope%2Fpkg",
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_NPM, "@scope/pkg", "1.0.0").NameKey())
@@ -627,25 +630,25 @@ func TestPep440Version(t *testing.T) {
 		want  string
 		ok    bool
 	}{
-		{"1.0", "1", true},
-		{"1.0.0", "1", true},
-		{"0.0.0", "0", true},
-		{"0!1.0", "1", true},
-		{"01!002.00", "1!2", true},
-		{"1.0.0rc1", "1rc1", true},
-		{"V01.0RC01.POST02.DEV03+LOCAL_004-ABC", "1rc1.post2.dev3+local.4.abc", true},
+		{"1.0", "1.0", true},
+		{"1.0.0", "1.0.0", true},
+		{"0.0.0", "0.0.0", true},
+		{"0!1.0", "1.0", true},
+		{"01!002.00", "1!2.0", true},
+		{"1.0.0rc1", "1.0.0rc1", true},
+		{"V01.0RC01.POST02.DEV03+LOCAL_004-ABC", "1.0rc1.post2.dev3+local.4.abc", true},
 		{"1.0.1", "1.0.1", true},
-		{"1.0-1", "1.post1", true},
+		{"1.0-1", "1.0.post1", true},
 		{"1.0_1", "1.0_1", false},
 		{"latest", "latest", false},
 		{"", "", false},
 		// The Kelvin sign case-folds to k. PEP 440 is ASCII, so it stays raw.
 		{"1+\u212a", "1+\u212a", false},
 		// A no-break space is whitespace to packaging and to strings.TrimSpace.
-		{"1.0\u00a0", "1", true},
+		{"1.0\u00a0", "1.0", true},
 		// The information separators are whitespace to Python but not to Go.
-		{"\x1c1.0\x1d", "1", true},
-		{"\x1e1.0\x1f", "1", true},
+		{"\x1c1.0\x1d", "1.0", true},
+		{"\x1e1.0\x1f", "1.0", true},
 	}
 
 	for _, test := range cases {

@@ -14,7 +14,7 @@ import (
 // own rule, so a rule change on the server needs no client release.
 func ExamplePackageVersion() {
 	observed := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "DataToolKit", "1.0.0")
-	stored := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "datatoolkit", "1.0")
+	stored := pb.NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_PYPI, "datatoolkit", "v1.0.0")
 
 	fmt.Println(observed.Name(), observed.Version())
 	fmt.Println(observed.Equal(stored))
@@ -24,7 +24,7 @@ func ExamplePackageVersion() {
 	fmt.Println(request.GetPackage().GetName(), request.GetVersion())
 
 	// Output:
-	// datatoolkit 1
+	// datatoolkit 1.0.0
 	// true
 	// true
 	// DataToolKit 1.0.0

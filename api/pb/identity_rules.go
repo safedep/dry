@@ -37,22 +37,29 @@ func (r identityRule) fold(name, version string) (canonicalName, canonicalVersio
 // identityRules holds every ecosystem with a rule. An ecosystem absent from
 // the table has the identity rule at version 0: raw name, raw version.
 //
-// PyPI ships first, then GitHub, GitLab and Bitbucket. Every other ecosystem
-// stays at version 0 until its conformance fixture under testdata/identity
-// lands, with positive groups and at least one distinct pair taken from the
-// registry. TestIdentityConformance
-// fails on a rule with no such fixture. npm stays at version 0 on purpose:
-// its registry is case-sensitive, so JSONStream and jsonstream are two
-// packages with two artifacts, and a fold would merge them.
+// Every other ecosystem stays at version 0 until its conformance fixture
+// under testdata/identity lands, with positive groups and at least one
+// distinct pair taken from the registry. TestIdentityConformance fails on a
+// rule with no such fixture. npm and RubyGems stay at version 0 on purpose:
+// their registries are case-sensitive, so JSONStream and jsonstream are two
+// npm packages, and RubyGems serves RedCloth but not redcloth.
 var identityRules = map[packagev1.Ecosystem]identityRule{
-	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 1, foldName: pypiIdentityName, foldVersion: pep440Version},
+	// Version 2 keeps the trailing zero release segments (2.31.0, not 2.31).
+	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 2, foldName: pypiIdentityName, foldVersion: pep440Version},
+
+	// These registries resolve a name in any case to one package, and their
+	// versions are case-sensitive or carry no case, so the rules fold the name
+	// only.
+	packagev1.Ecosystem_ECOSYSTEM_CARGO:                           {version: 1, foldName: asciiLowerIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:                       {version: 1, foldName: asciiLowerIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION: {version: 1, foldName: asciiLowerIdentityName},
 
 	// A git ref is case-sensitive (v4 and V4 are two tags), so these rules
 	// fold the name only.
-	packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:    {version: 1, foldName: asciiLowerIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:       {version: 1, foldName: gitHubActionIdentityName},
-	packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: {version: 1, foldName: gitHostIdentityName},
-	packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: {version: 1, foldName: asciiLowerIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:    {version: 1, foldName: asciiLowerIdentityName},
 }
 
 var identityRuleNone = identityRule{foldName: func(name string) string { return name }}

@@ -1,42 +1,42 @@
 {
   "ecosystem": "ECOSYSTEM_PYPI",
-  "rule_version": 1,
-  "source": "packaging 26.3: packaging.utils.canonicalize_version and canonicalize_name",
+  "rule_version": 2,
+  "source": "packaging 26.3: packaging.utils.canonicalize_version(strip_trailing_zero=False) and canonicalize_name",
   "generator": "scripts/identity-fixtures/pypi.py",
   "versions": [
     {
       "input": "1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "1.0.0",
-      "canonical": "1",
+      "canonical": "1.0.0",
       "parsed": true
     },
     {
       "input": "1.0.0.0",
-      "canonical": "1",
+      "canonical": "1.0.0.0",
       "parsed": true
     },
     {
       "input": "01.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "v1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "V1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "0!1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
@@ -46,17 +46,17 @@
     },
     {
       "input": "000!1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "1.0.0rc1",
-      "canonical": "1rc1",
+      "canonical": "1.0.0rc1",
       "parsed": true
     },
     {
       "input": "1.0rc1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
@@ -66,32 +66,32 @@
     },
     {
       "input": "1.0.post1",
-      "canonical": "1.post1",
+      "canonical": "1.0.post1",
       "parsed": true
     },
     {
       "input": "1.0.0.post1",
-      "canonical": "1.post1",
+      "canonical": "1.0.0.post1",
       "parsed": true
     },
     {
       "input": "1.0.dev0",
-      "canonical": "1.dev0",
+      "canonical": "1.0.dev0",
       "parsed": true
     },
     {
       "input": "1.0+local.1",
-      "canonical": "1+local.1",
+      "canonical": "1.0+local.1",
       "parsed": true
     },
     {
       "input": "1.0.0+local.1",
-      "canonical": "1+local.1",
+      "canonical": "1.0.0+local.1",
       "parsed": true
     },
     {
       "input": "01!002.00",
-      "canonical": "1!2",
+      "canonical": "1!2.0",
       "parsed": true
     },
     {
@@ -101,147 +101,147 @@
     },
     {
       "input": "2!1.0",
-      "canonical": "2!1",
+      "canonical": "2!1.0",
       "parsed": true
     },
     {
       "input": "1.0RC1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0alpha",
-      "canonical": "1a0",
+      "canonical": "1.0a0",
       "parsed": true
     },
     {
       "input": "1.0a",
-      "canonical": "1a0",
+      "canonical": "1.0a0",
       "parsed": true
     },
     {
       "input": "1.0_beta_02",
-      "canonical": "1b2",
+      "canonical": "1.0b2",
       "parsed": true
     },
     {
       "input": "1.0b2",
-      "canonical": "1b2",
+      "canonical": "1.0b2",
       "parsed": true
     },
     {
       "input": "1.0c1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0preview1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0pre1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0-rc.1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0.rc1",
-      "canonical": "1rc1",
+      "canonical": "1.0rc1",
       "parsed": true
     },
     {
       "input": "1.0-01",
-      "canonical": "1.post1",
+      "canonical": "1.0.post1",
       "parsed": true
     },
     {
       "input": "1.0-1",
-      "canonical": "1.post1",
+      "canonical": "1.0.post1",
       "parsed": true
     },
     {
       "input": "1.0R02",
-      "canonical": "1.post2",
+      "canonical": "1.0.post2",
       "parsed": true
     },
     {
       "input": "1.0rev",
-      "canonical": "1.post0",
+      "canonical": "1.0.post0",
       "parsed": true
     },
     {
       "input": "1.0.post",
-      "canonical": "1.post0",
+      "canonical": "1.0.post0",
       "parsed": true
     },
     {
       "input": "1.0post1",
-      "canonical": "1.post1",
+      "canonical": "1.0.post1",
       "parsed": true
     },
     {
       "input": "1.0.r1",
-      "canonical": "1.post1",
+      "canonical": "1.0.post1",
       "parsed": true
     },
     {
       "input": "1.0DEV",
-      "canonical": "1.dev0",
+      "canonical": "1.0.dev0",
       "parsed": true
     },
     {
       "input": "1.0.dev",
-      "canonical": "1.dev0",
+      "canonical": "1.0.dev0",
       "parsed": true
     },
     {
       "input": "1.0-dev1",
-      "canonical": "1.dev1",
+      "canonical": "1.0.dev1",
       "parsed": true
     },
     {
       "input": "1.0dev1",
-      "canonical": "1.dev1",
+      "canonical": "1.0.dev1",
       "parsed": true
     },
     {
       "input": "V01.0RC01.POST02.DEV03+LOCAL_004-ABC",
-      "canonical": "1rc1.post2.dev3+local.4.abc",
+      "canonical": "1.0rc1.post2.dev3+local.4.abc",
       "parsed": true
     },
     {
       "input": "1.0+ubuntu-1",
-      "canonical": "1+ubuntu.1",
+      "canonical": "1.0+ubuntu.1",
       "parsed": true
     },
     {
       "input": "1.0+ubuntu.1",
-      "canonical": "1+ubuntu.1",
+      "canonical": "1.0+ubuntu.1",
       "parsed": true
     },
     {
       "input": "1.0+abc.007",
-      "canonical": "1+abc.7",
+      "canonical": "1.0+abc.7",
       "parsed": true
     },
     {
       "input": " 1.0\n",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\t2.0 ",
-      "canonical": "2",
+      "canonical": "2.0",
       "parsed": true
     },
     {
       "input": "999999999999999999999999999!1.0",
-      "canonical": "999999999999999999999999999!1",
+      "canonical": "999999999999999999999999999!1.0",
       "parsed": true
     },
     {
@@ -266,27 +266,27 @@
     },
     {
       "input": "2.0",
-      "canonical": "2",
+      "canonical": "2.0",
       "parsed": true
     },
     {
       "input": "1.0rc2",
-      "canonical": "1rc2",
+      "canonical": "1.0rc2",
       "parsed": true
     },
     {
       "input": "1.0.post2",
-      "canonical": "1.post2",
+      "canonical": "1.0.post2",
       "parsed": true
     },
     {
       "input": "1.0.dev1",
-      "canonical": "1.dev1",
+      "canonical": "1.0.dev1",
       "parsed": true
     },
     {
       "input": "1.0+other",
-      "canonical": "1+other",
+      "canonical": "1.0+other",
       "parsed": true
     },
     {
@@ -351,7 +351,7 @@
     },
     {
       "input": "1.0\u00a0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
@@ -361,37 +361,37 @@
     },
     {
       "input": "\u001c1.0\u001c",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\u001d1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "1.0\u001e",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\u001f1.0\u001f",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\u000b1.0\f",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\u20281.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
       "input": "\u00851.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
@@ -446,7 +446,7 @@
     },
     {
       "input": "v0!1.0",
-      "canonical": "1",
+      "canonical": "1.0",
       "parsed": true
     },
     {
@@ -557,8 +557,6 @@
   "version_groups": [
     [
       "1.0",
-      "1.0.0",
-      "1.0.0.0",
       "01.0",
       "v1.0",
       "V1.0",
@@ -569,9 +567,7 @@
       "\u001f1.0\u001f"
     ],
     [
-      "1.0.0rc1",
       "1.0rc1",
-      "1rc1",
       "1.0RC1",
       "1.0c1",
       "1.0preview1",
@@ -581,22 +577,45 @@
     ],
     [
       "1.0.post1",
-      "1.0.0.post1",
       "1.0-01",
       "1.0-1",
       "1.0post1",
       "1.0.r1"
     ],
     [
+      "01!002.00",
+      "1!2.00"
+    ]
+  ],
+  "version_distinct": [
+    [
+      "1.0",
+      "1.0.0"
+    ],
+    [
+      "1.0",
+      "1.0.0.0"
+    ],
+    [
+      "1.0rc1",
+      "1.0.0rc1"
+    ],
+    [
+      "1.0rc1",
+      "1rc1"
+    ],
+    [
+      "1.0.post1",
+      "1.0.0.post1"
+    ],
+    [
       "1.0+local.1",
       "1.0.0+local.1"
     ],
     [
-      "01!002.00",
-      "1!2"
-    ]
-  ],
-  "version_distinct": [
+      "1!2",
+      "1!2.0"
+    ],
     [
       "1.0",
       "1.1"

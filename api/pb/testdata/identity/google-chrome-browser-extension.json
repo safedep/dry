@@ -1,0 +1,47 @@
+{
+  "ecosystem": "ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION",
+  "rule_version": 1,
+  "source": "Chromium generates an extension ID in the lower-case alphabet a to p (ConvertHexadecimalToIDAlphabet), and IdIsValid lower-cases each character before it checks it: components/crx_file/id_util.cc in chromium/chromium, read on 2026-10-15. The version stays raw.",
+  "versions": [
+    {
+      "input": "1.58.0",
+      "canonical": "1.58.0",
+      "parsed": false
+    },
+    {
+      "input": "1.58.1",
+      "canonical": "1.58.1",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "CJPALHDLNBPAFIAMEJDNHCPHJBKEIAGM",
+      "canonical": "cjpalhdlnbpafiamejdnhcphjbkeiagm"
+    },
+    {
+      "input": "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "canonical": "cjpalhdlnbpafiamejdnhcphjbkeiagm"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "1.58.0",
+      "1.58.1"
+    ]
+  ],
+  "name_groups": [
+    [
+      "CJPALHDLNBPAFIAMEJDNHCPHJBKEIAGM",
+      "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "CjpalhdlnbpafiamejdnhcphjbkeiaGM"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "cjpalhdlnbpafiamejdnhcphjbkeiagm",
+      "gighmmpiobklfepjocnamgkkbiglidom"
+    ]
+  ]
+}

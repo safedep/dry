@@ -1,0 +1,71 @@
+{
+  "ecosystem": "ECOSYSTEM_CARGO",
+  "rule_version": 1,
+  "source": "crates.io resolves a crate name in any case: the API at crates.io/api/v1/crates returned serde_json for Serde_JSON and serde for SERDE on 2026-10-15. crates.io also treats - and _ as one character (serde-json resolved to serde_json), but the fold keeps both, so the published name stays as written. The version is semver and stays raw.",
+  "versions": [
+    {
+      "input": "1.0.0",
+      "canonical": "1.0.0",
+      "parsed": false
+    },
+    {
+      "input": "1.0.0+build",
+      "canonical": "1.0.0+build",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Serde_JSON",
+      "canonical": "serde_json"
+    },
+    {
+      "input": "serde_json",
+      "canonical": "serde_json"
+    },
+    {
+      "input": "SERDE",
+      "canonical": "serde"
+    },
+    {
+      "input": "Tokio-Util",
+      "canonical": "tokio-util"
+    },
+    {
+      "input": "Keras",
+      "canonical": "Keras"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "1.0.0",
+      "1.0.0+build"
+    ]
+  ],
+  "name_groups": [
+    [
+      "Serde_JSON",
+      "serde_json",
+      "SERDE_JSON"
+    ],
+    [
+      "SERDE",
+      "serde"
+    ],
+    [
+      "Tokio-Util",
+      "tokio-util"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "serde",
+      "serde_json"
+    ],
+    [
+      "Keras",
+      "keras"
+    ]
+  ]
+}

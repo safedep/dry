@@ -212,7 +212,7 @@ for line in sys.stdin:
     if "v" in request:
         try:
             Version(request["v"])
-            answer = {"canonical": canonicalize_version(request["v"], strip_trailing_zero=False), "parsed": True}
+            answer = {"canonical": canonicalize_version(request["v"]), "parsed": True}
         except InvalidVersion:
             answer = {"canonical": request["v"], "parsed": False}
     else:

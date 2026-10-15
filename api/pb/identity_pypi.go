@@ -40,12 +40,11 @@ func pypiIdentityName(name string) string {
 }
 
 // pep440Version folds a version string to the form
-// packaging.utils.canonicalize_version(v, strip_trailing_zero=False) produces:
-// no leading v, no zero epoch, no leading zeros in a number, lower case, one
-// spelling per pre, post and dev segment, dots between local segments. It keeps
-// the trailing zero release segments, so 2.31.0 stays 2.31.0, the version PyPI
-// publishes and shows. PyPI also resolves 2.31 to that release, but the fold
-// does not merge the two spellings: a caller looks a version up as published. A string the grammar rejects comes back unchanged with
+// packaging.utils.canonicalize_version produces: no leading v, no zero epoch,
+// no leading zeros in a number, no trailing zero release segments, lower case,
+// one spelling per pre, post and dev segment, dots between local segments.
+// PyPI resolves a release by this form, so two strings with one canonical form
+// name one release. A string the grammar rejects comes back unchanged with
 // false, so the fold is total.
 func pep440Version(version string) (string, bool) {
 	trimmed := strings.TrimFunc(version, isPep440Space)
@@ -98,6 +97,9 @@ func pep440Release(release string) string {
 	numbers := strings.Split(release, ".")
 	for i := range numbers {
 		numbers[i] = pep440Number(numbers[i])
+	}
+	for len(numbers) > 1 && numbers[len(numbers)-1] == "0" {
+		numbers = numbers[:len(numbers)-1]
 	}
 	return strings.Join(numbers, ".")
 }

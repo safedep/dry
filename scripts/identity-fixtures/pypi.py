@@ -18,8 +18,7 @@ from packaging.utils import InvalidName, canonicalize_name, canonicalize_version
 from packaging.version import InvalidVersion, Version
 
 VERSION_INPUTS = [
-    # Spellings of release 1.0. PyPI also resolves 1.0.0 to 1.0, but the fold
-    # keeps the trailing zeros, so 1.0, 1.0.0 and 1.0.0.0 stay three versions.
+    # Spellings PyPI treats as release 1.0.
     "1.0", "1.0.0", "1.0.0.0", "01.0", "v1.0", "V1.0", "0!1.0", "0!v01.00.0", "000!1.0",
     # Trailing zeros with a suffix segment.
     "1.0.0rc1", "1.0rc1", "1rc1", "1.0.post1", "1.0.0.post1", "1.0.dev0", "1.0+local.1", "1.0.0+local.1",
@@ -66,16 +65,14 @@ NAME_INPUTS = [
 ]
 
 VERSION_GROUPS = [
-    ["1.0", "01.0", "v1.0", "V1.0", "0!1.0", "000!1.0", " 1.0\n", "\x1c1.0\x1c", "\x1f1.0\x1f"],
-    ["1.0rc1", "1.0RC1", "1.0c1", "1.0preview1", "1.0pre1", "1.0-rc.1", "1.0.rc1"],
-    ["1.0.post1", "1.0-01", "1.0-1", "1.0post1", "1.0.r1"],
-    ["01!002.00", "1!2.00"],
+    ["1.0", "1.0.0", "1.0.0.0", "01.0", "v1.0", "V1.0", "0!1.0", "000!1.0", " 1.0\n", "\x1c1.0\x1c", "\x1f1.0\x1f"],
+    ["1.0.0rc1", "1.0rc1", "1rc1", "1.0RC1", "1.0c1", "1.0preview1", "1.0pre1", "1.0-rc.1", "1.0.rc1"],
+    ["1.0.post1", "1.0.0.post1", "1.0-01", "1.0-1", "1.0post1", "1.0.r1"],
+    ["1.0+local.1", "1.0.0+local.1"],
+    ["01!002.00", "1!2"],
 ]
 
 VERSION_DISTINCT = [
-    # The published spelling is the identity: 2.31.0 is not looked up as 2.31.
-    ["1.0", "1.0.0"], ["1.0", "1.0.0.0"], ["1.0rc1", "1.0.0rc1"], ["1.0rc1", "1rc1"],
-    ["1.0.post1", "1.0.0.post1"], ["1.0+local.1", "1.0.0+local.1"], ["1!2", "1!2.0"],
     ["1.0", "1.1"], ["1.0", "1.0.1"], ["1.0", "1.0rc1"], ["1.0rc1", "1.0rc2"], ["1.0", "1.0.post1"],
     ["1.0.post1", "1.0.post2"], ["1.0", "1.0.dev0"], ["1.0.dev0", "1.0.dev1"], ["1.0+local.1", "1.0+other"],
     ["1!2", "2!1.0"], ["1.0", "1.0+local.1"], ["1.0", "1.0_1"],
@@ -100,7 +97,7 @@ NAME_DISTINCT = [
 def version_row(raw):
     try:
         Version(raw)
-        return {"input": raw, "canonical": canonicalize_version(raw, strip_trailing_zero=False), "parsed": True}
+        return {"input": raw, "canonical": canonicalize_version(raw), "parsed": True}
     except InvalidVersion:
         return {"input": raw, "canonical": raw, "parsed": False}
 
@@ -120,8 +117,8 @@ def name_row(raw):
 def main():
     fixture = {
         "ecosystem": "ECOSYSTEM_PYPI",
-        "rule_version": 2,
-        "source": f"packaging {packaging.__version__}: packaging.utils.canonicalize_version(strip_trailing_zero=False) and canonicalize_name",
+        "rule_version": 1,
+        "source": f"packaging {packaging.__version__}: packaging.utils.canonicalize_version and canonicalize_name",
         "generator": "scripts/identity-fixtures/pypi.py",
         "versions": [version_row(v) for v in VERSION_INPUTS],
         "names": [name_row(n) for n in NAME_INPUTS],

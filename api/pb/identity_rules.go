@@ -44,8 +44,7 @@ func (r identityRule) fold(name, version string) (canonicalName, canonicalVersio
 // their registries are case-sensitive, so JSONStream and jsonstream are two
 // npm packages, and RubyGems serves RedCloth but not redcloth.
 var identityRules = map[packagev1.Ecosystem]identityRule{
-	// Version 2 keeps the trailing zero release segments (2.31.0, not 2.31).
-	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 2, foldName: pypiIdentityName, foldVersion: pep440Version},
+	packagev1.Ecosystem_ECOSYSTEM_PYPI: {version: 1, foldName: pypiIdentityName, foldVersion: pep440Version},
 
 	// These registries resolve a name in any case to one package, and their
 	// versions are case-sensitive or carry no case, so the rules fold the name

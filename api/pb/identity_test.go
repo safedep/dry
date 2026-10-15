@@ -18,8 +18,9 @@ func TestIdentityRuleVersion(t *testing.T) {
 	}{
 		{packagev1.Ecosystem_ECOSYSTEM_PYPI, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_RUBYGEMS, 0},
-		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 0},
-		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_CARGO, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_PACKAGIST, 1},
+		{packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 1},
@@ -264,12 +265,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"@Vue/Reactivity",
 		},
 		{
-			"composer keeps case until its rule ships",
+			"composer folds case",
 			"pkg:composer/Vendor-A/Library@1.0.0",
 			packagev1.Ecosystem_ECOSYSTEM_PACKAGIST,
 			"Vendor-A/Library",
 			"1.0.0",
-			"Vendor-A/Library",
+			"vendor-a/library",
 		},
 		{
 			"github repository folds case",
@@ -328,12 +329,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"Nokogiri",
 		},
 		{
-			"cargo keeps case until its rule ships",
+			"cargo folds case",
 			"pkg:cargo/Serde_JSON@1.0.0",
 			packagev1.Ecosystem_ECOSYSTEM_CARGO,
 			"Serde_JSON",
 			"1.0.0",
-			"Serde_JSON",
+			"serde_json",
 		},
 		{
 			"nuget keeps case",
@@ -447,10 +448,10 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 			true,
 		},
 		{
-			"composer keeps case until its rule ships",
+			"composer name folds",
 			"pkg:composer/Vendor-A/Library@1.0.0",
 			"pkg:composer/vendor-a/library@1.0.0",
-			false,
+			true,
 		},
 		{"pypi name folds", "pkg:pypi/Flask_RESTful@1.0", "pkg:pypi/flask-restful@1.0", true},
 	}
@@ -573,7 +574,7 @@ func TestPackageVersionKeyFormat(t *testing.T) {
 		},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_CARGO, "Serde_JSON", "1.0.0+build"),
-			"ECOSYSTEM_CARGO/0/Serde_JSON@1.0.0%2Bbuild",
+			"ECOSYSTEM_CARGO/1/serde_json@1.0.0%2Bbuild",
 		},
 		{
 			NewPackageVersionFromParts(packagev1.Ecosystem_ECOSYSTEM_GO, "example.com/Owner/Library", "v1.0.0"),

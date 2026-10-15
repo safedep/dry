@@ -1,0 +1,59 @@
+{
+  "ecosystem": "ECOSYSTEM_PACKAGIST",
+  "rule_version": 1,
+  "source": "Packagist resolves a vendor/package name in any case: repo.packagist.org/p2 returned 200 for monolog/monolog, Monolog/Monolog and MONOLOG/MONOLOG on 2026-10-15. The version stays raw.",
+  "versions": [
+    {
+      "input": "2.9.1",
+      "canonical": "2.9.1",
+      "parsed": false
+    },
+    {
+      "input": "v2.9.1",
+      "canonical": "v2.9.1",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Monolog/Monolog",
+      "canonical": "monolog/monolog"
+    },
+    {
+      "input": "monolog/monolog",
+      "canonical": "monolog/monolog"
+    },
+    {
+      "input": "Laravel/Framework",
+      "canonical": "laravel/framework"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "2.9.1",
+      "v2.9.1"
+    ]
+  ],
+  "name_groups": [
+    [
+      "Monolog/Monolog",
+      "monolog/monolog",
+      "MONOLOG/MONOLOG"
+    ],
+    [
+      "Laravel/Framework",
+      "laravel/framework"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "monolog/monolog",
+      "laravel/framework"
+    ],
+    [
+      "vendor-a/library",
+      "vendor-b/library"
+    ]
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "ecosystem": "ECOSYSTEM_CARGO",
+  "rule_version": 1,
+  "source": "crates.io keeps a crate name unique by canon_crate_name, replace(lower(name), '-', '_'): migration 20150319224700 defines it and migration 20150319224701 creates the unique index index_crates_name on it (rust-lang/crates.io at caa081d, read on 2026-10-15). The API at crates.io/api/v1/crates resolved serde-json and SERDE-JSON to serde_json, and tokio_util and Tokio_Util to tokio-util, on 2026-10-15. The version is semver and stays raw.",
+  "versions": [
+    {
+      "input": "1.0.0",
+      "canonical": "1.0.0",
+      "parsed": false
+    },
+    {
+      "input": "1.0.0+build",
+      "canonical": "1.0.0+build",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Serde_JSON",
+      "canonical": "serde_json"
+    },
+    {
+      "input": "serde-json",
+      "canonical": "serde_json"
+    },
+    {
+      "input": "SERDE",
+      "canonical": "serde"
+    },
+    {
+      "input": "Tokio-Util",
+      "canonical": "tokio_util"
+    },
+    {
+      "input": "tokio_util",
+      "canonical": "tokio_util"
+    },
+    {
+      "input": "\u212aeras",
+      "canonical": "\u212aeras"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "1.0.0",
+      "1.0.0+build"
+    ]
+  ],
+  "name_groups": [
+    [
+      "Serde_JSON",
+      "serde_json",
+      "SERDE_JSON",
+      "serde-json",
+      "SERDE-JSON"
+    ],
+    [
+      "SERDE",
+      "serde"
+    ],
+    [
+      "Tokio-Util",
+      "tokio-util",
+      "tokio_util",
+      "Tokio_Util"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "serde",
+      "serde_json"
+    ],
+    [
+      "tokio",
+      "tokio_util"
+    ],
+    [
+      "\u212aeras",
+      "keras"
+    ]
+  ]
+}

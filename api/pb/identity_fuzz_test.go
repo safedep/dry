@@ -95,16 +95,16 @@ func FuzzPypiName(f *testing.F) {
 	})
 }
 
-// FuzzGitHostIdentityName checks that the git host fold merges two names
-// only when they differ in ASCII case. A Unicode fold would merge a homoglyph
+// FuzzASCIILowerIdentityName checks that the ASCII lower-case fold merges two
+// names only when they differ in ASCII case. A Unicode fold would merge a homoglyph
 // such as the KELVIN SIGN with a real owner.
-func FuzzGitHostIdentityName(f *testing.F) {
+func FuzzASCIILowerIdentityName(f *testing.F) {
 	f.Add("Azure/login", "azure/login")
 	f.Add("\u212aelvin/x", "kelvin/x")
 	f.Add("Azure/l\u043egin", "azure/login")
 	f.Fuzz(func(t *testing.T, a, b string) {
-		ca, cb := gitHostIdentityName(a), gitHostIdentityName(b)
-		require.Equal(t, ca, gitHostIdentityName(ca), "the fold is idempotent")
+		ca, cb := asciiLowerIdentityName(a), asciiLowerIdentityName(b)
+		require.Equal(t, ca, asciiLowerIdentityName(ca), "the fold is idempotent")
 		if !isASCII(a) {
 			require.Equal(t, a, ca, "a non-ASCII name stays raw")
 		}
@@ -132,6 +132,25 @@ func FuzzGitHubActionIdentityName(f *testing.F) {
 				require.Equal(t, canonical, gitHubActionIdentityName(variant), "%q and %q name one action", name, variant)
 			}
 		}
+	})
+}
+
+// FuzzCargoIdentityName checks the Cargo fold against crates.io's
+// canon_crate_name, replace(lower(name), '-', '_'): two ASCII names merge
+// exactly when crates.io would refuse to publish the second one.
+func FuzzCargoIdentityName(f *testing.F) {
+	f.Add("serde-json", "SERDE_JSON")
+	f.Add("tokio_util", "tokio-util")
+	f.Add("\u212aeras", "keras")
+	f.Fuzz(func(t *testing.T, a, b string) {
+		ca, cb := cargoIdentityName(a), cargoIdentityName(b)
+		require.Equal(t, ca, cargoIdentityName(ca), "the fold is idempotent")
+		canon := func(s string) string { return strings.ReplaceAll(strings.ToLower(s), "-", "_") }
+		if !isASCII(a) {
+			require.Equal(t, a, ca, "a non-ASCII name stays raw")
+		}
+		merge := a == b || (isASCII(a) && isASCII(b) && canon(a) == canon(b))
+		require.Equal(t, merge, ca == cb, "%q vs %q", a, b)
 	})
 }
 

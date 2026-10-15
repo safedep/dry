@@ -134,16 +134,15 @@ var identityCases = []identityCase{
 	{"npm version keeps v prefix", npm, "express", "v4.17.1", "express", "v4.17.1", false},
 	{"npm version keeps build metadata", npm, "express", "4.17.1+build", "express", "4.17.1+build", false},
 
-	// No rule yet: RubyGems, Cargo and Packagist keep the raw name and the
-	// raw version until each ships its rule with a fixture.
-	// The frozen CanonicalPackageName lower-cases some of these. The type does
-	// not, and its callers move to it under the spec's rollout.
+	// RubyGems: no rule. The registry is case-sensitive: it serves RedCloth
+	// but not redcloth. The frozen CanonicalPackageName lower-cases it.
+	// Cargo and Packagist fold the name only, and keep the version raw.
 	{"rubygems name keeps case", rubygems, "Nokogiri", "1.16.0", "Nokogiri", "1.16.0", false},
 	{"rubygems version keeps trailing zero", rubygems, "rails", "7.0", "rails", "7.0", false},
-	{"cargo name keeps case and underscore", cargo, "Serde_JSON", "1.0.0", "Serde_JSON", "1.0.0", false},
-	{"cargo name keeps hyphen", cargo, "tokio-util", "0.7.0", "tokio-util", "0.7.0", false},
+	{"cargo name folds case", cargo, "Serde_JSON", "1.0.0", "serde_json", "1.0.0", false},
+	{"cargo name folds hyphen to underscore", cargo, "tokio-util", "0.7.0", "tokio_util", "0.7.0", false},
 	{"cargo version keeps build metadata", cargo, "serde", "1.0.0+build", "serde", "1.0.0+build", false},
-	{"packagist name keeps case", packagist, "Monolog/Monolog", "3.0.0", "Monolog/Monolog", "3.0.0", false},
+	{"packagist name folds case", packagist, "Monolog/Monolog", "3.0.0", "monolog/monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
 	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
 
@@ -241,11 +240,6 @@ var identityDistinctCases = []identityDistinctCase{
 	},
 	{"npm v prefix is another version", identitySide{npm, "express", "1.0.3"}, identitySide{npm, "express", "v1.0.3"}},
 	{
-		"cargo hyphen and underscore differ",
-		identitySide{cargo, "tokio-util", "1"},
-		identitySide{cargo, "tokio_util", "1"},
-	},
-	{
 		"rubygems trailing zero differs",
 		identitySide{rubygems, "rails", "7.0"},
 		identitySide{rubygems, "rails", "7.0.0"},
@@ -266,9 +260,9 @@ var identityDistinctCases = []identityDistinctCase{
 		identitySide{rubygems, "rails", "7"},
 	},
 	{
-		"packagist case differs until its rule ships",
-		identitySide{packagist, "Monolog/Monolog", "3"},
-		identitySide{packagist, "monolog/monolog", "3"},
+		"rubygems case differs",
+		identitySide{rubygems, "RedCloth", "4.3.2"},
+		identitySide{rubygems, "redcloth", "4.3.2"},
 	},
 	{
 		"packagist vendor differs",

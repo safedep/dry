@@ -49,7 +49,7 @@ var identityRules = map[packagev1.Ecosystem]identityRule{
 	// These registries resolve a name in any case to one package, and their
 	// versions are case-sensitive or carry no case, so the rules fold the name
 	// only.
-	packagev1.Ecosystem_ECOSYSTEM_CARGO:                           {version: 1, foldName: asciiLowerIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_CARGO:                           {version: 1, foldName: cargoIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:                       {version: 1, foldName: asciiLowerIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION: {version: 1, foldName: asciiLowerIdentityName},
 

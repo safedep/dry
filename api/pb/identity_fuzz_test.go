@@ -135,6 +135,25 @@ func FuzzGitHubActionIdentityName(f *testing.F) {
 	})
 }
 
+// FuzzCargoIdentityName checks the Cargo fold against crates.io's
+// canon_crate_name, replace(lower(name), '-', '_'): two ASCII names merge
+// exactly when crates.io would refuse to publish the second one.
+func FuzzCargoIdentityName(f *testing.F) {
+	f.Add("serde-json", "SERDE_JSON")
+	f.Add("tokio_util", "tokio-util")
+	f.Add("\u212aeras", "keras")
+	f.Fuzz(func(t *testing.T, a, b string) {
+		ca, cb := cargoIdentityName(a), cargoIdentityName(b)
+		require.Equal(t, ca, cargoIdentityName(ca), "the fold is idempotent")
+		canon := func(s string) string { return strings.ReplaceAll(strings.ToLower(s), "-", "_") }
+		if !isASCII(a) {
+			require.Equal(t, a, ca, "a non-ASCII name stays raw")
+		}
+		merge := a == b || (isASCII(a) && isASCII(b) && canon(a) == canon(b))
+		require.Equal(t, merge, ca == cb, "%q vs %q", a, b)
+	})
+}
+
 // FuzzNewPackageVersionFromPurl checks the purl constructor against
 // packageurl-go, the parts constructor and its own URN.
 func FuzzNewPackageVersionFromPurl(f *testing.F) {

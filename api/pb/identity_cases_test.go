@@ -139,8 +139,8 @@ var identityCases = []identityCase{
 	// Cargo and Packagist fold the name only, and keep the version raw.
 	{"rubygems name keeps case", rubygems, "Nokogiri", "1.16.0", "Nokogiri", "1.16.0", false},
 	{"rubygems version keeps trailing zero", rubygems, "rails", "7.0", "rails", "7.0", false},
-	{"cargo name folds case and keeps underscore", cargo, "Serde_JSON", "1.0.0", "serde_json", "1.0.0", false},
-	{"cargo name keeps hyphen", cargo, "tokio-util", "0.7.0", "tokio-util", "0.7.0", false},
+	{"cargo name folds case", cargo, "Serde_JSON", "1.0.0", "serde_json", "1.0.0", false},
+	{"cargo name folds hyphen to underscore", cargo, "tokio-util", "0.7.0", "tokio_util", "0.7.0", false},
 	{"cargo version keeps build metadata", cargo, "serde", "1.0.0+build", "serde", "1.0.0+build", false},
 	{"packagist name folds case", packagist, "Monolog/Monolog", "3.0.0", "monolog/monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
@@ -239,11 +239,6 @@ var identityDistinctCases = []identityDistinctCase{
 		identitySide{npm, "@vue/reactivity", "1"},
 	},
 	{"npm v prefix is another version", identitySide{npm, "express", "1.0.3"}, identitySide{npm, "express", "v1.0.3"}},
-	{
-		"cargo keeps hyphen and underscore apart on purpose",
-		identitySide{cargo, "tokio-util", "1"},
-		identitySide{cargo, "tokio_util", "1"},
-	},
 	{
 		"rubygems trailing zero differs",
 		identitySide{rubygems, "rails", "7.0"},

@@ -1,0 +1,63 @@
+{
+  "ecosystem": "ECOSYSTEM_GITHUB_ACTIONS",
+  "rule_version": 1,
+  "source": "GitHub resolves an owner and a repository name in any case to one repository: git ls-remote on github.com/safedep/dry, github.com/SafeDep/DRY and github.com/SAFEDEP/Dry returned one HEAD on 2026-10-15. The PURL spec says github names are not case sensitive. A git ref is case sensitive, so the version stays raw.",
+  "versions": [
+    {
+      "input": "v4",
+      "canonical": "v4",
+      "parsed": false
+    },
+    {
+      "input": "V4",
+      "canonical": "V4",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Azure/login",
+      "canonical": "azure/login"
+    },
+    {
+      "input": "azure/login",
+      "canonical": "azure/login"
+    },
+    {
+      "input": "Actions/Checkout",
+      "canonical": "actions/checkout"
+    },
+    {
+      "input": "actions/cache/save",
+      "canonical": "actions/cache/save"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [
+    [
+      "v4",
+      "V4"
+    ]
+  ],
+  "name_groups": [
+    [
+      "Azure/login",
+      "azure/login",
+      "AZURE/LOGIN"
+    ],
+    [
+      "Actions/Checkout",
+      "actions/checkout"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "actions/checkout",
+      "actions/cache"
+    ],
+    [
+      "azure/login",
+      "azure/logins"
+    ]
+  ]
+}

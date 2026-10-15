@@ -114,7 +114,8 @@ func FuzzGitHostIdentityName(f *testing.F) {
 }
 
 // FuzzGitHubActionIdentityName checks that the action fold changes only the
-// owner and the repository, and keeps the path in the repository raw.
+// owner and the repository, keeps the path in the repository raw, and merges
+// two names that differ only in the ASCII case of the owner and the repository.
 func FuzzGitHubActionIdentityName(f *testing.F) {
 	f.Add("Actions/Cache/Save")
 	f.Add("azure/login")
@@ -122,9 +123,14 @@ func FuzzGitHubActionIdentityName(f *testing.F) {
 	f.Fuzz(func(t *testing.T, name string) {
 		canonical := gitHubActionIdentityName(name)
 		require.Equal(t, canonical, gitHubActionIdentityName(canonical), "the fold is idempotent")
-		_, rest, _ := strings.Cut(name, "/")
-		if _, path, ok := strings.Cut(rest, "/"); ok {
+		owner, rest, _ := strings.Cut(name, "/")
+		repo, path, hasPath := strings.Cut(rest, "/")
+		if hasPath {
 			require.True(t, strings.HasSuffix(canonical, "/"+path), "%q lost its path case in %q", name, canonical)
+			if repository := owner + "/" + repo; isASCII(repository) {
+				variant := strings.ToUpper(repository) + "/" + path
+				require.Equal(t, canonical, gitHubActionIdentityName(variant), "%q and %q name one action", name, variant)
+			}
 		}
 	})
 }

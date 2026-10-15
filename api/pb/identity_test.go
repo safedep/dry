@@ -23,7 +23,7 @@ func TestIdentityRuleVersion(t *testing.T) {
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY, 1},
-		{packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_NPM, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_GO, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, 0},
@@ -304,12 +304,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"owner/library",
 		},
 		{
-			"gitlab keeps case",
+			"gitlab folds case",
 			"pkg:gitlab/Group/Project@1.2",
 			packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY,
 			"Group/Project",
 			"1.2",
-			"Group/Project",
+			"group/project",
 		},
 		{
 			"maven keeps case",
@@ -433,7 +433,7 @@ func TestNewPackageVersionFromPurlCase(t *testing.T) {
 			false,
 		},
 		{"npm name is case-sensitive", "pkg:npm/JSONStream@1.0.3", "pkg:npm/jsonstream@1.0.3", false},
-		{"gitlab path is case-sensitive", "pkg:gitlab/Group/Project@1.2", "pkg:gitlab/group/project@1.2", false},
+		{"gitlab path folds", "pkg:gitlab/Group/Project@1.2", "pkg:gitlab/group/project@1.2", true},
 		{
 			"github name folds",
 			"pkg:github/Owner/Library@main",

@@ -160,7 +160,7 @@ var identityCases = []identityCase{
 	},
 
 	// No rule: raw name and raw version, case and all.
-	{"gitlab path keeps case", gitlab, "Inkscape/Inkscape", "1.2", "Inkscape/Inkscape", "1.2", false},
+	{"gitlab path folds case", gitlab, "Inkscape/Inkscape", "1.2", "inkscape/inkscape", "1.2", false},
 	{
 		"go module path keeps case",
 		golang,
@@ -265,11 +265,6 @@ var identityDistinctCases = []identityDistinctCase{
 		"packagist case differs until its rule ships",
 		identitySide{packagist, "Monolog/Monolog", "3"},
 		identitySide{packagist, "monolog/monolog", "3"},
-	},
-	{
-		"gitlab path case differs",
-		identitySide{gitlab, "Inkscape/Inkscape", "1.2"},
-		identitySide{gitlab, "inkscape/inkscape", "1.2"},
 	},
 	{
 		"packagist vendor differs",

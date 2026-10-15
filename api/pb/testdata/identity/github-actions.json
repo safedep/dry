@@ -1,7 +1,7 @@
 {
   "ecosystem": "ECOSYSTEM_GITHUB_ACTIONS",
   "rule_version": 1,
-  "source": "GitHub resolves an owner and a repository name in any case to one repository: git ls-remote on github.com/safedep/dry, github.com/SafeDep/DRY and github.com/SAFEDEP/Dry returned one HEAD on 2026-10-15. The PURL spec says github names are not case sensitive. A git ref is case sensitive, so the version stays raw.",
+  "source": "GitHub resolves an owner and a repository name in any case to one repository: git ls-remote on github.com/safedep/dry, github.com/SafeDep/DRY and github.com/SAFEDEP/Dry returned one HEAD on 2026-10-15. The PURL spec says github names are not case sensitive. A git ref is case sensitive, so the version stays raw. The path in the repository is a directory in the git tree and keeps its case: raw.githubusercontent.com/actions/cache/v4/save/action.yml returned 200 and .../v4/Save/action.yml returned 404 on 2026-10-15, while .../Actions/Cache/v4/save/action.yml returned 200.",
   "versions": [
     {
       "input": "v4",
@@ -30,6 +30,10 @@
     {
       "input": "actions/cache/save",
       "canonical": "actions/cache/save"
+    },
+    {
+      "input": "Actions/Cache/Save",
+      "canonical": "actions/cache/Save"
     }
   ],
   "version_groups": [],
@@ -48,6 +52,10 @@
     [
       "Actions/Checkout",
       "actions/checkout"
+    ],
+    [
+      "Actions/Cache/save",
+      "actions/cache/save"
     ]
   ],
   "name_distinct": [
@@ -58,6 +66,10 @@
     [
       "azure/login",
       "azure/logins"
+    ],
+    [
+      "actions/cache/Save",
+      "actions/cache/save"
     ]
   ]
 }

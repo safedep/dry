@@ -134,8 +134,8 @@ var identityCases = []identityCase{
 	{"npm version keeps v prefix", npm, "express", "v4.17.1", "express", "v4.17.1", false},
 	{"npm version keeps build metadata", npm, "express", "4.17.1+build", "express", "4.17.1+build", false},
 
-	// No rule yet: RubyGems, Cargo, Packagist, GitHub and Bitbucket keep the
-	// raw name and the raw version until each ships its rule with a fixture.
+	// No rule yet: RubyGems, Cargo and Packagist keep the raw name and the
+	// raw version until each ships its rule with a fixture.
 	// The frozen CanonicalPackageName lower-cases some of these. The type does
 	// not, and its callers move to it under the spec's rollout.
 	{"rubygems name keeps case", rubygems, "Nokogiri", "1.16.0", "Nokogiri", "1.16.0", false},
@@ -146,7 +146,11 @@ var identityCases = []identityCase{
 	{"packagist name keeps case", packagist, "Monolog/Monolog", "3.0.0", "Monolog/Monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
 	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
+
+	// Git hosts: the name folds to lower case, and the ref keeps its case. An
+	// action path is a directory in the git tree, so it keeps its case too.
 	{"github action folds case", github, "Actions/Checkout", "v4", "actions/checkout", "v4", false},
+	{"github action keeps path case", github, "Actions/Cache/Save", "v4", "actions/cache/Save", "v4", false},
 	{"github action keeps ref case", github, "actions/checkout", "V4", "actions/checkout", "V4", false},
 	{"github repository folds case", githubRep, "SafeDep/Vet", "main", "safedep/vet", "main", false},
 	{
@@ -158,9 +162,9 @@ var identityCases = []identityCase{
 		"244fd47",
 		false,
 	},
+	{"gitlab path folds case", gitlab, "Inkscape/Inkscape", "1.2", "inkscape/inkscape", "1.2", false},
 
 	// No rule: raw name and raw version, case and all.
-	{"gitlab path folds case", gitlab, "Inkscape/Inkscape", "1.2", "inkscape/inkscape", "1.2", false},
 	{
 		"go module path keeps case",
 		golang,

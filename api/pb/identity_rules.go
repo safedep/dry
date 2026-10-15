@@ -50,7 +50,7 @@ var identityRules = map[packagev1.Ecosystem]identityRule{
 	// A git ref is case-sensitive (v4 and V4 are two tags), so these rules
 	// fold the name only.
 	packagev1.Ecosystem_ECOSYSTEM_GITHUB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
-	packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:       {version: 1, foldName: gitHostIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_GITHUB_ACTIONS:       {version: 1, foldName: gitHubActionIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_BITBUCKET_REPOSITORY: {version: 1, foldName: gitHostIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_GITLAB_REPOSITORY:    {version: 1, foldName: gitHostIdentityName},
 }

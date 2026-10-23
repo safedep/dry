@@ -31,6 +31,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/goark/go-cvss v1.6.7
 	github.com/goccy/go-yaml v1.19.2
+	github.com/godbus/dbus/v5 v5.1.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-github/v74 v74.0.0
@@ -155,7 +156,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-sql-driver/mysql v1.9.2 // indirect
 	github.com/goark/errs v1.3.2 // indirect
-	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/cel-go v0.28.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect

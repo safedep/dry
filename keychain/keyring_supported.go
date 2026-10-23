@@ -14,6 +14,10 @@ type keyringProvider struct {
 }
 
 func newKeyringProvider(appName string) (*keyringProvider, error) {
+	if err := sessionBusReachable(); err != nil {
+		return nil, err
+	}
+
 	// Verify the keyring is accessible by attempting a get
 	// for a key that almost certainly doesn't exist.
 	// If the keyring service itself is unavailable, this will

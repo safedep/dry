@@ -4,8 +4,8 @@ package keychain
 
 import (
 	"os"
-	"os/user"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,10 +29,9 @@ func fakeDBusLaunch(t *testing.T) string {
 // without dbus-launch, because the keychain never runs dbus-launch there.
 func skipWithSessionBus(t *testing.T) {
 	t.Helper()
-	u, err := user.Current()
-	require.NoError(t, err)
+	uid := strconv.Itoa(os.Getuid())
 	for _, name := range []string{"bus", "dbus-session"} {
-		if _, err := os.Stat(filepath.Join("/run/user", u.Uid, name)); err == nil {
+		if _, err := os.Stat(filepath.Join("/run/user", uid, name)); err == nil {
 			t.Skip("this host has a session bus, so the keychain never needs dbus-launch")
 		}
 	}

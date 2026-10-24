@@ -85,6 +85,14 @@ A warning is logged when the file provider is used.
 | Windows | Windows Credential Manager |
 | Others | File fallback only |
 
+On Linux the OS keychain needs a D-Bus session bus that already runs. `New` finds it with the bus
+discovery of godbus: `DBUS_SESSION_BUS_ADDRESS`, then `/run/user/<uid>/bus`, then
+`/run/user/<uid>/dbus-session`. Without one, `New` treats the OS keychain as unavailable and uses
+the file fallback when it is on. It does not start a bus. `dbus-launch` starts a daemon that
+outlives the process, so a tool that runs many times on a headless host would leak one daemon each
+time. A headless host that had a keyring only because each process started its own bus now uses
+the file fallback.
+
 ## Cloud Credential Store & Resolver
 
 The `cloud` package provides a keychain-backed credential store and resolver for SafeDep Cloud. Configure once, use across all SafeDep tools.

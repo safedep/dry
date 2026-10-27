@@ -21,9 +21,11 @@ var (
 // docker.io/library/ubuntu and evil/miner is docker.io/evil/miner. So two
 // spellings of one image give one value, and a store can match on it.
 //
-// A reference with no tag and no digest gets the tag latest, as the Docker CLI
-// resolves it, so evil/miner and evil/miner:latest give one value. The
-// registry, the repository and the digest are lowercased. The tag keeps its
+// A reference with no tag stays untagged. It names the whole repository, so a
+// consumer can match every tag by prefix. Adding latest is a pull-time choice
+// (TagNameOnly in distribution/reference), not part of the canonical name
+// (ParseNormalizedNamed), and would narrow the reference to one moving tag.
+// The registry, the repository and the digest are lowercased. The tag keeps its
 // case, because registries treat v1 and V1 as two tags. The tag and the digest
 // stay in the value: each one names a different image.
 func CanonicalContainerImage(ref string) (string, error) {
@@ -64,10 +66,6 @@ func CanonicalContainerImage(ref string) (string, error) {
 	}
 	if !validContainerRegistry(registry) || !containerPathPattern.MatchString(repo) {
 		return "", fmt.Errorf("invalid container image %q: want [registry/]repository[:tag][@sha256:digest]", in)
-	}
-
-	if tag == "" && digest == "" {
-		tag = "latest"
 	}
 
 	out := registry + "/" + repo

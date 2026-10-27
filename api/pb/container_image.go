@@ -2,12 +2,14 @@ package pb
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 )
 
 var (
 	containerRegistryPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$`)
+	containerIPv6RegistryRE  = regexp.MustCompile(`^\[([0-9a-f:.]+)\](:[0-9]{1,5})?$`)
 	containerPathPattern     = regexp.MustCompile(`^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$`)
 	containerTagPattern      = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
 	containerDigestPattern   = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
@@ -19,7 +21,9 @@ var (
 // docker.io/library/ubuntu and evil/miner is docker.io/evil/miner. So two
 // spellings of one image give one value, and a store can match on it.
 //
-// The registry, the repository and the digest are lowercased. The tag keeps its
+// A reference with no tag and no digest gets the tag latest, as the Docker CLI
+// resolves it, so evil/miner and evil/miner:latest give one value. The
+// registry, the repository and the digest are lowercased. The tag keeps its
 // case, because registries treat v1 and V1 as two tags. The tag and the digest
 // stay in the value: each one names a different image.
 func CanonicalContainerImage(ref string) (string, error) {
@@ -58,8 +62,12 @@ func CanonicalContainerImage(ref string) (string, error) {
 	if registry == "docker.io" && !strings.Contains(repo, "/") {
 		repo = "library/" + repo
 	}
-	if !containerRegistryPattern.MatchString(registry) || !containerPathPattern.MatchString(repo) {
+	if !validContainerRegistry(registry) || !containerPathPattern.MatchString(repo) {
 		return "", fmt.Errorf("invalid container image %q: want [registry/]repository[:tag][@sha256:digest]", in)
+	}
+
+	if tag == "" && digest == "" {
+		tag = "latest"
 	}
 
 	out := registry + "/" + repo
@@ -70,4 +78,14 @@ func CanonicalContainerImage(ref string) (string, error) {
 		out += "@" + digest
 	}
 	return out, nil
+}
+
+// validContainerRegistry accepts a host name, an IPv4 address or a bracketed
+// IPv6 address, each with an optional port, as the distribution reference
+// grammar does.
+func validContainerRegistry(registry string) bool {
+	if m := containerIPv6RegistryRE.FindStringSubmatch(registry); m != nil {
+		return net.ParseIP(m[1]) != nil
+	}
+	return containerRegistryPattern.MatchString(registry)
 }

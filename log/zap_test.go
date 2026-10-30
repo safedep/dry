@@ -77,9 +77,7 @@ func TestZapWrapper_ImplementsCanonicalEmitter(t *testing.T) {
 	_, ok := logger.(canonicalEmitter)
 	assert.True(t, ok, "zapLoggerWrapper must implement canonicalEmitter")
 
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = logger
+	defer swapGlobal(logger)()
 
 	_, end := BeginEvent(context.Background(), "test.event")
 	assert.NotPanics(t, func() { end() })
@@ -101,9 +99,7 @@ func TestZapWrapper_EmitCanonicalPreservesLevel(t *testing.T) {
 			core, recorded := observer.New(zapcore.DebugLevel)
 			wrapper := &zapLoggerWrapper{logger: zap.New(core)}
 
-			prev := globalLogger
-			defer func() { globalLogger = prev }()
-			globalLogger = wrapper
+			defer swapGlobal(wrapper)()
 
 			_, end := BeginEvent(context.Background(), "test.event", WithEventLevel(tc.level))
 			end()

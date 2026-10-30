@@ -35,17 +35,25 @@ type loggerSlot struct{ Logger }
 
 var globalLogger atomic.Pointer[loggerSlot]
 
-func init() {
-	globalLogger.Store(&loggerSlot{NewNopLogger()})
-}
+var nopGlobal Logger = &nopLogger{}
 
+// global returns the nop logger while the slot is empty, for example for a
+// log call from a package-level initializer that runs before any logger is
+// set.
 func global() Logger {
-	return globalLogger.Load().Logger
+	if slot := globalLogger.Load(); slot != nil {
+		return slot.Logger
+	}
+	return nopGlobal
 }
 
 // swapGlobal sets the global logger and returns a function that restores the
-// previous one.
+// previous one. A nil logger becomes the nop logger, as no log call can use
+// nil.
 func swapGlobal(logger Logger) (restore func()) {
+	if logger == nil {
+		logger = nopGlobal
+	}
 	prev := globalLogger.Swap(&loggerSlot{logger})
 	return func() { globalLogger.Store(prev) }
 }

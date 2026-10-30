@@ -314,3 +314,14 @@ func TestSetGlobal_ConcurrentWithLogging(t *testing.T) {
 	}
 	<-done
 }
+
+func TestGlobal_NopWhenSlotEmptyOrNil(t *testing.T) {
+	prev := globalLogger.Swap(nil)
+	defer globalLogger.Store(prev)
+
+	assert.NotPanics(t, func() { Infof("before any logger is set") })
+
+	restore := swapGlobal(nil)
+	defer restore()
+	assert.NotPanics(t, func() { Infof("after a nil swap") })
+}

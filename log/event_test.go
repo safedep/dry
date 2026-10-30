@@ -101,9 +101,7 @@ func TestEvent_ErrLevel_SetsErrorAttrAndGivenLevel(t *testing.T) {
 
 func TestEvent_ErrLevel_DoesNotForceError(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	ctx, end := BeginEvent(context.Background(), "http.request")
 	ErrLevel(ctx, errors.New("resource not found"), slog.LevelInfo)
@@ -128,9 +126,7 @@ func TestEvent_Helpers_NoopWhenNoEvent(t *testing.T) {
 
 func TestBeginEvent_EmitsOneRecordOnEnd(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	ctx, end := BeginEvent(context.Background(), "http.request",
 		WithEventAttrs(map[string]any{"http.method": "GET"}))
@@ -152,9 +148,7 @@ func TestBeginEvent_EmitsOneRecordOnEnd(t *testing.T) {
 
 func TestBeginEvent_PanicInHandlerIsCapturedAndRethrown(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	defer func() {
 		r := recover()
@@ -178,9 +172,7 @@ func TestBeginEvent_PanicInHandlerIsCapturedAndRethrown(t *testing.T) {
 
 func TestEndFunc_IsIdempotent(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	_, end := BeginEvent(context.Background(), "x")
 	end()
@@ -192,9 +184,7 @@ func TestEndFunc_IsIdempotent(t *testing.T) {
 
 func TestBeginEvent_NestedReturnsExistingAndMarksMisuse(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	outerCtx, endOuter := BeginEvent(context.Background(), "outer")
 	innerCtx, endInner := BeginEvent(outerCtx, "inner")
@@ -256,11 +246,10 @@ func TestBeginEvent_NilContextIsTreatedAsBackground(t *testing.T) {
 }
 
 func TestSetGlobal_IgnoresNil(t *testing.T) {
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
+	defer swapGlobal(global())()
 
 	SetGlobal(nil)
-	assert.NotNil(t, globalLogger, "SetGlobal(nil) must not leave the global in a nil state")
+	assert.NotNil(t, global(), "SetGlobal(nil) must not leave the global in a nil state")
 
 	// Subsequent calls must not panic.
 	assert.NotPanics(t, func() { Infof("still works") })
@@ -268,9 +257,7 @@ func TestSetGlobal_IgnoresNil(t *testing.T) {
 
 func TestSetEventName_OverridesCanonicalLine(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	ctx, end := BeginEvent(context.Background(), "http.request")
 	SetEventName(ctx, "controltower.v1.PingService/Ping")
@@ -307,4 +294,23 @@ func TestEmitCanonical_NilEventIsSafe(t *testing.T) {
 
 	slogW := &slogLoggerWrapper{logger: slog.Default()}
 	assert.NotPanics(t, func() { slogW.emitCanonical(nil) })
+}
+
+// A goroutine can log while another goroutine sets the logger. Run with
+// -race: the race detector reports a plain global, and a torn read of it
+// can crash the process.
+func TestSetGlobal_ConcurrentWithLogging(t *testing.T) {
+	defer swapGlobal(global())()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 1000 {
+			Debugf("from another goroutine")
+		}
+	}()
+	for range 1000 {
+		SetGlobal(NewNopLogger())
+	}
+	<-done
 }

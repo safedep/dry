@@ -138,6 +138,12 @@ runner can be slow at random. `pbidentity` parses the version of a
 package once, and caches the parsed bound versions of the ranges, because a parse of a PyPI version
 costs microseconds.
 
+`BenchmarkDecode` in `policy/project` measures `Decode` of a resolved policy with 10,000 package rules:
+237 ms, 25 MB and 700,000 allocations, on an Intel Xeon at 2.8 GHz. The cost grows with the number of
+rules, about 24 µs for each rule, so 100 rules take about 2.4 ms. Two thirds of it is protovalidate: the
+CEL rules of the contract run on each package rule. A tool that decodes before each command pays this
+each time.
+
 ## `policy/project`
 
 - `Decode` keeps unknown fields (`proto.Unmarshal`) and reports each one by its contract path, as

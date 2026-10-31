@@ -399,6 +399,21 @@ func TestFailedCapabilityHasNoSources(t *testing.T) {
 	assert.NotContains(t, next.Sources, key, "the previous policy had no source for it")
 }
 
+func TestRestoreTakesASourceOnlyWithItsValue(t *testing.T) {
+	key := SourceKey{Path: "package_admission.cooldown.min_age"}
+	prev := decode(t, newPolicy())
+	delete(prev.Values, key.Path)
+	require.Contains(t, prev.Sources, key)
+
+	bad := newPolicy()
+	bad.GetSpec().GetPackageAdmission().GetCooldown().SetMinAge(durationpb.New(-time.Hour))
+	next := decode(t, bad)
+
+	assert.Equal(t, []string{"package_admission"}, next.Restore(prev))
+	assert.NotContains(t, next.Values, key.Path)
+	assert.NotContains(t, next.Sources, key, "a source without its value names a layer for nothing")
+}
+
 func rule(id string, effect corev1.Effect, purl string, scopes ...corev1.TrustScope) *corev1.PackageRule {
 	return corev1.PackageRule_builder{
 		RuleId:    id,

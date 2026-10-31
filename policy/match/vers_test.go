@@ -1,6 +1,8 @@
 package match
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -160,4 +162,17 @@ func TestRangeStringKeepsTheComparator(t *testing.T) {
 			assert.Equal(t, rng, again)
 		})
 	}
+}
+
+func TestParseVersLimitsConstraints(t *testing.T) {
+	versions := make([]string, maxVersConstraints+1)
+	for i := range versions {
+		versions[i] = fmt.Sprintf("1.0.%d", i)
+	}
+
+	_, err := ParseVers("vers:npm/" + strings.Join(versions[:maxVersConstraints], "|"))
+	require.NoError(t, err)
+
+	_, err = ParseVers("vers:npm/" + strings.Join(versions, "|"))
+	assert.ErrorContains(t, err, "constraints, more than")
 }

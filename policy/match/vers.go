@@ -145,6 +145,13 @@ func ParseVers(s string) (Range, error) {
 		return r, nil
 	}
 
+	// The order check compares pairs of constraints, so a range with no
+	// limit would make Validate and NewIndex slow. The contract caps vers at
+	// 512 characters, which holds fewer constraints than this limit.
+	if n := strings.Count(list, "|") + 1; n > maxVersConstraints {
+		return Range{}, fmt.Errorf("vers %q has %d constraints, more than %d", s, n, maxVersConstraints)
+	}
+
 	seen := map[string]bool{}
 	for part := range strings.SplitSeq(list, "|") {
 		c, err := parseConstraint(part)
@@ -259,6 +266,9 @@ func (r Range) String() string {
 func escapeVersion(version string) string {
 	return strings.ReplaceAll(url.PathEscape(version), "=", "%3D")
 }
+
+// maxVersConstraints limits the constraints of one vers range.
+const maxVersConstraints = 256
 
 // errConflict means that a "=" and a "!=" constraint name one version.
 var errConflict = errors.New("vers has a \"=\" and a \"!=\" constraint of one version")

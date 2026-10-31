@@ -202,8 +202,10 @@ func (p *Projection) Restore(prev *Projection) []string {
 			}
 		}
 
+		// A source names the layer of a value, so it comes back only with
+		// the value that it names.
 		for key, s := range prev.Sources {
-			if strings.HasPrefix(key.Path, prefix) {
+			if _, ok := prev.Values[key.Path]; ok && strings.HasPrefix(key.Path, prefix) {
 				p.Sources[key] = s
 			}
 		}

@@ -8,7 +8,8 @@
 // its config loader needs no import of the API contract.
 //
 // The projection rules fail closed:
-//   - Only a header, tenant or subject failure rejects the whole document.
+//   - Only bytes that do not decode, a document with no spec, or a header,
+//     tenant or subject failure reject the whole document.
 //   - An unknown field is reported by its contract path, with the field
 //     number for the unknown part, as in "package_admission.7".
 //   - An unknown value of an ordered enum becomes the strictest value that

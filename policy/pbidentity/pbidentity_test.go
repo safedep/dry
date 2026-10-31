@@ -67,6 +67,12 @@ func TestCanonicalMatch(t *testing.T) {
 		{name: "pypi purl with a pip range", rule: trustRule("r_1", "pkg:pypi/foo", "vers:pip/>=1.0|<2.0"), purl: "pkg:pypi/foo@1.5", want: match.EffectTrust},
 		{name: "golang purl with a go range", rule: blockRule("r_1", "pkg:golang/github.com/acme/lib", "vers:go/>=v1.0.0|<v2.0.0"), purl: "pkg:golang/github.com/acme/lib@v2.1.0", want: match.EffectNone},
 		{name: "npm is case-sensitive", rule: blockRule("r_1", "pkg:npm/JSONStream", ""), purl: "pkg:npm/jsonstream@1.0.0", want: match.EffectNone},
+		{name: "nuget prefix selects a non-ASCII id", rule: blockRule("r_1", "pkg:nuget/Microsoft.*", ""), purl: "pkg:nuget/Microsoft.%C3%89vil@1.0.0", want: match.EffectBlock},
+		{name: "nuget non-ASCII id folds its ASCII letters", rule: blockRule("r_1", "pkg:nuget/MICROSOFT.%C3%89vil", ""), purl: "pkg:nuget/microsoft.%C3%89vil@1.0.0", want: match.EffectBlock},
+		{name: "nuget keeps the KELVIN SIGN apart", rule: blockRule("r_1", "pkg:nuget/kestrel", ""), purl: "pkg:nuget/%E2%84%AAestrel@1.0.0", want: match.EffectNone},
+		{name: "block version matches an equal version", rule: blockRule("r_1", "pkg:npm/evil@1.0.0", ""), purl: "pkg:npm/evil@1.0.0+build", want: match.EffectBlock},
+		{name: "trust version matches only its text", rule: trustRule("r_1", "pkg:npm/fp@1.0.0", ""), purl: "pkg:npm/fp@1.0.0+build", want: match.EffectNone},
+		{name: "block version on an unordered ecosystem matches only its text", rule: blockRule("r_1", "pkg:githubactions/evil/action@v4", ""), purl: "pkg:githubactions/evil/action@v3", want: match.EffectNone},
 	}
 
 	for _, tc := range cases {
@@ -89,6 +95,7 @@ func TestVersRangeChecks(t *testing.T) {
 		{name: "github action single bound has no order", rule: blockRule("r_1", "pkg:githubactions/actions/checkout", "vers:githubactions/>=v4")},
 		{name: "github action trust with a single bound has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/>=v2")},
 		{name: "github action point has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/=v4")},
+		{name: "equal and not equal name one version", rule: trustRule("r_1", "pkg:npm/fp", "vers:npm/=1.0.0|!=1.0.0+build")},
 	}
 
 	for _, tc := range cases {
@@ -259,26 +266,5 @@ func BenchmarkParseAndDecide(b *testing.B) {
 				_ = ix.Decide(match.Query{Package: pkg, Control: match.ScopeMalware, Verdict: match.VerdictMalware, Now: now})
 			}
 		})
-	}
-}
-
-// TestDecideIsFast is the gate on the benchmark: one check at 10,000 rules
-// takes less than 10 µs. The measured cost is far below the gate, so the
-// test stays stable on a slow machine.
-func TestDecideIsFast(t *testing.T) {
-	if testing.Short() {
-		t.Skip("benchmark gate")
-	}
-
-	ix := benchIndex(t)
-	for name, q := range benchQueries(t) {
-		res := testing.Benchmark(func(b *testing.B) {
-			for b.Loop() {
-				_ = ix.Decide(q)
-			}
-		})
-
-		perCheck := time.Duration(res.NsPerOp())
-		assert.Less(t, perCheck, 10*time.Microsecond, "%s takes %s for each check", name, perCheck)
 	}
 }

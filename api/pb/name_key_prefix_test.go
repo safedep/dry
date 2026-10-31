@@ -104,14 +104,23 @@ func TestNameKeyPrefixScopedNpmAt(t *testing.T) {
 	assert.True(t, strings.HasPrefix(pv.NameKey(), prefix))
 }
 
+func TestNameKeyPrefixNuGetNonASCII(t *testing.T) {
+	prefix, err := NameKeyPrefix("pkg:nuget/Microsoft.*")
+	require.NoError(t, err)
+
+	pv, err := NewPackageVersionFromPurl("pkg:nuget/Microsoft.%C3%89vil")
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(pv.NameKey(), prefix), "%q does not start with %q", pv.NameKey(), prefix)
+}
+
 // FuzzNameKeyPrefix checks that NameKeyPrefix never panics, and that a
 // package whose ASCII name continues the prefix has a NameKey that starts
 // with the result.
 //
-// The property does not hold for a non-ASCII name: the ASCII-only name folds
-// keep such a name raw, and fold the ASCII part before the "*". So
-// "pkg:pypi/foo.*" does not select a raw "foo.\u00e9". docs/policy.md states
-// this gap.
+// The property does not hold for a non-ASCII name under an ecosystem whose
+// fold keeps such a name raw, as "pkg:pypi/foo.*" and "foo.\u00e9". Those
+// registries accept only ASCII names. NuGet accepts non-ASCII ids, and
+// TestNameKeyPrefixNuGetNonASCII covers it.
 func FuzzNameKeyPrefix(f *testing.F) {
 	for _, seed := range []string{
 		"pkg:npm/@acme/*",

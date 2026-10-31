@@ -253,6 +253,9 @@ func (r Range) String() string {
 	return b.String()
 }
 
+// errConflict means that a "=" and a "!=" constraint name one version.
+var errConflict = errors.New("vers has a \"=\" and a \"!=\" constraint of one version")
+
 // errUnordered means that the bound constraints are not in the order of the
 // versions, as the vers specification requires.
 var errUnordered = errors.New("vers constraints are not in version order")
@@ -281,15 +284,29 @@ func (r Range) Contains(p Package) (bool, error) {
 		return true, nil
 	}
 
+	// Two points can name one version in two texts, as "=1.0.0|!=1.0.0+build"
+	// does under npm. When they disagree, the written order must not decide,
+	// so the check fails: a block entry matches and a trust entry does not.
+	var matched, in bool
 	for _, c := range r.points {
 		cmp, err := p.CompareVersion(c.version)
 		if err != nil {
 			return false, err
 		}
 
-		if cmp == 0 {
-			return c.comp == compEqual, nil
+		if cmp != 0 {
+			continue
 		}
+
+		eq := c.comp == compEqual
+		if matched && eq != in {
+			return false, errConflict
+		}
+		matched, in = true, eq
+	}
+
+	if matched {
+		return in, nil
 	}
 
 	if len(r.bounds) == 0 {
@@ -365,14 +382,15 @@ func (r Range) boundsContain(cmps []int) bool {
 	return false
 }
 
-// checkBoundOrder checks that every version of the range can be compared,
-// and that the bounds go up in version, under the order of the ecosystem of
+// checkOrder checks that every version of the range can be compared, that no
+// "=" and "!=" constraint name one version, and that the bounds go up in
+// version, under the order of the ecosystem of
 // the selector. It builds a package of the selector at each version through
 // the identity. The order depends on the ecosystem only, so a prefix selector
 // gets the name "x" under its prefix. A version that cannot be compared, also
 // in a range with one constraint, would fail at decision time and make a
 // block match every version, so the range is invalid here.
-func (r Range) checkBoundOrder(identity Identity, selector string) error {
+func (r Range) checkOrder(identity Identity, selector string) error {
 	for _, c := range append(append([]constraint{}, r.points...), r.bounds...) {
 		pkg, err := identity.Package(purlAt(selector, c.version))
 		if err != nil {
@@ -381,6 +399,28 @@ func (r Range) checkBoundOrder(identity Identity, selector string) error {
 
 		if _, err := pkg.CompareVersion(c.version); err != nil {
 			return fmt.Errorf("%w: version %q: %w", errUnordered, c.version, err)
+		}
+	}
+
+	for i, a := range r.points {
+		pkg, err := identity.Package(purlAt(selector, a.version))
+		if err != nil {
+			return fmt.Errorf("version %q: %w", a.version, err)
+		}
+
+		for _, b := range r.points[i+1:] {
+			if a.comp == b.comp {
+				continue
+			}
+
+			cmp, err := pkg.CompareVersion(b.version)
+			if err != nil {
+				return fmt.Errorf("version %q: %w", b.version, err)
+			}
+
+			if cmp == 0 {
+				return fmt.Errorf("%w: %q and %q", errConflict, a.version, b.version)
+			}
 		}
 	}
 

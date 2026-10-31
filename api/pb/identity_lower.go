@@ -15,3 +15,21 @@ func asciiLowerIdentityName(name string) string {
 	}
 	return strings.ToLower(name)
 }
+
+// nugetIdentityName folds the ASCII letters of a NuGet id and keeps every
+// other character as it is. NuGet ids can hold non-ASCII letters, and a fold
+// of the whole name only when it is ASCII would keep "Microsoft.Évil" raw, so
+// a block on "pkg:nuget/Microsoft.*" would not select it. NuGet compares ids
+// with OrdinalIgnoreCase, so this fold merges only ids that NuGet merges too.
+// A Unicode fold would merge the KELVIN SIGN with "k", which NuGet keeps apart.
+func nugetIdentityName(name string) string {
+	// A byte loop, not strings.Map: strings.Map turns each invalid UTF-8 byte
+	// into U+FFFD, and so merges two ids that differ in such a byte.
+	b := []byte(name)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	return string(b)
+}

@@ -119,6 +119,13 @@ type Rule struct {
 	Origin Origin
 }
 
+// clone copies the scopes too. A caller that changes the scopes of a rule
+// from Rules or Decide must not change the later decisions of the index.
+func (r Rule) clone() Rule {
+	r.Scopes = slices.Clone(r.Scopes)
+	return r
+}
+
 // BlockRuleIDNone is the id of a block entry that has no id. A block entry
 // with no id still applies, because a block that a tool drops is a block
 // that does not apply.

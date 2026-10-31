@@ -469,3 +469,15 @@ func TestDecideReturnsTheRule(t *testing.T) {
 	got := ix.Decide(Query{Package: mustPackage("pkg:npm/evil@1.0.0"), Control: ScopeMalware, Now: testNow})
 	assert.Equal(t, r, got.Rule)
 }
+
+func TestDecideAndRulesCopyTheScopes(t *testing.T) {
+	ix, dropped := NewIndex([]Rule{trust("r_1", "pkg:npm/fp", ScopeMalware)}, testIdentity{})
+	require.Empty(t, dropped)
+
+	q := Query{Package: mustPackage("pkg:npm/fp@1.0.0"), Control: ScopeMalware, Verdict: VerdictMalware, Now: testNow}
+	ix.Decide(q).Rule.Scopes[0] = ScopeCooldown
+	ix.Rules()[0].Scopes[0] = ScopeCooldown
+
+	assert.Equal(t, EffectTrust, ix.Decide(q).Effect)
+	assert.Equal(t, []Scope{ScopeMalware}, ix.Rules()[0].Scopes)
+}

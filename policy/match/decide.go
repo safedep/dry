@@ -58,9 +58,17 @@ type Decision struct {
 //  4. Otherwise: EffectNone.
 //
 // A rule matches while the time of the query is before its expiry. When two
-// rules of one effect match, the rule with the lower id decides. A version
-// that the identity cannot order, or a package with no version, matches a
-// block entry with a version or a range, and never a trust entry with one.
+// rules of one effect match, the rule with the lower id decides.
+//
+// The version checks fail closed:
+//   - A package with no version matches a block entry with a version or a
+//     range, and never a trust entry with one.
+//   - A version that the identity cannot order matches a block entry with a
+//     range, and never a trust entry with one.
+//   - A block entry with one version matches the same version text, and a
+//     version that the identity orders equal to it, such as 1.0.0+build for
+//     1.0.0 under npm. A trust entry with one version matches only the same
+//     text.
 func (ix *Index) Decide(q Query) Decision {
 	if ix == nil || q.Package == nil {
 		return Decision{}
@@ -89,11 +97,11 @@ func (ix *Index) Decide(q Query) Decision {
 
 	switch {
 	case block != nil:
-		return Decision{Effect: EffectBlock, Rule: block.rule}
+		return Decision{Effect: EffectBlock, Rule: block.rule.clone()}
 	case q.Verdict == VerdictVerifiedMalware:
 		return Decision{}
 	case trust != nil:
-		return Decision{Effect: EffectTrust, Rule: trust.rule}
+		return Decision{Effect: EffectTrust, Rule: trust.rule.clone()}
 	default:
 		return Decision{}
 	}
@@ -143,7 +151,18 @@ func (e *entry) matchesVersion(p Package) bool {
 		if p.Version() == "" {
 			return block
 		}
-		return p.Version() == e.version
+		if p.Version() == e.version {
+			return true
+		}
+		if !block {
+			return false
+		}
+
+		// An error does not make the block match here. An ecosystem with no
+		// version order, such as GitHub Actions, fails every comparison, and
+		// a block on v4 would then block v3 too.
+		cmp, err := p.CompareVersion(e.version)
+		return err == nil && cmp == 0
 
 	case e.rng != nil:
 		ok, err := e.rng.Contains(p)

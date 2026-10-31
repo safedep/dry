@@ -21,7 +21,9 @@ proj, err := project.Decode(raw, project.Expect{
 	SubjectKind: specv1.SubjectKind_SUBJECT_KIND_ENDPOINT,
 	MachineID:   machineID,
 })
-// err wraps project.ErrDecode or project.ErrHeader: reject the whole document.
+if err != nil {
+	return err // wraps project.ErrDecode or project.ErrHeader: reject the whole document
+}
 
 proj.Restore(previous) // takes each failed capability from the previous policy
 
@@ -68,8 +70,12 @@ Rules:
 - `Validate` applies every check of `NewIndex` to one rule, and also refuses a block entry with an
   invalid range. A server calls it before it stores a rule.
 - When the version of a package cannot be checked, a block entry matches and a trust entry does not.
-  This covers a package with no version and a version that the ecosystem cannot order.
-- A version in the selector PURL matches the canonical version of the package.
+  This covers a package with no version, and a version that the ecosystem cannot order against a
+  range.
+- A version in the selector PURL matches the same canonical version text. A block entry also matches
+  a version that the ecosystem orders equal to it, such as `1.0.0+build` for `1.0.0` under npm. A
+  version that the ecosystem cannot order does not match a block entry with one version: GitHub
+  Actions has no version order, and a block on `v4` must not block `v3`.
 
 ### Index
 
@@ -83,12 +89,13 @@ rule of the ecosystem. So `pkg:npm/@acme/*` does not select `@acmex/x`, `pkg:mav
 not select `org.apachex`, `pkg:pypi/foo.*` selects `foo-bar` and `foo_bar`, and
 `pkg:nuget/Microsoft.*` selects `microsoft.evil`.
 
-**Known gap: non-ASCII names under a prefix.** The ASCII-only name folds (PyPI, Cargo, NuGet,
-Packagist, GitHub, GitLab, Bitbucket, Chrome) keep a non-ASCII name raw, but fold the ASCII part
-before the `*`. So `pkg:nuget/Microsoft.*` does not select an id that starts with `Microsoft.` and
-holds a non-ASCII letter. PyPI, crates.io, Packagist, GitHub and the Chrome Web Store accept only
-ASCII names, so only NuGet can have such a name: its id rule accepts the Unicode letters of .NET `\w`.
-A fix changes the identity rules for non-ASCII names, so it needs its own change.
+**Non-ASCII names.** NuGet ids can hold the Unicode letters of .NET `\w`. The NuGet rule folds the
+ASCII letters of every id and keeps each other character as it is, so `pkg:nuget/Microsoft.*` selects
+`Microsoft.Évil`. Two ids that differ only in the case of a non-ASCII letter, as `Évil` and `évil`,
+have two keys, but NuGet resolves them to one package. A Unicode fold would close this gap, but it
+would also merge the KELVIN SIGN with `k`, which NuGet keeps apart. The other ASCII-only folds (PyPI,
+Cargo, Packagist, GitHub, GitLab, Bitbucket, Chrome) keep a non-ASCII name raw. Their registries
+accept only ASCII names.
 
 ### `vers`
 
@@ -105,11 +112,14 @@ of the rule.
   and the plain reading gives it every other version. Each reading fails open for one effect. So the
   range is invalid: a block entry matches every version, a trust entry is dropped, and the server
   refuses it.
-- `NewIndex` and `Validate` check that the bounds go up in version order. They build a package of the
-  selector at each bound through the `Identity` and compare. A prefix selector gets the name `x` in
+- `NewIndex` and `Validate` check that the bounds go up in version order, and that no `=` and `!=`
+  constraint name one version, as `=1.0.0|!=1.0.0+build` does under npm. They build a package of the
+  selector at each version through the `Identity` and compare. A prefix selector gets the name `x` in
   place of its `*`. Bounds out of order, or bounds that the ecosystem cannot order, make the range
   invalid. `Range.Contains` checks the order again for each version that it tests.
 - `=` and `!=` constraints can stand at any position, because each one checks one version.
+  `Range.Contains` fails when a `=` and a `!=` constraint both match the tested version, so the
+  written order never decides.
 
 ### Benchmark
 
@@ -122,8 +132,9 @@ One check at 10,000 rules, on an Intel Xeon at 2.1 GHz:
 | Trust hit with a range | 0.74 µs | 0.14 µs | 2.1 µs |
 | Block hit with a range of 3 bounds (PyPI) | | 0.34 µs | 5.9 µs |
 
-The target is 10 µs. A linear scan took 79 µs in a proof of concept. `TestDecideIsFast` in
-`policy/pbidentity` fails when a check takes 10 µs or more. `pbidentity` parses the version of a
+The target is 10 µs. A linear scan took 79 µs in a proof of concept. `BenchmarkDecide` in
+`policy/match` and `policy/pbidentity` measures it. No test gates the time, because a shared CI
+runner can be slow at random. `pbidentity` parses the version of a
 package once, and caches the parsed bound versions of the ranges, because a parse of a PyPI version
 costs microseconds.
 

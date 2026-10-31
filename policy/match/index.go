@@ -179,7 +179,7 @@ func compileRange(r Rule, identity Identity, version string) (Range, error) {
 		return Range{}, fmt.Errorf("%w: vers type %q is not the ecosystem of the purl type %q", ErrInvalidVers, rng.Scheme, typ)
 	}
 
-	if err := rng.checkBoundOrder(identity, r.PURL); err != nil {
+	if err := rng.checkOrder(identity, r.PURL); err != nil {
 		return Range{}, fmt.Errorf("%w: %w", ErrInvalidVers, err)
 	}
 
@@ -215,7 +215,11 @@ func sameEcosystem(identity Identity, a, b string) bool {
 // Rules returns the rules in the index, in normalized form and in the order
 // of their ids. A tool counts or lists them with it.
 func (ix *Index) Rules() []Rule {
-	return slices.Clone(ix.rules)
+	rules := make([]Rule, len(ix.rules))
+	for i, r := range ix.rules {
+		rules[i] = r.clone()
+	}
+	return rules
 }
 
 func compareEntries(a, b *entry) int {

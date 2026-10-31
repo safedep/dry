@@ -62,6 +62,7 @@ func TestValidate(t *testing.T) {
 		{name: "block with bounds out of order", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:npm/>=2.0.0|<1.0.0"), wantErr: ErrInvalidVers},
 		{name: "prefix block with bounds out of order", rule: withVers(block("r_1", "pkg:npm/@acme/*"), "vers:npm/>=2.0.0|<1.0.0"), wantErr: ErrInvalidVers},
 		{name: "block with a vers of another type", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:pypi/>=1.0.0"), wantErr: ErrInvalidVers},
+		{name: "trust with an equal and a not equal of one version", rule: withVers(trust("r_1", "pkg:npm/fp", ScopeMalware), "vers:npm/=1.0|!=1.0.0"), wantErr: ErrInvalidVers},
 		{name: "block with a version and a vers", rule: withVers(block("r_1", "pkg:npm/evil@1.0.0"), "vers:npm/>=1.0.0"), wantErr: ErrInvalidVers},
 		{name: "block the identity cannot parse", rule: block("r_1", "pkg:unknown/x"), wantErr: ErrInvalidSelector},
 		{name: "trust with no expiry", rule: withExpiry(trust("r_1", "pkg:npm/fp", ScopeMalware), time.Time{}), wantErr: ErrNoExpiry},

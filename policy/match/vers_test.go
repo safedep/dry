@@ -93,6 +93,9 @@ func TestRangeContains(t *testing.T) {
 		{name: "version does not compare", vers: "vers:npm/>=1.0.0", version: "beta", wantErr: true},
 		{name: "no version", vers: "vers:npm/>=1.0.0", version: "", wantErr: true},
 		{name: "no version with the wildcard", vers: "vers:npm/*", version: "", wantErr: true},
+		{name: "equal then not equal of one version", vers: "vers:npm/=1.0|!=1.0.0", version: "1.0.0", wantErr: true},
+		{name: "not equal then equal of one version", vers: "vers:npm/!=1.0.0|=1.0", version: "1.0.0", wantErr: true},
+		{name: "two equal points of one version", vers: "vers:npm/=1.0|=1.0.0", version: "1.0.0", want: true},
 	}
 
 	for _, tc := range cases {

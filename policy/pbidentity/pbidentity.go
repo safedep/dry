@@ -86,6 +86,12 @@ func (p *pbPackage) CompareVersion(v string) (int, error) {
 // the limit, a parse is not cached and the result stays the same.
 const maxCachedVersions = 1 << 16
 
+// maxCachedVersionLength keeps the memory of the cache small. The contract
+// lets a bound have 512 characters, and the cache never drops an entry, so
+// long texts would hold tens of megabytes in a process that runs for weeks.
+// A real version is much shorter, so a longer text is parsed each time.
+const maxCachedVersionLength = 64
+
 type parsedVersion struct {
 	version pb.OrderedVersion
 	err     error
@@ -116,7 +122,7 @@ func (c *versionCache) parse(ecosystem packagev1.Ecosystem, v string) (pb.Ordere
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.size < maxCachedVersions {
+	if c.size < maxCachedVersions && len(v) <= maxCachedVersionLength {
 		byVersion := c.versions[ecosystem]
 		if byVersion == nil {
 			byVersion = map[string]parsedVersion{}

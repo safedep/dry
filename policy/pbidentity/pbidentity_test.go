@@ -2,6 +2,7 @@ package pbidentity
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -129,6 +130,20 @@ func TestVersionCacheIsBounded(t *testing.T) {
 
 	_, err := cache.parse(npm, "")
 	assert.Error(t, err, "an error is not cached past the bound")
+}
+
+func TestVersionCacheSkipsALongVersion(t *testing.T) {
+	cache := &versionCache{versions: map[packagev1.Ecosystem]map[string]parsedVersion{}}
+	npm := packagev1.Ecosystem_ECOSYSTEM_NPM
+
+	long := "1.0.0-" + strings.Repeat("a", maxCachedVersionLength)
+	_, err := cache.parse(npm, long)
+	require.NoError(t, err)
+	assert.Zero(t, cache.size)
+
+	_, err = cache.parse(npm, "1.0.0")
+	require.NoError(t, err)
+	assert.Equal(t, 1, cache.size)
 }
 
 func TestVersionCacheIsSafeForConcurrentUse(t *testing.T) {

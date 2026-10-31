@@ -69,6 +69,9 @@ func TestNewUsesOnlyTheAlphabet(t *testing.T) {
 	for r := range seen {
 		assert.Contains(t, Alphabet, string(r))
 	}
+	for _, r := range Alphabet {
+		assert.True(t, seen[r], "character %q is never generated", r)
+	}
 	for _, r := range "ilou" {
 		assert.False(t, seen[r], "character %q is not in the alphabet", r)
 	}

@@ -57,24 +57,17 @@ var versionParsers = map[packagev1.Ecosystem]versionParser{
 // gets an error must not claim an order, for example an upgrade or a
 // downgrade.
 func CompareVersions(ecosystem packagev1.Ecosystem, a, b string) (int, error) {
-	parse, ok := versionParsers[ecosystem]
-	if !ok {
-		return 0, fmt.Errorf("%w: %s", ErrNoVersionOrder, ecosystem)
-	}
-	if a == "" || b == "" {
-		return 0, errors.New("cannot order an empty version")
+	va, err := ParseVersion(ecosystem, a)
+	if err != nil {
+		return 0, err
 	}
 
-	va, err := parse(a)
+	vb, err := ParseVersion(ecosystem, b)
 	if err != nil {
-		return 0, fmt.Errorf("parse %s version %q: %w", ecosystem, a, err)
+		return 0, err
 	}
 
-	order, err := va.CompareStr(b)
-	if err != nil {
-		return 0, fmt.Errorf("parse %s version %q: %w", ecosystem, b, err)
-	}
-	return order, nil
+	return va.Compare(vb)
 }
 
 // HasVersionOrder reports whether the ecosystem has a version order.

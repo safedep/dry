@@ -31,6 +31,7 @@ func TestNameKeyPrefixSelects(t *testing.T) {
 		{name: "maven group", prefix: "pkg:maven/org.apache/*", purl: "pkg:maven/org.apache/x", selects: true},
 		{name: "maven group is not a subgroup", prefix: "pkg:maven/org.apache/*", purl: "pkg:maven/org.apache.commons/x"},
 		{name: "nuget dot", prefix: "pkg:nuget/Microsoft.*", purl: "pkg:nuget/Microsoft.Extensions.Logging", selects: true},
+		{name: "nuget folds case", prefix: "pkg:nuget/Microsoft.*", purl: "pkg:nuget/microsoft.evil@1.0.0", selects: true},
 		{name: "nuget dot boundary", prefix: "pkg:nuget/Microsoft.*", purl: "pkg:nuget/MicrosoftX.Y"},
 		{name: "pypi folds dot to hyphen", prefix: "pkg:pypi/foo.*", purl: "pkg:pypi/foo-bar", selects: true},
 		{name: "pypi folds dot to underscore", prefix: "pkg:pypi/foo.*", purl: "pkg:pypi/foo_bar", selects: true},
@@ -101,4 +102,53 @@ func TestNameKeyPrefixScopedNpmAt(t *testing.T) {
 	pv, err := NewPackageVersionFromPurl("pkg:npm/@acme.tools/lib")
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(pv.NameKey(), prefix))
+}
+
+// FuzzNameKeyPrefix checks that NameKeyPrefix never panics, and that a
+// package whose ASCII name continues the prefix has a NameKey that starts
+// with the result.
+//
+// The property does not hold for a non-ASCII name: the ASCII-only name folds
+// keep such a name raw, and fold the ASCII part before the "*". So
+// "pkg:pypi/foo.*" does not select a raw "foo.\u00e9". docs/policy.md states
+// this gap.
+func FuzzNameKeyPrefix(f *testing.F) {
+	for _, seed := range []string{
+		"pkg:npm/@acme/*",
+		"pkg:npm/*",
+		"pkg:maven/org.apache.*",
+		"pkg:maven/org.apache/*",
+		"pkg:pypi/Foo.*",
+		"pkg:nuget/Microsoft.*",
+		"pkg:githubactions/Actions/Cache/*",
+		"pkg:golang/github.com/acme/*",
+		"pkg:composer/Acme/*",
+		"pkg:npm/%40acme/*",
+		"pkg:npm/x@1.*",
+		"pkg:pypi/acme/*",
+	} {
+		f.Add(seed, "lib")
+	}
+
+	f.Fuzz(func(t *testing.T, purl, rest string) {
+		prefix, err := NameKeyPrefix(purl)
+		if err != nil {
+			return
+		}
+
+		// A rest with a separator, an escape or a version marker would
+		// change how the PURL splits, so the property holds only for a plain
+		// rest.
+		if rest == "" || strings.ContainsAny(rest, "/@?#%*") || !isASCII(purl+rest) {
+			return
+		}
+
+		pv, err := NewPackageVersionFromPurl(strings.TrimSuffix(purl, "*") + rest)
+		if err != nil || pv.RawVersion() != "" {
+			return
+		}
+
+		assert.True(t, strings.HasPrefix(pv.NameKey(), prefix),
+			"purl %q, rest %q: name key %q does not start with %q", purl, rest, pv.NameKey(), prefix)
+	})
 }

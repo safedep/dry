@@ -134,6 +134,14 @@ func TestDecodeUnsetField(t *testing.T) {
 	assert.Empty(t, p.Values)
 }
 
+func TestDecodeWithNoSpec(t *testing.T) {
+	policy := newPolicy()
+	policy.ClearSpec()
+
+	_, err := Decode(encode(t, policy), endpointExpect)
+	assert.ErrorIs(t, err, ErrDecode)
+}
+
 func TestDecodeNotAPolicy(t *testing.T) {
 	_, err := Decode([]byte{0xff, 0xff, 0xff}, endpointExpect)
 	assert.ErrorIs(t, err, ErrDecode)
@@ -193,6 +201,12 @@ func TestHeaderCheck(t *testing.T) {
 		{
 			name:    "no subject",
 			change:  func(p *specv1.ResolvedPolicy) { p.GetHeader().ClearSubject() },
+			expect:  endpointExpect,
+			wantErr: true,
+		},
+		{
+			name:    "no issued_at",
+			change:  func(p *specv1.ResolvedPolicy) { p.GetHeader().ClearIssuedAt() },
 			expect:  endpointExpect,
 			wantErr: true,
 		},
@@ -321,6 +335,21 @@ func TestInvalidValueFailsItsCapability(t *testing.T) {
 	assert.Equal(t, "package_admission.cooldown.min_age", p.Exceptions[0].Path)
 }
 
+func TestZeroEnumFailsItsCapability(t *testing.T) {
+	policy := newPolicy()
+	policy.GetSpec().SetScanGate(scangatev1.ScanGate_builder{FailOn: scangatev1.Severity_SEVERITY_UNSPECIFIED.Enum()}.Build())
+
+	p := decode(t, policy)
+
+	assert.Equal(t, []string{"scan_gate"}, p.FailedCapabilities)
+	assert.NotContains(t, p.Values, "scan_gate.fail_on")
+	assert.Equal(t, 72*time.Hour, p.Values["package_admission.cooldown.min_age"], "the other capability applies")
+
+	require.Len(t, p.Exceptions, 1)
+	assert.Equal(t, ExceptionInvalidValue, p.Exceptions[0].Kind)
+	assert.Equal(t, "scan_gate.fail_on", p.Exceptions[0].Path)
+}
+
 func TestRestore(t *testing.T) {
 	valid := decode(t, newPolicy())
 
@@ -384,13 +413,28 @@ func TestPackageRules(t *testing.T) {
 		addUnknown(r.GetSelector(), 9)
 		return r
 	}
+	unknownInExpiry := func(r *corev1.PackageRule) *corev1.PackageRule {
+		addUnknown(r.GetExpiresAt(), 9)
+		return r
+	}
+	noExpiry := func(r *corev1.PackageRule) *corev1.PackageRule {
+		r.ClearExpiresAt()
+		return r
+	}
+	noReason := func(r *corev1.PackageRule) *corev1.PackageRule {
+		r.SetReason("")
+		return r
+	}
 
 	cases := []struct {
-		name        string
-		rule        *corev1.PackageRule
-		want        *match.Rule
-		wantDropped bool
-		wantUnknown string
+		name         string
+		rule         *corev1.PackageRule
+		want         *match.Rule
+		wantDropped  bool
+		wantDetail   string
+		wantUnknown  string
+		wantLimit    string
+		wantLimitMsg string
 	}{
 		{
 			name: "block entry",
@@ -421,6 +465,51 @@ func TestPackageRules(t *testing.T) {
 			rule:        unknownInRule(rule("r_1", block, "pkg:npm/evil")),
 			want:        &match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
 			wantUnknown: "core.package_rules.9",
+		},
+		{
+			name:        "trust entry with an unknown field in its expiry",
+			rule:        unknownInExpiry(rule("r_1", trust, "pkg:npm/fp", malware)),
+			wantDropped: true,
+			wantDetail:  "core.package_rules.expires_at.9",
+		},
+		{
+			name:        "trust entry with no expiry",
+			rule:        noExpiry(rule("r_1", trust, "pkg:npm/fp", malware)),
+			wantDropped: true,
+			wantDetail:  "no expiry",
+		},
+		{
+			name:        "trust entry with no reason",
+			rule:        noReason(rule("r_1", trust, "pkg:npm/fp", malware)),
+			wantDropped: true,
+			wantDetail:  "contract limit",
+		},
+		{
+			name:        "trust entry with a selector that is not a purl",
+			rule:        rule("r_1", trust, "pkg:npm", malware),
+			wantDropped: true,
+			wantDetail:  "contract limit",
+		},
+		{
+			name:         "block entry with no reason",
+			rule:         noReason(rule("r_1", block, "pkg:npm/evil")),
+			want:         &match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/evil", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
+			wantLimit:    "core.package_rules.reason",
+			wantLimitMsg: "string.min_len",
+		},
+		{
+			name:         "block entry with a scope",
+			rule:         rule("r_1", block, "pkg:npm/evil", malware),
+			want:         &match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
+			wantLimit:    "core.package_rules",
+			wantLimitMsg: "package_rule.block_has_no_scope",
+		},
+		{
+			name:         "block entry with a version in the prefix",
+			rule:         rule("r_1", block, "pkg:npm/x@1.*"),
+			want:         &match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/x@1.*", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
+			wantLimit:    "core.package_rules.selector",
+			wantLimitMsg: "package_selector.prefix_has_no_version",
 		},
 		{
 			name:        "trust entry with only an unknown scope",
@@ -510,12 +599,22 @@ func TestPackageRules(t *testing.T) {
 				assert.Equal(t, ExceptionDroppedRule, p.Exceptions[0].Kind)
 				assert.Equal(t, "core.package_rules", p.Exceptions[0].Path)
 				assert.Equal(t, tc.rule.GetRuleId(), p.Exceptions[0].RuleID)
+				assert.Contains(t, p.Exceptions[0].Detail, tc.wantDetail)
 				return
 			}
 
 			require.NotNil(t, tc.want)
 			require.Len(t, p.Rules, 1)
 			assert.Equal(t, *tc.want, p.Rules[0])
+
+			if tc.wantLimit != "" {
+				require.Len(t, p.Exceptions, 1)
+				assert.Equal(t, ExceptionInvalidValue, p.Exceptions[0].Kind)
+				assert.Equal(t, tc.wantLimit, p.Exceptions[0].Path)
+				assert.Equal(t, tc.rule.GetRuleId(), p.Exceptions[0].RuleID)
+				assert.Contains(t, p.Exceptions[0].Detail, tc.wantLimitMsg)
+				return
+			}
 
 			if tc.wantUnknown == "" {
 				assert.Empty(t, p.Exceptions)

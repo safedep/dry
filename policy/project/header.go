@@ -14,6 +14,10 @@ func checkHeader(policy *specv1.ResolvedPolicy, expect Expect) (Header, error) {
 	}
 
 	h := policy.GetHeader()
+	if !h.HasIssuedAt() {
+		return Header{}, fmt.Errorf("%w: no issued_at", ErrHeader)
+	}
+
 	if expect.Tenant != "" && h.GetTenant() != expect.Tenant {
 		return Header{}, fmt.Errorf("%w: tenant %q is not %q", ErrHeader, h.GetTenant(), expect.Tenant)
 	}
@@ -45,10 +49,7 @@ func checkHeader(policy *specv1.ResolvedPolicy, expect Expect) (Header, error) {
 		MachineID:             h.GetMachineId(),
 		Revision:              h.GetRevision(),
 		DefaultPolicyRevision: h.GetDefaultPolicyRevision(),
-	}
-
-	if h.HasIssuedAt() {
-		header.IssuedAt = h.GetIssuedAt().AsTime()
+		IssuedAt:              h.GetIssuedAt().AsTime(),
 	}
 
 	if h.HasNextExpiryAt() {

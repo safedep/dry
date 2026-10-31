@@ -202,5 +202,9 @@ func join(path, name string) string {
 		return name
 	}
 
+	if name == "" {
+		return path
+	}
+
 	return path + "." + name
 }

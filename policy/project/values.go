@@ -241,23 +241,46 @@ func strictestValue(ed protoreflect.EnumDescriptor) (protoreflect.EnumNumber, bo
 // validate applies the contract limits of the capability, the protovalidate
 // rules of its message.
 func (w *settingsWalker) validate(m protoreflect.Message, capability string) {
-	err := protovalidate.Validate(m.Interface())
-	if err == nil {
-		return
-	}
-
-	var verr *protovalidate.ValidationError
-	if !errors.As(err, &verr) {
+	found, err := violations(m.Interface())
+	if err != nil {
 		w.fail(capability, ExceptionInvalidValue, fmt.Sprintf("cannot check the contract limits: %v", err))
 		return
 	}
 
+	for _, v := range found {
+		w.fail(join(capability, v.path), ExceptionInvalidValue, v.detail)
+	}
+}
+
+// violation is one failed contract limit. The path is relative to the
+// message, and empty for a rule of the whole message.
+type violation struct {
+	path   string
+	detail string
+}
+
+// violations runs the protovalidate rules of the message. It returns an
+// error only when the rules cannot run.
+func violations(msg proto.Message) ([]violation, error) {
+	err := protovalidate.Validate(msg)
+	if err == nil {
+		return nil, nil
+	}
+
+	var verr *protovalidate.ValidationError
+	if !errors.As(err, &verr) {
+		return nil, err
+	}
+
+	out := make([]violation, 0, len(verr.Violations))
 	for _, v := range verr.Violations {
-		path := capability
-		if fp := protovalidate.FieldPathString(v.Proto.GetField()); fp != "" {
-			path = join(capability, fp)
+		detail := strings.TrimSpace(v.Proto.GetMessage())
+		if id := v.Proto.GetRuleId(); id != "" {
+			detail = fmt.Sprintf("%s (%s)", detail, id)
 		}
 
-		w.fail(path, ExceptionInvalidValue, strings.TrimSpace(v.Proto.GetMessage()))
+		out = append(out, violation{path: protovalidate.FieldPathString(v.Proto.GetField()), detail: detail})
 	}
+
+	return out, nil
 }

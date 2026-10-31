@@ -52,16 +52,23 @@ gives the API form.
 Rules:
 
 - A rule applies while `now` is before its expiry. A zero `Query.Now` means `time.Now()`.
-- When two rules of one effect match, the rule with the lower id decides.
-- `Normalize` drops a rule with an unknown effect, and a trust entry with no id, no known scope, a
-  prefix selector or a `vers` range that does not parse. It gives a block entry with no id the id `-`.
-- `NewIndex` also drops a rule whose selector the identity cannot parse, and a trust entry with a
-  version in the PURL and a `vers` range. It returns each dropped rule with the reason.
-- A block entry whose `vers` range does not parse, or that has both a version in the PURL and a range,
-  matches every version of its packages. A block that a tool drops is a block that does not apply.
+- A query with no control (`Control` zero) gets no trust entry. A block entry still applies.
+- When two rules of one effect match, the rule with the lower id decides. The other fields of the rule
+  break a tie, so the order of the input never decides.
+- `Normalize` drops a rule with an unknown effect, and a trust entry with no id, no expiry
+  (`ErrNoExpiry`), no known scope, a prefix selector or a `vers` range that does not parse. It gives a
+  block entry with no id the id `-`. A cache that a user edits has no server check, so a trust entry
+  with no expiry would never end.
+- `NewIndex` also drops a rule whose selector the identity cannot parse, and a trust entry whose `vers`
+  range is invalid for its selector. It returns each dropped rule with the reason.
+- A `vers` range is invalid when it does not parse, when the PURL also has a version, when its scheme
+  names another ecosystem than the PURL type, or when its bounds are not in version order. A block
+  entry with an invalid range matches every version of its packages. A block that a tool drops is a
+  block that does not apply.
+- `Validate` applies every check of `NewIndex` to one rule, and also refuses a block entry with an
+  invalid range. A server calls it before it stores a rule.
 - When the version of a package cannot be checked, a block entry matches and a trust entry does not.
-  This covers a package with no version, a version that the ecosystem cannot order, and a range whose
-  bounds are not in version order.
+  This covers a package with no version and a version that the ecosystem cannot order.
 - A version in the selector PURL matches the canonical version of the package.
 
 ### Index
@@ -70,10 +77,18 @@ Rules:
 key to its rules. A check reads one entry of the first map, and one entry of the second map for each
 distinct prefix length. So a check never reads every rule, and it needs no ecosystem list.
 
-A prefix ends with `/*` or `.*`. `pb.NameKeyPrefix` reads the boundary from the raw PURL before it
-decodes it, then folds the part before the `*` with the identity rule of the ecosystem. So
-`pkg:npm/@acme/*` does not select `@acmex/x`, `pkg:maven/org.apache.*` does not select
-`org.apachex`, and `pkg:pypi/foo.*` selects `foo-bar` and `foo_bar`.
+A prefix ends with `/*` or `.*`. `Identity.Prefix` returns its key. `pb.NameKeyPrefix` reads the
+boundary from the raw PURL before it decodes it, then folds the part before the `*` with the identity
+rule of the ecosystem. So `pkg:npm/@acme/*` does not select `@acmex/x`, `pkg:maven/org.apache.*` does
+not select `org.apachex`, `pkg:pypi/foo.*` selects `foo-bar` and `foo_bar`, and
+`pkg:nuget/Microsoft.*` selects `microsoft.evil`.
+
+**Known gap: non-ASCII names under a prefix.** The ASCII-only name folds (PyPI, Cargo, NuGet,
+Packagist, GitHub, GitLab, Bitbucket, Chrome) keep a non-ASCII name raw, but fold the ASCII part
+before the `*`. So `pkg:nuget/Microsoft.*` does not select an id that starts with `Microsoft.` and
+holds a non-ASCII letter. PyPI, crates.io, Packagist, GitHub and the Chrome Web Store accept only
+ASCII names, so only NuGet can have such a name: its id rule accepts the Unicode letters of .NET `\w`.
+A fix changes the identity rules for non-ASCII names, so it needs its own change.
 
 ### `vers`
 
@@ -82,12 +97,19 @@ white space is not significant, the comparators are `=`, `!=`, `<`, `<=`, `>` an
 with no comparator means `=`, and `*` alone selects every version. The scheme must equal the PURL type
 of the rule.
 
+- The scheme names the ecosystem of the PURL type through the aliases of the identity, so
+  `pkg:pip/foo` takes `vers:pypi/...` and `pkg:golang/...` takes `vers:go/...`.
 - `ParseVers` needs no version order. It checks that each version is unique and that the `<`, `<=`,
   `>` and `>=` constraints alternate.
-- `Range.Contains` checks the version order of the bounds for each version that it tests. Bounds that
-  are not in version order give an error.
-- `=` and `!=` constraints can stand at any position, because each one checks one version. A range of
-  only `!=` constraints contains every other version.
+- `ParseVers` refuses a range of only `!=` constraints. The `vers` specification gives it no version,
+  and the plain reading gives it every other version. Each reading fails open for one effect. So the
+  range is invalid: a block entry matches every version, a trust entry is dropped, and the server
+  refuses it.
+- `NewIndex` and `Validate` check that the bounds go up in version order. They build a package of the
+  selector at each bound through the `Identity` and compare. A prefix selector gets the name `x` in
+  place of its `*`. Bounds out of order, or bounds that the ecosystem cannot order, make the range
+  invalid. `Range.Contains` checks the order again for each version that it tests.
+- `=` and `!=` constraints can stand at any position, because each one checks one version.
 
 ### Benchmark
 
@@ -95,10 +117,10 @@ One check at 10,000 rules, on an Intel Xeon at 2.1 GHz:
 
 | Case | `match` test identity | `pbidentity` | `pbidentity`, with the PURL parse |
 |---|---|---|---|
-| Miss | 24 ns | 16 ns | 1.2 µs |
-| Prefix hit | 76 ns | 64 ns | |
-| Trust hit with a range | 0.7 µs | 0.13 µs | 2.3 µs |
-| Block hit with a range of 3 bounds (PyPI) | | 0.31 µs | 5.5 µs |
+| Miss | 18 ns | 17 ns | 1.4 µs |
+| Prefix hit | 79 ns | 79 ns | |
+| Trust hit with a range | 0.74 µs | 0.14 µs | 2.1 µs |
+| Block hit with a range of 3 bounds (PyPI) | | 0.34 µs | 5.9 µs |
 
 The target is 10 µs. A linear scan took 79 µs in a proof of concept. `TestDecideIsFast` in
 `policy/pbidentity` fails when a check takes 10 µs or more. `pbidentity` parses the version of a
@@ -110,13 +132,20 @@ costs microseconds.
 - `Decode` keeps unknown fields (`proto.Unmarshal`) and reports each one by its contract path, as
   `package_admission.7`. Paths outside the `PolicySpec` start with `header`, `field_sources` or
   `resolved_policy`, so they never look like a contract path.
-- **Header check.** The header must be present. The tenant must equal `Expect.Tenant` when it is set.
+- A document with no `spec` returns `ErrDecode`.
+- **Header check.** The header and its `issued_at` must be present. The tenant must equal
+  `Expect.Tenant` when it is set. The comparison is case-sensitive, so a difference fails closed.
   The subject kind must equal `Expect.SubjectKind`. For an endpoint, `header.machine_id` must equal
   `Expect.MachineID`, and the subject id is not checked. For a project, the subject id must equal
   `Expect.ProjectID`. A failure returns `ErrHeader`.
-- **Package rules.** A trust entry with an unknown field, in the rule or in its selector, is dropped. A
-  block entry with an unknown field is kept, and the field is reported. An unknown scope value is
-  ignored. `match.Normalize` applies the other rules. An expired rule stays in `Rules`.
+- **Package rules.** `Decode` runs the protovalidate rules of each `PackageRule`.
+  - A trust entry is dropped when it has an unknown field at any depth (rule, selector or
+    `expires_at`), has no `expires_at`, or fails a contract limit.
+  - A block entry with an unknown field or a failed contract limit is kept, and each one is reported.
+    `NewIndex` drops it later only when its selector does not parse.
+  - An unknown scope value is ignored. `match.Normalize` applies the other rules. An expired rule stays
+    in `Rules`.
+  - The list has no cap in `project`. The receive limit of the fetch, 4 MiB, bounds it.
 - **Settings.** `Values` maps each contract path to a `time.Duration`, `time.Time`, `int64`,
   `float64`, `bool`, `string`, `[]byte`, `Enum`, or `[]any` of these. `Sources` maps each field to the
   layer that set it.
@@ -125,7 +154,8 @@ costs microseconds.
 - **Contract limits.** `Decode` runs protovalidate on each capability except `core`. A violation fails
   the capability: `Values` holds none of its settings, and `FailedCapabilities` names it.
   `Projection.Restore(previous)` takes a failed capability from the projection of the previous policy.
-  The package rules of `core` have their own rules and never fail as a whole.
+  An enum value 0 under `not_in: [0]` fails its capability the same way. The package rules of `core`
+  have their own rules, one rule at a time, and never fail as a whole.
 - `Fields` lists each contract field with a field contract, such as `binding_required`, from the
   descriptor. A tool test checks its binding table against it.
 

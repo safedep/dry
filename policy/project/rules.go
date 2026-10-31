@@ -16,22 +16,35 @@ var scopes = map[corev1.TrustScope]match.Scope{
 	corev1.TrustScope_TRUST_SCOPE_VULNERABILITY: match.ScopeVulnerability,
 }
 
-// projectRules turns each package rule into a match.Rule. It drops a trust
-// entry with an unknown field, and each rule that match.Normalize drops. A
-// block entry with an unknown field stays, and the field is reported.
+// projectRules turns each package rule into a match.Rule.
+//   - A trust entry is dropped when it has an unknown field, has no expiry,
+//     fails a contract limit of PackageRule, or fails match.Normalize.
+//   - A block entry is dropped only when match.Normalize drops it. An unknown
+//     field or a failed contract limit is reported, and the entry stays: a
+//     block that a tool drops is a block that does not apply. NewIndex drops
+//     it later when its selector does not parse.
+//
+// The list has no cap here. The receive limit of the fetch, 4 MiB, bounds it.
 func (p *Projection) projectRules(rules []*corev1.PackageRule) {
 	for _, pr := range rules {
 		r := toMatchRule(pr)
-		unknown := messageUnknown(pr.ProtoReflect(), pathPackageRules)
 
 		if r.Effect == match.EffectNone {
 			p.dropRule(r.ID, fmt.Sprintf("%v: %d", match.ErrUnknownEffect, int32(pr.GetEffect())))
 			continue
 		}
 
-		if r.Effect == match.EffectTrust && len(unknown) > 0 {
-			p.dropRule(r.ID, fmt.Sprintf("trust entry has an unknown field: %s", unknown[0].Path))
-			continue
+		unknown := messageUnknown(pr.ProtoReflect(), pathPackageRules)
+		limits, err := violations(pr)
+		if err != nil {
+			limits = []violation{{detail: fmt.Sprintf("cannot check the contract limits: %v", err)}}
+		}
+
+		if r.Effect == match.EffectTrust {
+			if reason := trustDropReason(pr, unknown, limits); reason != "" {
+				p.dropRule(r.ID, reason)
+				continue
+			}
 		}
 
 		normalized, err := match.Normalize(r)
@@ -45,7 +58,31 @@ func (p *Projection) projectRules(rules []*corev1.PackageRule) {
 			p.Exceptions = append(p.Exceptions, e)
 		}
 
+		for _, v := range limits {
+			p.Exceptions = append(p.Exceptions, Exception{
+				Path:   join(pathPackageRules, v.path),
+				Kind:   ExceptionInvalidValue,
+				RuleID: normalized.ID,
+				Detail: v.detail,
+			})
+		}
+
 		p.Rules = append(p.Rules, normalized)
+	}
+}
+
+// trustDropReason returns why a trust entry is dropped before
+// match.Normalize, or "".
+func trustDropReason(pr *corev1.PackageRule, unknown []Exception, limits []violation) string {
+	switch {
+	case len(unknown) > 0:
+		return fmt.Sprintf("trust entry has an unknown field: %s", unknown[0].Path)
+	case !pr.HasExpiresAt():
+		return match.ErrNoExpiry.Error()
+	case len(limits) > 0:
+		return fmt.Sprintf("trust entry fails a contract limit: %s", limits[0].detail)
+	default:
+		return ""
 	}
 }
 

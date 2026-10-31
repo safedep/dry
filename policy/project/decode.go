@@ -132,6 +132,13 @@ func Decode(raw []byte, expect Expect) (*Projection, error) {
 		return nil, err
 	}
 
+	// The contract requires the spec. A document with none is not a policy
+	// that the server wrote, so it must not replace the policy that the tool
+	// applies now.
+	if !policy.HasSpec() {
+		return nil, fmt.Errorf("%w: no spec", ErrDecode)
+	}
+
 	p := &Projection{
 		Header:  header,
 		Values:  map[string]any{},

@@ -379,6 +379,26 @@ func TestRestore(t *testing.T) {
 	assert.Empty(t, decode(t, bad).Restore(nil))
 }
 
+func TestFailedCapabilityHasNoSources(t *testing.T) {
+	prev := newPolicy()
+	prev.GetSpec().GetPackageAdmission().ClearCooldown()
+	prev.SetFieldSources(nil)
+	valid := decode(t, prev)
+	require.NotContains(t, valid.Values, "package_admission.cooldown.min_age")
+
+	bad := newPolicy()
+	bad.GetSpec().GetPackageAdmission().GetCooldown().SetMinAge(durationpb.New(-time.Hour))
+
+	next := decode(t, bad)
+	require.Equal(t, []string{"package_admission"}, next.FailedCapabilities)
+	key := SourceKey{Path: "package_admission.cooldown.min_age"}
+	assert.NotContains(t, next.Sources, key, "a rejected value names no layer")
+
+	next.Restore(valid)
+	assert.NotContains(t, next.Values, "package_admission.cooldown.min_age")
+	assert.NotContains(t, next.Sources, key, "the previous policy had no source for it")
+}
+
 func rule(id string, effect corev1.Effect, purl string, scopes ...corev1.TrustScope) *corev1.PackageRule {
 	return corev1.PackageRule_builder{
 		RuleId:    id,

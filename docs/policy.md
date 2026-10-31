@@ -163,7 +163,7 @@ costs microseconds.
 - **Ordered enums.** An unknown value of an enum with the option `ordered` becomes the known value with
   the highest `strictness`. An unknown value of an enum with no order fails its capability.
 - **Contract limits.** `Decode` runs protovalidate on each capability except `core`. A violation fails
-  the capability: `Values` holds none of its settings, and `FailedCapabilities` names it.
+  the capability: `Values` and `Sources` hold none of its settings, and `FailedCapabilities` names it.
   `Projection.Restore(previous)` takes a failed capability from the projection of the previous policy.
   An enum value 0 under `not_in: [0]` fails its capability the same way. The package rules of `core`
   have their own rules, one rule at a time, and never fail as a whole.

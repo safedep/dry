@@ -247,10 +247,17 @@ func (r Range) String() string {
 		}
 
 		b.WriteString(c.comp.String())
-		b.WriteString(url.PathEscape(c.version))
+		b.WriteString(escapeVersion(c.version))
 	}
 
 	return b.String()
+}
+
+// escapeVersion encodes a version for a vers constraint. url.PathEscape keeps
+// "=", so a version that starts with "=" would read back as part of the
+// comparator: "<" and "=1" would print as "<=1".
+func escapeVersion(version string) string {
+	return strings.ReplaceAll(url.PathEscape(version), "=", "%3D")
 }
 
 // errConflict means that a "=" and a "!=" constraint name one version.
@@ -455,5 +462,8 @@ func purlAt(selector, version string) string {
 		base = stem + "x"
 	}
 
-	return base + "@" + url.PathEscape(version) + suffix
+	// url.PathEscape keeps "@", but the PURL parser takes the last "@" as the
+	// start of the version. A bound "2@0" would turn into the version "0", and
+	// the order check would test another version than the range holds.
+	return base + "@" + strings.ReplaceAll(url.PathEscape(version), "@", "%40") + suffix
 }

@@ -129,6 +129,8 @@ func FuzzParseVers(f *testing.F) {
 		"vers:npm/>=",
 		"vers:/",
 		"vers:npm/||",
+		"vers:maven/<%3D1",
+		"vers:maven/=%3D1",
 	} {
 		f.Add(seed, "1.5.0")
 	}
@@ -145,4 +147,17 @@ func FuzzParseVers(f *testing.F) {
 
 		_, _ = rng.Contains(testPackage{key: "npm/x", version: version})
 	})
+}
+
+func TestRangeStringKeepsTheComparator(t *testing.T) {
+	for _, vers := range []string{"vers:maven/<%3D1", "vers:maven/=%3D1", "vers:maven/!=%3D1|>=2"} {
+		t.Run(vers, func(t *testing.T) {
+			rng, err := ParseVers(vers)
+			require.NoError(t, err)
+
+			again, err := ParseVers(rng.String())
+			require.NoError(t, err, "parse %q", rng.String())
+			assert.Equal(t, rng, again)
+		})
+	}
 }

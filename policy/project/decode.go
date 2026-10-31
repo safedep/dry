@@ -150,6 +150,12 @@ func Decode(raw []byte, expect Expect) (*Projection, error) {
 	p.projectSettings(policy.GetSpec())
 
 	for _, fs := range policy.GetFieldSources() {
+		// A failed capability applies none of its values, so its sources would
+		// name a layer for a value that the tool does not use.
+		if p.inFailedCapability(fs.GetPath()) {
+			continue
+		}
+
 		p.Sources[SourceKey{Path: fs.GetPath(), ItemKey: fs.GetItemKey()}] = Source{
 			Layer:      fs.GetLayer(),
 			OverrideID: fs.GetOverrideId(),
@@ -157,6 +163,15 @@ func Decode(raw []byte, expect Expect) (*Projection, error) {
 	}
 
 	return p, nil
+}
+
+func (p *Projection) inFailedCapability(path string) bool {
+	for _, capability := range p.FailedCapabilities {
+		if path == capability || strings.HasPrefix(path, capability+".") {
+			return true
+		}
+	}
+	return false
 }
 
 // Restore takes each failed capability of p from prev: its values and its

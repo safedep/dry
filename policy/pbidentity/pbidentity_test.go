@@ -97,6 +97,7 @@ func TestVersRangeChecks(t *testing.T) {
 		{name: "github action trust with a single bound has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/>=v2")},
 		{name: "github action point has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/=v4")},
 		{name: "equal and not equal name one version", rule: trustRule("r_1", "pkg:npm/fp", "vers:npm/=1.0.0|!=1.0.0+build")},
+		{name: "a bound with an at sign out of order", rule: trustRule("r_1", "pkg:maven/g/a", "vers:maven/<2%400|>=1")},
 	}
 
 	for _, tc := range cases {

@@ -270,12 +270,15 @@ var errUnordered = errors.New("vers constraints are not in version order")
 // order for this version. The caller decides what an error means: a block
 // entry matches, and a trust entry does not.
 func (r Range) Contains(p Package) (bool, error) {
-	if r.all {
-		return true, nil
-	}
-
+	// A package with no version fails before "*" too. Otherwise "vers:npm/*"
+	// would let a trust entry match a package with no version, which every
+	// other range refuses.
 	if p.Version() == "" {
 		return false, errors.New("package has no version")
+	}
+
+	if r.all {
+		return true, nil
 	}
 
 	for _, c := range r.points {
@@ -362,13 +365,23 @@ func (r Range) boundsContain(cmps []int) bool {
 	return false
 }
 
-// checkBoundOrder checks that the bounds go up in version, under the order
-// of the ecosystem of the selector. It builds a package of the selector at
-// each bound through the identity. The order depends on the ecosystem only,
-// so a prefix selector gets the name "x" under its prefix.
+// checkBoundOrder checks that every version of the range can be compared,
+// and that the bounds go up in version, under the order of the ecosystem of
+// the selector. It builds a package of the selector at each version through
+// the identity. The order depends on the ecosystem only, so a prefix selector
+// gets the name "x" under its prefix. A version that cannot be compared, also
+// in a range with one constraint, would fail at decision time and make a
+// block match every version, so the range is invalid here.
 func (r Range) checkBoundOrder(identity Identity, selector string) error {
-	if len(r.bounds) < 2 {
-		return nil
+	for _, c := range append(append([]constraint{}, r.points...), r.bounds...) {
+		pkg, err := identity.Package(purlAt(selector, c.version))
+		if err != nil {
+			return fmt.Errorf("version %q: %w", c.version, err)
+		}
+
+		if _, err := pkg.CompareVersion(c.version); err != nil {
+			return fmt.Errorf("%w: version %q: %w", errUnordered, c.version, err)
+		}
 	}
 
 	for i := 0; i+1 < len(r.bounds); i++ {

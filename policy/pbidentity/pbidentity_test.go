@@ -59,7 +59,6 @@ func TestCanonicalMatch(t *testing.T) {
 		{name: "npm semver range with prerelease", rule: blockRule("r_1", "pkg:npm/evil", "vers:npm/>=1.2.0|<2.0.0"), purl: "pkg:npm/evil@2.0.0-rc.1", want: match.EffectBlock},
 		{name: "github action folds case", rule: blockRule("r_1", "pkg:githubactions/Evil/Action", ""), purl: "pkg:githubactions/evil/action@v1", want: match.EffectBlock},
 		{name: "github action ref has no order: block matches", rule: blockRule("r_1", "pkg:githubactions/evil/action", "vers:githubactions/>=v2"), purl: "pkg:githubactions/evil/action@v1", want: match.EffectBlock},
-		{name: "github action ref has no order: trust does not", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/>=v2"), purl: "pkg:githubactions/fp/action@v3", want: match.EffectNone},
 		{name: "trust in range", rule: trustRule("r_1", "pkg:npm/fp", "vers:npm/>=1.0.0|<1.1.0"), purl: "pkg:npm/fp@1.0.9", want: match.EffectTrust},
 		{name: "nuget name folds case", rule: blockRule("r_1", "pkg:nuget/Microsoft.Evil", ""), purl: "pkg:nuget/microsoft.evil@1.0.0", want: match.EffectBlock},
 		{name: "nuget prefix folds case", rule: blockRule("r_1", "pkg:nuget/Microsoft.*", ""), purl: "pkg:nuget/microsoft.evil@1.0.0", want: match.EffectBlock},
@@ -87,6 +86,9 @@ func TestVersRangeChecks(t *testing.T) {
 		{name: "pypi bounds equal by order", rule: trustRule("r_1", "pkg:pypi/fp", "vers:pypi/>=1.0|<1.0.0")},
 		{name: "prefix bounds out of order", rule: blockRule("r_1", "pkg:npm/@acme/*", "vers:npm/>=2.0.0|<1.0.0")},
 		{name: "github action range has no order", rule: blockRule("r_1", "pkg:githubactions/evil/action", "vers:githubactions/>=v1|<v2")},
+		{name: "github action single bound has no order", rule: blockRule("r_1", "pkg:githubactions/actions/checkout", "vers:githubactions/>=v4")},
+		{name: "github action trust with a single bound has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/>=v2")},
+		{name: "github action point has no order", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/=v4")},
 	}
 
 	for _, tc := range cases {

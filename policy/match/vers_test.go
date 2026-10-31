@@ -92,6 +92,7 @@ func TestRangeContains(t *testing.T) {
 		{name: "bounds out of order", vers: "vers:npm/<2.0.0|>=1.0.0", version: "1.5.0", wantErr: true},
 		{name: "version does not compare", vers: "vers:npm/>=1.0.0", version: "beta", wantErr: true},
 		{name: "no version", vers: "vers:npm/>=1.0.0", version: "", wantErr: true},
+		{name: "no version with the wildcard", vers: "vers:npm/*", version: "", wantErr: true},
 	}
 
 	for _, tc := range cases {

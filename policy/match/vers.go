@@ -106,9 +106,17 @@ const versScheme = "vers:"
 //   - the "<", "<=", ">" and ">=" constraints alternate between a lower and a
 //     greater comparator.
 //
-// The order of the versions needs the order of the ecosystem, so Contains
-// checks it for each version that it tests. ParseVers accepts "=" and "!="
-// constraints at any position, because each one checks one version.
+// ParseVers refuses a range of only "!=" constraints. The vers specification
+// gives it no version, and the plain reading gives it every other version.
+// Each reading fails open for one effect: a block that matches nothing, or a
+// trust of every other version. So the range is invalid, and the fail-closed
+// rules apply: a block entry matches every version, and a trust entry is
+// dropped.
+//
+// The order of the bounds needs the order of the ecosystem. NewIndex and
+// Validate check it through the Identity, and Contains checks it again for
+// each version that it tests. ParseVers accepts "=" and "!=" constraints at
+// any position, because each one checks one version.
 func ParseVers(s string) (Range, error) {
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsSpace(r) {
@@ -154,6 +162,10 @@ func ParseVers(s string) (Range, error) {
 		} else {
 			r.bounds = append(r.bounds, c)
 		}
+	}
+
+	if len(r.bounds) == 0 && allNotEqual(r.points) {
+		return Range{}, fmt.Errorf("vers %q has only \"!=\" constraints", s)
 	}
 
 	for i := 1; i < len(r.bounds); i++ {
@@ -250,9 +262,8 @@ var errUnordered = errors.New("vers constraints are not in version order")
 //  1. "*" contains every version.
 //  2. A version equal to the version of a "=" constraint is in the range. A
 //     version equal to the version of a "!=" constraint is not.
-//  3. With only "!=" constraints, every other version is in the range.
-//  4. Otherwise the "<", "<=", ">" and ">=" constraints decide, as a list of
-//     intervals.
+//  3. The "<", "<=", ">" and ">=" constraints decide, as a list of
+//     intervals. With no such constraint, the version is not in the range.
 //
 // It returns an error when the package has no version, when the package
 // cannot compare a version, or when the bound constraints are not in version
@@ -279,7 +290,7 @@ func (r Range) Contains(p Package) (bool, error) {
 	}
 
 	if len(r.bounds) == 0 {
-		return len(r.points) > 0 && allNotEqual(r.points), nil
+		return false, nil
 	}
 
 	cmps := make([]int, len(r.bounds))
@@ -349,4 +360,47 @@ func (r Range) boundsContain(cmps []int) bool {
 	}
 
 	return false
+}
+
+// checkBoundOrder checks that the bounds go up in version, under the order
+// of the ecosystem of the selector. It builds a package of the selector at
+// each bound through the identity. The order depends on the ecosystem only,
+// so a prefix selector gets the name "x" under its prefix.
+func (r Range) checkBoundOrder(identity Identity, selector string) error {
+	if len(r.bounds) < 2 {
+		return nil
+	}
+
+	for i := 0; i+1 < len(r.bounds); i++ {
+		pkg, err := identity.Package(purlAt(selector, r.bounds[i].version))
+		if err != nil {
+			return fmt.Errorf("bound %q: %w", r.bounds[i].version, err)
+		}
+
+		cmp, err := pkg.CompareVersion(r.bounds[i+1].version)
+		if err != nil {
+			return fmt.Errorf("bound %q: %w", r.bounds[i+1].version, err)
+		}
+
+		if cmp >= 0 {
+			return fmt.Errorf("%w: %q does not come before %q", errUnordered, r.bounds[i].version, r.bounds[i+1].version)
+		}
+	}
+
+	return nil
+}
+
+// purlAt returns the selector with a version. A prefix selector gets the
+// name "x" in place of its "*".
+func purlAt(selector, version string) string {
+	base, suffix := selector, ""
+	if i := strings.IndexAny(selector, "?#"); i >= 0 {
+		base, suffix = selector[:i], selector[i:]
+	}
+
+	if stem, ok := strings.CutSuffix(base, "*"); ok {
+		base = stem + "x"
+	}
+
+	return base + "@" + url.PathEscape(version) + suffix
 }

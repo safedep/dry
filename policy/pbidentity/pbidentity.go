@@ -30,8 +30,8 @@ func (Identity) Package(purl string) (match.Package, error) {
 	return Package(pv), nil
 }
 
-// Namespace returns pb.NameKeyPrefix of the PURL.
-func (Identity) Namespace(purl string) (string, error) {
+// Prefix returns pb.NameKeyPrefix of the PURL.
+func (Identity) Prefix(purl string) (string, error) {
 	return pb.NameKeyPrefix(purl)
 }
 

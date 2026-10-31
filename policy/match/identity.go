@@ -7,12 +7,12 @@ type Identity interface {
 	// Package parses the PURL of one package, with or without a version.
 	Package(purl string) (Package, error)
 
-	// Namespace parses a PURL that ends with "/*" or ".*" and returns a
+	// Prefix parses a PURL that ends with "/*" or ".*" and returns a
 	// NameKey prefix. The NameKey of each package under the prefix starts
 	// with the result, and the NameKey of a package outside it does not. The
 	// prefix ends with the canonical form of its boundary, so
 	// "pkg:npm/@acme/*" does not select "@acmex/x".
-	Namespace(purl string) (string, error)
+	Prefix(purl string) (string, error)
 }
 
 // Package is one package, with or without a version, in canonical form.

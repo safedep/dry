@@ -43,10 +43,9 @@ type Index struct {
 
 // NewIndex builds the index of the rules. It drops a rule that Normalize
 // drops, a rule whose selector the identity cannot parse, and a trust entry
-// whose PURL has a version and that also has a vers range. A block entry
-// whose vers range does not parse, or that has both a version and a vers
-// range, stays in the index and matches every version of its packages. It
-// returns each dropped rule with the reason.
+// whose vers range is invalid for its selector (see Validate). A block entry
+// with an invalid vers range stays in the index and matches every version of
+// its packages. It returns each dropped rule with the reason.
 func NewIndex(rules []Rule, identity Identity) (*Index, []Dropped) {
 	ix := &Index{
 		exact:    map[string][]*entry{},
@@ -61,9 +60,20 @@ func NewIndex(rules []Rule, identity Identity) (*Index, []Dropped) {
 			continue
 		}
 
-		if err := ix.add(r, identity); err != nil {
+		c, err := compile(r, identity)
+		if err == nil && c.rangeErr != nil && r.Effect == EffectTrust {
+			err = c.rangeErr
+		}
+
+		if err != nil {
 			dropped = append(dropped, Dropped{Rule: r, Err: err})
 			continue
+		}
+
+		if c.prefix {
+			ix.prefixes[c.key] = append(ix.prefixes[c.key], c.entry)
+		} else {
+			ix.exact[c.key] = append(ix.exact[c.key], c.entry)
 		}
 
 		ix.rules = append(ix.rules, r)
@@ -85,46 +95,121 @@ func NewIndex(rules []Rule, identity Identity) (*Index, []Dropped) {
 	return ix, dropped
 }
 
-func (ix *Index) add(r Rule, identity Identity) error {
-	if identity == nil {
-		return fmt.Errorf("%w: no identity", ErrInvalidSelector)
-	}
-
-	e := &entry{rule: r}
-	if r.Vers != "" {
-		if rng, err := parseRuleVers(r); err == nil {
-			e.rng = &rng
-		}
-	}
-
-	if isPrefix(r.PURL) {
-		key, err := identity.Namespace(r.PURL)
-		if err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalidSelector, err)
-		}
-
-		ix.prefixes[key] = append(ix.prefixes[key], e)
-		return nil
-	}
-
-	pkg, err := identity.Package(r.PURL)
+// Validate applies every check of NewIndex to one rule, and also refuses a
+// block entry with an invalid vers range, which NewIndex keeps. A server
+// calls it before it stores a rule, so a stored rule never drops out of the
+// index of a tool and never matches more than its admin wrote.
+func Validate(r Rule, identity Identity) error {
+	normalized, err := Normalize(r)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrInvalidSelector, err)
+		return err
 	}
 
-	e.version = pkg.Version()
-	if e.version != "" && r.Vers != "" {
-		if r.Effect == EffectTrust {
-			return fmt.Errorf("%w: the purl has a version and the rule has a vers range", ErrInvalidVers)
+	c, err := compile(normalized, identity)
+	if err != nil {
+		return err
+	}
+
+	return c.rangeErr
+}
+
+// compiled is a rule with its selector and range in parsed form.
+type compiled struct {
+	entry  *entry
+	key    string
+	prefix bool
+
+	// rangeErr is the reason that the vers range does not apply. A block
+	// entry survives it and matches every version. A trust entry does not.
+	rangeErr error
+}
+
+// compile parses the selector and the vers range of a normalized rule. It
+// returns an error when the identity cannot parse the selector.
+func compile(r Rule, identity Identity) (compiled, error) {
+	if identity == nil {
+		return compiled{}, fmt.Errorf("%w: no identity", ErrInvalidSelector)
+	}
+
+	c := compiled{entry: &entry{rule: r}, prefix: isPrefix(r.PURL)}
+	if c.prefix {
+		key, err := identity.Prefix(r.PURL)
+		if err != nil {
+			return compiled{}, fmt.Errorf("%w: %w", ErrInvalidSelector, err)
 		}
-
-		e.version, e.rng = "", nil
+		c.key = key
+	} else {
+		pkg, err := identity.Package(r.PURL)
+		if err != nil {
+			return compiled{}, fmt.Errorf("%w: %w", ErrInvalidSelector, err)
+		}
+		c.key = pkg.NameKey()
+		c.entry.version = pkg.Version()
 	}
 
-	key := pkg.NameKey()
-	ix.exact[key] = append(ix.exact[key], e)
+	if r.Vers == "" {
+		return c, nil
+	}
 
-	return nil
+	rng, err := compileRange(r, identity, c.entry.version)
+	if err != nil {
+		// The block entry matches every version: neither the version of the
+		// PURL nor the range narrows it.
+		c.rangeErr = err
+		c.entry.version = ""
+		return c, nil
+	}
+
+	c.entry.rng = &rng
+	return c, nil
+}
+
+func compileRange(r Rule, identity Identity, version string) (Range, error) {
+	if version != "" {
+		return Range{}, fmt.Errorf("%w: the purl has a version and the rule has a vers range", ErrInvalidVers)
+	}
+
+	rng, err := ParseVers(r.Vers)
+	if err != nil {
+		return Range{}, fmt.Errorf("%w: %w", ErrInvalidVers, err)
+	}
+
+	typ := purlType(r.PURL)
+	if !sameEcosystem(identity, rng.Scheme, typ) {
+		return Range{}, fmt.Errorf("%w: vers type %q is not the ecosystem of the purl type %q", ErrInvalidVers, rng.Scheme, typ)
+	}
+
+	if err := rng.checkBoundOrder(identity, r.PURL); err != nil {
+		return Range{}, fmt.Errorf("%w: %w", ErrInvalidVers, err)
+	}
+
+	return rng, nil
+}
+
+// sameEcosystem reports whether two PURL types name one ecosystem, such as
+// "pypi" and "pip". The aliases belong to the identity, so it asks the
+// identity for one name under each type: the NameKeys are equal only when
+// the ecosystem and the fold are the same.
+func sameEcosystem(identity Identity, a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+
+	if a == b {
+		return true
+	}
+
+	pa, err := identity.Package("pkg:" + a + "/x")
+	if err != nil {
+		return false
+	}
+
+	pb, err := identity.Package("pkg:" + b + "/x")
+	if err != nil {
+		return false
+	}
+
+	return pa.NameKey() == pb.NameKey()
 }
 
 // Rules returns the rules in the index, in normalized form and in the order
@@ -137,13 +222,19 @@ func compareEntries(a, b *entry) int {
 	return compareRules(a.rule, b.rule)
 }
 
-// compareRules orders rules by id, so the same rule always decides. The PURL
-// and the range break a tie between a local and a cloud rule of one id.
+// compareRules orders rules by id, so the same rule always decides. The
+// other fields break a tie, such as a local and a cloud rule of one id, so
+// the order never depends on the order of the input.
 func compareRules(a, b Rule) int {
 	return cmp.Or(
 		cmp.Compare(a.ID, b.ID),
+		cmp.Compare(a.Effect, b.Effect),
 		cmp.Compare(a.PURL, b.PURL),
 		cmp.Compare(a.Vers, b.Vers),
+		slices.Compare(a.Scopes, b.Scopes),
+		a.ExpiresAt.Compare(b.ExpiresAt),
+		cmp.Compare(a.Reason, b.Reason),
 		cmp.Compare(a.Origin.Kind, b.Origin.Kind),
+		cmp.Compare(a.Origin.Path, b.Origin.Path),
 	)
 }

@@ -2,12 +2,16 @@ package pbidentity
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
+
+	packagev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/package/v1"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/safedep/dry/api/pb"
 	"github.com/safedep/dry/policy/match"
 )
 
@@ -57,6 +61,12 @@ func TestCanonicalMatch(t *testing.T) {
 		{name: "github action ref has no order: block matches", rule: blockRule("r_1", "pkg:githubactions/evil/action", "vers:githubactions/>=v2"), purl: "pkg:githubactions/evil/action@v1", want: match.EffectBlock},
 		{name: "github action ref has no order: trust does not", rule: trustRule("r_1", "pkg:githubactions/fp/action", "vers:githubactions/>=v2"), purl: "pkg:githubactions/fp/action@v3", want: match.EffectNone},
 		{name: "trust in range", rule: trustRule("r_1", "pkg:npm/fp", "vers:npm/>=1.0.0|<1.1.0"), purl: "pkg:npm/fp@1.0.9", want: match.EffectTrust},
+		{name: "nuget name folds case", rule: blockRule("r_1", "pkg:nuget/Microsoft.Evil", ""), purl: "pkg:nuget/microsoft.evil@1.0.0", want: match.EffectBlock},
+		{name: "nuget prefix folds case", rule: blockRule("r_1", "pkg:nuget/Microsoft.*", ""), purl: "pkg:nuget/microsoft.evil@1.0.0", want: match.EffectBlock},
+		{name: "nuget prefix boundary", rule: blockRule("r_1", "pkg:nuget/Microsoft.*", ""), purl: "pkg:nuget/microsoftx.evil@1.0.0", want: match.EffectNone},
+		{name: "pip purl with a pypi range", rule: blockRule("r_1", "pkg:pip/foo", "vers:pypi/>=1.0|<2.0"), purl: "pkg:pypi/foo@3.0", want: match.EffectNone},
+		{name: "pypi purl with a pip range", rule: trustRule("r_1", "pkg:pypi/foo", "vers:pip/>=1.0|<2.0"), purl: "pkg:pypi/foo@1.5", want: match.EffectTrust},
+		{name: "golang purl with a go range", rule: blockRule("r_1", "pkg:golang/github.com/acme/lib", "vers:go/>=v1.0.0|<v2.0.0"), purl: "pkg:golang/github.com/acme/lib@v2.1.0", want: match.EffectNone},
 		{name: "npm is case-sensitive", rule: blockRule("r_1", "pkg:npm/JSONStream", ""), purl: "pkg:npm/jsonstream@1.0.0", want: match.EffectNone},
 	}
 
@@ -65,6 +75,95 @@ func TestCanonicalMatch(t *testing.T) {
 			assert.Equal(t, tc.want, decide(t, tc.rule, tc.purl))
 		})
 	}
+}
+
+func TestVersRangeChecks(t *testing.T) {
+	cases := []struct {
+		name string
+		rule match.Rule
+	}{
+		{name: "pypi range on an npm purl", rule: trustRule("r_1", "pkg:npm/fp", "vers:pypi/>=1.0")},
+		{name: "pypi bounds out of order", rule: trustRule("r_1", "pkg:pypi/fp", "vers:pypi/>=2.0|<1.0")},
+		{name: "pypi bounds equal by order", rule: trustRule("r_1", "pkg:pypi/fp", "vers:pypi/>=1.0|<1.0.0")},
+		{name: "prefix bounds out of order", rule: blockRule("r_1", "pkg:npm/@acme/*", "vers:npm/>=2.0.0|<1.0.0")},
+		{name: "github action range has no order", rule: blockRule("r_1", "pkg:githubactions/evil/action", "vers:githubactions/>=v1|<v2")},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.ErrorIs(t, match.Validate(tc.rule, Identity{}), match.ErrInvalidVers)
+		})
+	}
+
+	assert.NoError(t, match.Validate(blockRule("r_1", "pkg:pip/foo", "vers:pypi/>=1.0|<2.0"), Identity{}))
+	assert.NoError(t, match.Validate(blockRule("r_1", "pkg:maven/org.apache.*", "vers:maven/>=1.0|<2.0"), Identity{}))
+}
+
+func TestVersionCacheIsBounded(t *testing.T) {
+	cache := &versionCache{versions: map[packagev1.Ecosystem]map[string]parsedVersion{}}
+	npm := packagev1.Ecosystem_ECOSYSTEM_NPM
+
+	for i := range maxCachedVersions + 10 {
+		v, err := cache.parse(npm, fmt.Sprintf("1.0.%d", i))
+		require.NoError(t, err)
+
+		want, err := pb.ParseVersion(npm, fmt.Sprintf("1.0.%d", i))
+		require.NoError(t, err)
+
+		cmp, err := v.Compare(want)
+		require.NoError(t, err)
+		require.Zero(t, cmp)
+	}
+
+	assert.Equal(t, maxCachedVersions, cache.size)
+	assert.Len(t, cache.versions[npm], maxCachedVersions)
+
+	_, err := cache.parse(npm, "")
+	assert.Error(t, err, "an error is not cached past the bound")
+}
+
+func TestVersionCacheIsSafeForConcurrentUse(t *testing.T) {
+	cache := &versionCache{versions: map[packagev1.Ecosystem]map[string]parsedVersion{}}
+	ecosystems := []packagev1.Ecosystem{packagev1.Ecosystem_ECOSYSTEM_NPM, packagev1.Ecosystem_ECOSYSTEM_PYPI}
+
+	var wg sync.WaitGroup
+	for g := range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range 200 {
+				eco := ecosystems[(g+i)%len(ecosystems)]
+				v, err := cache.parse(eco, fmt.Sprintf("1.%d.0", i%50))
+				if assert.NoError(t, err) {
+					want, err := pb.ParseVersion(eco, fmt.Sprintf("1.%d.0", i%50))
+					require.NoError(t, err)
+					cmp, err := v.Compare(want)
+					assert.NoError(t, err)
+					assert.Zero(t, cmp)
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, 100, cache.size)
+}
+
+func TestPackageIsSafeForConcurrentUse(t *testing.T) {
+	pkg, err := Identity{}.Package("pkg:pypi/foo@1.5")
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cmp, err := pkg.CompareVersion("2.0")
+			assert.NoError(t, err)
+			assert.Equal(t, -1, cmp)
+		}()
+	}
+	wg.Wait()
 }
 
 func TestDroppedSelectors(t *testing.T) {

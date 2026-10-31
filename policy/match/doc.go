@@ -8,9 +8,10 @@
 //   - A trust entry waives a verdict only for a control that its scopes name.
 //   - No trust entry waives a verdict of verified malware, whatever its scopes
 //     are. This is the verified malware guard.
-//   - A trust entry with a prefix selector, with no known scope, with no rule
-//     id or with a vers range that does not parse is dropped. A block entry
-//     with a vers range that does not parse matches every version.
+//   - A trust entry with a prefix selector, no known scope, no rule id, no
+//     expiry or an invalid vers range is dropped. A block entry with an
+//     invalid vers range matches every version. Validate refuses both, so a
+//     server never stores them.
 //   - A rule applies while now is before its expiry. The caller passes now,
 //     so a long-running tool drops an expired entry with no reload.
 //

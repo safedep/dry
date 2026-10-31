@@ -40,7 +40,7 @@ func (testIdentity) Package(purl string) (Package, error) {
 	return testPackage{key: typ + "/" + url.QueryEscape(name), version: version}, nil
 }
 
-func (testIdentity) Namespace(purl string) (string, error) {
+func (testIdentity) Prefix(purl string) (string, error) {
 	typ, path, err := splitTestPurl(purl)
 	if err != nil {
 		return "", err

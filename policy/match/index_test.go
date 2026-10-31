@@ -2,6 +2,7 @@ package match
 
 import (
 	"go/build"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,10 @@ func TestNewIndexDrops(t *testing.T) {
 		{name: "no effect", rule: Rule{ID: "r_1", PURL: "pkg:npm/x"}, wantErr: ErrUnknownEffect},
 		{name: "later effect", rule: Rule{ID: "r_1", Effect: Effect(7), PURL: "pkg:npm/x"}, wantErr: ErrUnknownEffect},
 		{name: "trust with no id", rule: trust("", "pkg:npm/x", ScopeMalware), wantErr: ErrNoRuleID},
+		{name: "trust with no expiry", rule: withExpiry(trust("r_1", "pkg:npm/x", ScopeMalware), time.Time{}), wantErr: ErrNoExpiry},
+		{name: "trust with only not equal", rule: withVers(trust("r_1", "pkg:npm/x", ScopeMalware), "vers:npm/!=1.0.0"), wantErr: ErrInvalidVers},
+		{name: "trust with bounds out of order", rule: withVers(trust("r_1", "pkg:npm/x", ScopeMalware), "vers:npm/>=2.0.0|<1.0.0"), wantErr: ErrInvalidVers},
+		{name: "trust with bounds that do not compare", rule: withVers(trust("r_1", "pkg:npm/x", ScopeMalware), "vers:npm/>=beta|<1.0.0"), wantErr: ErrInvalidVers},
 		{name: "trust with no scope", rule: trust("r_1", "pkg:npm/x"), wantErr: ErrNoKnownScope},
 		{name: "trust with only an unknown scope", rule: trust("r_1", "pkg:npm/x", Scope(99)), wantErr: ErrNoKnownScope},
 		{name: "trust with a prefix", rule: trust("r_1", "pkg:npm/@acme/*", ScopeMalware), wantErr: ErrTrustPrefix},
@@ -39,6 +44,62 @@ func TestNewIndexDrops(t *testing.T) {
 			assert.Equal(t, tc.rule.ID, dropped[0].Rule.ID)
 			assert.Empty(t, ix.Rules())
 		})
+	}
+}
+
+func TestValidate(t *testing.T) {
+	cases := []struct {
+		name    string
+		rule    Rule
+		wantErr error
+	}{
+		{name: "block", rule: block("r_1", "pkg:npm/evil")},
+		{name: "block with a range", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:npm/>=1.0.0|<2.0.0")},
+		{name: "prefix block with a range", rule: withVers(block("r_1", "pkg:npm/@acme/*"), "vers:npm/>=1.0.0|<2.0.0")},
+		{name: "trust", rule: trust("r_1", "pkg:npm/fp", ScopeMalware)},
+		{name: "block with a bad vers", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:npm/>=1|>=2"), wantErr: ErrInvalidVers},
+		{name: "block with only not equal", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:npm/!=1.0.0"), wantErr: ErrInvalidVers},
+		{name: "block with bounds out of order", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:npm/>=2.0.0|<1.0.0"), wantErr: ErrInvalidVers},
+		{name: "prefix block with bounds out of order", rule: withVers(block("r_1", "pkg:npm/@acme/*"), "vers:npm/>=2.0.0|<1.0.0"), wantErr: ErrInvalidVers},
+		{name: "block with a vers of another type", rule: withVers(block("r_1", "pkg:npm/evil"), "vers:pypi/>=1.0.0"), wantErr: ErrInvalidVers},
+		{name: "block with a version and a vers", rule: withVers(block("r_1", "pkg:npm/evil@1.0.0"), "vers:npm/>=1.0.0"), wantErr: ErrInvalidVers},
+		{name: "block the identity cannot parse", rule: block("r_1", "pkg:unknown/x"), wantErr: ErrInvalidSelector},
+		{name: "trust with no expiry", rule: withExpiry(trust("r_1", "pkg:npm/fp", ScopeMalware), time.Time{}), wantErr: ErrNoExpiry},
+		{name: "unknown effect", rule: Rule{ID: "r_1", PURL: "pkg:npm/x"}, wantErr: ErrUnknownEffect},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Validate(tc.rule, testIdentity{})
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestCompareRulesIsTotal(t *testing.T) {
+	base := trust("r_1", "pkg:npm/x", ScopeMalware)
+	variants := []func(*Rule){
+		func(r *Rule) { r.Effect = EffectBlock },
+		func(r *Rule) { r.PURL = "pkg:npm/y" },
+		func(r *Rule) { r.Vers = "vers:npm/>=1.0.0" },
+		func(r *Rule) { r.Scopes = []Scope{ScopeMalware, ScopeCooldown} },
+		func(r *Rule) { r.ExpiresAt = r.ExpiresAt.Add(time.Hour) },
+		func(r *Rule) { r.Reason = "other" },
+		func(r *Rule) { r.Origin.Kind = OriginLocal },
+		func(r *Rule) { r.Origin.Path = "/etc/x.yml" },
+	}
+
+	for i, change := range variants {
+		other := base
+		other.Scopes = slices.Clone(base.Scopes)
+		change(&other)
+
+		assert.NotZero(t, compareRules(base, other), "variant %d", i)
+		assert.Equal(t, -compareRules(base, other), compareRules(other, base), "variant %d", i)
 	}
 }
 

@@ -133,6 +133,11 @@ var (
 	// ErrNoRuleID means that a trust entry has no rule id.
 	ErrNoRuleID = errors.New("trust entry has no rule id")
 
+	// ErrNoExpiry means that a trust entry has no expiry. The contract
+	// requires one (package_rule.trust_needs_expiry), and a cache that a user
+	// edits has no server check, so a trust entry with none would never end.
+	ErrNoExpiry = errors.New("trust entry has no expiry")
+
 	// ErrNoKnownScope means that a trust entry has no scope that the package
 	// knows. An empty scope list never means "all".
 	ErrNoKnownScope = errors.New("trust entry has no known scope")
@@ -141,8 +146,9 @@ var (
 	// would also trust packages that no one reviewed.
 	ErrTrustPrefix = errors.New("trust entry selects a prefix")
 
-	// ErrInvalidVers means that the vers range of a trust entry does not
-	// parse, or names another type than the PURL.
+	// ErrInvalidVers means that the vers range of a rule does not parse,
+	// names another ecosystem than the PURL, or has bounds out of version
+	// order.
 	ErrInvalidVers = errors.New("invalid vers range")
 
 	// ErrInvalidSelector means that the identity cannot parse the PURL of a
@@ -157,8 +163,10 @@ var (
 //   - with the id BlockRuleIDNone for a block entry with no id.
 //
 // It returns an error for a rule that a tool must drop: an unknown effect, or
-// a trust entry with no id, no known scope, a prefix selector or a vers range
-// that does not parse. A block entry is never dropped here. NewIndex calls
+// a trust entry with no id, no expiry, no known scope, a prefix selector or a
+// vers range that does not parse. A block entry is never dropped here. The
+// checks that need the identity, such as the ecosystem of the vers range,
+// run in NewIndex and Validate. NewIndex calls
 // Normalize, so a caller needs it only to report dropped rules early.
 func Normalize(r Rule) (Rule, error) {
 	switch r.Effect {
@@ -183,6 +191,10 @@ func normalizeTrust(r Rule) (Rule, error) {
 		return r, ErrNoRuleID
 	}
 
+	if r.ExpiresAt.IsZero() {
+		return r, ErrNoExpiry
+	}
+
 	scopes := make([]Scope, 0, len(r.Scopes))
 	for _, s := range r.Scopes {
 		if s.known() && !slices.Contains(scopes, s) {
@@ -202,8 +214,8 @@ func normalizeTrust(r Rule) (Rule, error) {
 	}
 
 	if r.Vers != "" {
-		if _, err := parseRuleVers(r); err != nil {
-			return r, err
+		if _, err := ParseVers(r.Vers); err != nil {
+			return r, fmt.Errorf("%w: %w", ErrInvalidVers, err)
 		}
 	}
 
@@ -214,21 +226,6 @@ func normalizeTrust(r Rule) (Rule, error) {
 // it cannot pass as one package.
 func isPrefix(purl string) bool {
 	return strings.Contains(purl, "*") || strings.Contains(strings.ToLower(purl), "%2a")
-}
-
-// parseRuleVers parses the vers range of a rule and checks that its type is
-// the type of the PURL.
-func parseRuleVers(r Rule) (Range, error) {
-	rng, err := ParseVers(r.Vers)
-	if err != nil {
-		return Range{}, fmt.Errorf("%w: %w", ErrInvalidVers, err)
-	}
-
-	if typ := purlType(r.PURL); rng.Scheme != typ {
-		return Range{}, fmt.Errorf("%w: vers type %q is not the purl type %q", ErrInvalidVers, rng.Scheme, typ)
-	}
-
-	return rng, nil
 }
 
 // purlType returns the type of a PURL in lower case, or "" when the PURL has

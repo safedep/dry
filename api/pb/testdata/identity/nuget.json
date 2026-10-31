@@ -1,0 +1,62 @@
+{
+  "ecosystem": "ECOSYSTEM_NUGET",
+  "rule_version": 1,
+  "source": "NuGet resolves a package id in any case. On 2026-10-31, www.nuget.org/api/v2/FindPackagesById() returned the id Newtonsoft.Json for 'NEWTONSOFT.JSON' and dotnet-ef for 'DOTNET-EF', and returned nothing for 'dotnet.ef'. The registration resource api.nuget.org/v3/registration5-semver1 returned Newtonsoft.Json for the lower-case id, and Microsoft.Extensions.Logging for MICROSOFT.EXTENSIONS.LOGGING. The package content resource api.nuget.org/v3-flatcontainer serves only the lower-case id: Newtonsoft.Json returned 404 and newtonsoft.json returned 200. The rule folds ASCII names only, and keeps a separator as it is. The version stays raw.",
+  "versions": [
+    {
+      "input": "13.0.3",
+      "canonical": "13.0.3",
+      "parsed": false
+    }
+  ],
+  "names": [
+    {
+      "input": "Newtonsoft.Json",
+      "canonical": "newtonsoft.json"
+    },
+    {
+      "input": "NEWTONSOFT.JSON",
+      "canonical": "newtonsoft.json"
+    },
+    {
+      "input": "Microsoft.Extensions.Logging",
+      "canonical": "microsoft.extensions.logging"
+    },
+    {
+      "input": "dotnet-ef",
+      "canonical": "dotnet-ef"
+    },
+    {
+      "input": "Kestrel",
+      "canonical": "Kestrel"
+    }
+  ],
+  "version_groups": [],
+  "version_distinct": [],
+  "name_groups": [
+    [
+      "Newtonsoft.Json",
+      "newtonsoft.json",
+      "NEWTONSOFT.JSON"
+    ],
+    [
+      "Microsoft.Extensions.Logging",
+      "MICROSOFT.EXTENSIONS.LOGGING",
+      "microsoft.extensions.logging"
+    ],
+    [
+      "dotnet-ef",
+      "DOTNET-EF"
+    ]
+  ],
+  "name_distinct": [
+    [
+      "dotnet-ef",
+      "dotnet.ef"
+    ],
+    [
+      "Newtonsoft.Json",
+      "Newtonsoft.Json.Bson"
+    ]
+  ]
+}

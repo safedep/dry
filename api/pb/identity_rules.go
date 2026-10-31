@@ -50,6 +50,7 @@ var identityRules = map[packagev1.Ecosystem]identityRule{
 	// versions are case-sensitive or carry no case, so the rules fold the name
 	// only.
 	packagev1.Ecosystem_ECOSYSTEM_CARGO:                           {version: 1, foldName: cargoIdentityName},
+	packagev1.Ecosystem_ECOSYSTEM_NUGET:                           {version: 1, foldName: asciiLowerIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_PACKAGIST:                       {version: 1, foldName: asciiLowerIdentityName},
 	packagev1.Ecosystem_ECOSYSTEM_GOOGLE_CHROME_BROWSER_EXTENSION: {version: 1, foldName: asciiLowerIdentityName},
 

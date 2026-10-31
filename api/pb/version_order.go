@@ -93,3 +93,45 @@ func (p PackageVersion) Compare(other PackageVersion) (int, error) {
 	}
 	return CompareVersions(p.ecosystem, p.rawVersion, other.rawVersion)
 }
+
+// OrderedVersion is a version parsed under the order of its ecosystem. A
+// caller that compares one version with many others parses each version once
+// with ParseVersion, because a parse costs much more than a compare.
+type OrderedVersion struct {
+	ecosystem packagev1.Ecosystem
+	version   semantic.Version
+}
+
+// ParseVersion parses a version under the order of the ecosystem. It returns
+// ErrNoVersionOrder for an ecosystem with no order, and an error for an empty
+// version. The order is the order of CompareVersions.
+func ParseVersion(ecosystem packagev1.Ecosystem, version string) (OrderedVersion, error) {
+	parse, ok := versionParsers[ecosystem]
+	if !ok {
+		return OrderedVersion{}, fmt.Errorf("%w: %s", ErrNoVersionOrder, ecosystem)
+	}
+	if version == "" {
+		return OrderedVersion{}, errors.New("cannot order an empty version")
+	}
+
+	v, err := parse(version)
+	if err != nil {
+		return OrderedVersion{}, fmt.Errorf("parse %s version %q: %w", ecosystem, version, err)
+	}
+
+	return OrderedVersion{ecosystem: ecosystem, version: v}, nil
+}
+
+// Compare orders v against other. It returns -1, 0 or +1, and an error when
+// the two versions belong to different ecosystems or one of them is the zero
+// value.
+func (v OrderedVersion) Compare(other OrderedVersion) (int, error) {
+	if v.version == nil || other.version == nil {
+		return 0, errors.New("cannot order a version that is not parsed")
+	}
+	if v.ecosystem != other.ecosystem {
+		return 0, fmt.Errorf("cannot order a %s version against a %s version", v.ecosystem, other.ecosystem)
+	}
+
+	return v.version.Compare(other.version)
+}

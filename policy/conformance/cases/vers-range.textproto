@@ -1,0 +1,28 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# A block entry and a trust entry with a vers range.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_block_range"
+      effect: EFFECT_BLOCK
+      selector {
+        purl: "pkg:npm/lodash"
+        vers: "vers:npm/>=4.17.0|<4.17.21"
+      }
+      reason: "Versions with a known compromise."
+    }
+    package_rules {
+      rule_id: "r_trust_range"
+      effect: EFFECT_TRUST
+      selector {
+        purl: "pkg:pypi/requests"
+        vers: "vers:pypi/>=2.0.0|<3.0.0"
+      }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "Reviewed major version 2."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

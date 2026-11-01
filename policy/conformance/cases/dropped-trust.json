@@ -1,0 +1,62 @@
+{
+  "description": "A tool drops a trust entry with only an unknown scope, a trust entry with no expiry and a trust entry with a prefix selector. An unknown scope next to a known scope is ignored, and the entry stays.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "unknown-scope-only-malware-control",
+      "package": {"ecosystem": "npm", "name": "pkg-a", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "unknown-scope-only-cooldown-control",
+      "package": {"ecosystem": "npm", "name": "pkg-a", "version": "1.0.0"},
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "unknown-scope-only-vulnerability-control",
+      "package": {"ecosystem": "npm", "name": "pkg-a", "version": "1.0.0"},
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "no-expiry-malware-control",
+      "package": {"ecosystem": "npm", "name": "pkg-b", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "no-expiry-cooldown-control",
+      "package": {"ecosystem": "npm", "name": "pkg-b", "version": "1.0.0"},
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "prefix-malware-control",
+      "package": {"ecosystem": "npm", "name": "@acme/lib", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "prefix-cooldown-control",
+      "package": {"ecosystem": "npm", "name": "@acme/lib", "version": "1.0.0"},
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "known-and-unknown-scope",
+      "package": {"ecosystem": "npm", "name": "pkg-c", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "trust", "rule_id": "r_known_and_unknown_scope"}
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "description": "The version checks fail closed when the ecosystem has no version order. A range that the ecosystem cannot order is invalid: a block entry with it blocks every version, and a trust entry with it is dropped. A block entry with one version blocks only that version text, so a block on v4 does not block v3.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "block-range-inside",
+      "package": {"ecosystem": "github-actions", "name": "evil/action", "version": "v3"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_range"}
+    },
+    {
+      "name": "block-range-outside",
+      "package": {"ecosystem": "github-actions", "name": "evil/action", "version": "v5"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_range"}
+    },
+    {
+      "name": "block-version-same-tag",
+      "package": {"ecosystem": "github-actions", "name": "pinned/action", "version": "v4"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_version"}
+    },
+    {
+      "name": "block-version-other-tag",
+      "package": {"ecosystem": "github-actions", "name": "pinned/action", "version": "v3"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "trust-range-dropped",
+      "package": {"ecosystem": "github-actions", "name": "good/action", "version": "v3"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    }
+  ]
+}

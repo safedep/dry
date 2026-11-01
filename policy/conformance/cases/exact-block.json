@@ -1,0 +1,62 @@
+{
+  "description": "A block entry with no version blocks every version of its package. A block entry with a version blocks that version, and a version that the ecosystem orders equal to it. A block needs no verdict and applies to every control.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "every-version",
+      "package": {"ecosystem": "npm", "name": "event-stream", "version": "3.3.6"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_any"}
+    },
+    {
+      "name": "cooldown-control",
+      "package": {"ecosystem": "npm", "name": "event-stream", "version": "4.0.1"},
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_any"}
+    },
+    {
+      "name": "vulnerability-control",
+      "package": {"ecosystem": "npm", "name": "event-stream", "version": "4.0.1"},
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_any"}
+    },
+    {
+      "name": "other-package",
+      "package": {"ecosystem": "npm", "name": "event-stream-x", "version": "3.3.6"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "selected-version",
+      "package": {"ecosystem": "npm", "name": "ua-parser-js", "version": "0.7.29"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_one"}
+    },
+    {
+      "name": "equal-version",
+      "package": {"ecosystem": "npm", "name": "ua-parser-js", "version": "0.7.29+build.1"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_one"}
+    },
+    {
+      "name": "other-version",
+      "package": {"ecosystem": "npm", "name": "ua-parser-js", "version": "0.7.30"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "no-rule-id",
+      "package": {"ecosystem": "npm", "name": "flatmap-stream", "version": "0.1.1"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "-"}
+    }
+  ]
+}

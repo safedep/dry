@@ -1,0 +1,97 @@
+{
+  "description": "A prefix block selects every package under its boundary, and no package that only shares the text before the boundary. The boundary is \"/\" for \"/*\" and \".\" for \".*\". The prefix takes the name fold of its ecosystem.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "npm-scope-inside",
+      "package": {"ecosystem": "npm", "name": "@acme/lib", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_npm_scope"}
+    },
+    {
+      "name": "npm-scope-longer-scope",
+      "package": {"ecosystem": "npm", "name": "@acmex/lib", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "npm-scope-unscoped-name",
+      "package": {"ecosystem": "npm", "name": "acme", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "go-path-inside",
+      "package": {"ecosystem": "go", "name": "github.com/acme/tool", "version": "v1.2.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_go_path"}
+    },
+    {
+      "name": "go-path-longer-segment",
+      "package": {"ecosystem": "go", "name": "github.com/acmecorp/tool", "version": "v1.2.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "maven-group-inside",
+      "package": {"ecosystem": "maven", "name": "org.apache.commons:commons-lang3", "version": "3.14.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_maven_group"}
+    },
+    {
+      "name": "maven-group-longer-segment",
+      "package": {"ecosystem": "maven", "name": "org.apachex:lib", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "maven-group-stem-itself",
+      "package": {"ecosystem": "maven", "name": "org.apache:lib", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "pypi-dot-hyphen",
+      "package": {"ecosystem": "pypi", "name": "foo-bar", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_pypi_dot"}
+    },
+    {
+      "name": "pypi-dot-underscore",
+      "package": {"ecosystem": "pypi", "name": "Foo_Bar", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_pypi_dot"}
+    },
+    {
+      "name": "pypi-dot-no-separator",
+      "package": {"ecosystem": "pypi", "name": "foobar", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "nuget-dot-other-case",
+      "package": {"ecosystem": "nuget", "name": "microsoft.evil", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_nuget_dot"}
+    },
+    {
+      "name": "nuget-dot-longer-segment",
+      "package": {"ecosystem": "nuget", "name": "MicrosoftX.Evil", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    }
+  ]
+}

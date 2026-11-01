@@ -1,0 +1,55 @@
+{
+  "description": "A vers range selects the versions inside it, with its bounds as written: \">=\" holds the bound and \"<\" does not. A version outside the range gets no rule.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "block-lower-bound",
+      "package": {"ecosystem": "npm", "name": "lodash", "version": "4.17.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_range"}
+    },
+    {
+      "name": "block-inside",
+      "package": {"ecosystem": "npm", "name": "lodash", "version": "4.17.20"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_range"}
+    },
+    {
+      "name": "block-upper-bound",
+      "package": {"ecosystem": "npm", "name": "lodash", "version": "4.17.21"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "block-below",
+      "package": {"ecosystem": "npm", "name": "lodash", "version": "4.16.6"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "trust-inside",
+      "package": {"ecosystem": "pypi", "name": "requests", "version": "2.31.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "trust", "rule_id": "r_trust_range"}
+    },
+    {
+      "name": "trust-upper-bound",
+      "package": {"ecosystem": "pypi", "name": "requests", "version": "3.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "trust-below",
+      "package": {"ecosystem": "pypi", "name": "requests", "version": "1.2.3"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    }
+  ]
+}

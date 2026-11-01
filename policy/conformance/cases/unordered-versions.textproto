@@ -1,0 +1,34 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Rules on GitHub Actions, an ecosystem with no version order.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_block_range"
+      effect: EFFECT_BLOCK
+      selector {
+        purl: "pkg:githubactions/evil/action"
+        vers: "vers:githubactions/>=v2|<v4"
+      }
+      reason: "A range that the ecosystem cannot order."
+    }
+    package_rules {
+      rule_id: "r_block_version"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:githubactions/pinned/action@v4" }
+      reason: "One tag."
+    }
+    package_rules {
+      rule_id: "r_trust_range"
+      effect: EFFECT_TRUST
+      selector {
+        purl: "pkg:githubactions/good/action"
+        vers: "vers:githubactions/>=v2|<v4"
+      }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A range that the ecosystem cannot order."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

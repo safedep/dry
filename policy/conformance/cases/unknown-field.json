@@ -1,0 +1,31 @@
+{
+  "description": "A block entry with a field that the tool does not know stays and blocks. A trust entry with a field that the tool does not know is dropped, because the field could narrow it.",
+  "now": "2026-11-01T12:00:00Z",
+  "unknown_fields": [
+    {"rule_id": "r_block_unknown", "field": 99},
+    {"rule_id": "r_trust_unknown", "field": 99}
+  ],
+  "checks": [
+    {
+      "name": "block-stays",
+      "package": {"ecosystem": "npm", "name": "evil-pkg", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_block_unknown"}
+    },
+    {
+      "name": "trust-dropped",
+      "package": {"ecosystem": "npm", "name": "good-pkg", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "trust-with-no-unknown-field",
+      "package": {"ecosystem": "npm", "name": "good-other", "version": "1.0.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "trust", "rule_id": "r_trust_known"}
+    }
+  ]
+}

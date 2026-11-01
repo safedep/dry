@@ -1,0 +1,31 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Package rules that unknown-field.json gives a field that the contract does
+# not know. The text format cannot hold such a field, so the runner adds it.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_block_unknown"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/evil-pkg" }
+      reason: "A block entry from a newer server."
+    }
+    package_rules {
+      rule_id: "r_trust_unknown"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/good-pkg" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A trust entry from a newer server."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_trust_known"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/good-other" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A trust entry with no unknown field."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

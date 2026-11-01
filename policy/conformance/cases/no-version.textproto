@@ -1,0 +1,57 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Rules with a version or a range, for a package that the tool sees with no
+# version.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_block_any"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/node-ipc" }
+      reason: "Every version."
+    }
+    package_rules {
+      rule_id: "r_block_version"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/colors@1.4.1" }
+      reason: "One version."
+    }
+    package_rules {
+      rule_id: "r_block_range"
+      effect: EFFECT_BLOCK
+      selector {
+        purl: "pkg:npm/faker"
+        vers: "vers:npm/>=6.6.6"
+      }
+      reason: "A range."
+    }
+    package_rules {
+      rule_id: "r_trust_version"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/chalk@5.3.0" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "One reviewed version."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_trust_range"
+      effect: EFFECT_TRUST
+      selector {
+        purl: "pkg:npm/debug"
+        vers: "vers:npm/>=4.0.0|<5.0.0"
+      }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A reviewed range."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_trust_any"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/ms" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "Every version reviewed."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

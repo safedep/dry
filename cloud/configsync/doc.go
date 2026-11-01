@@ -8,11 +8,12 @@
 //
 // Fetcher.Fetch calls PolicySyncService.GetResolvedPolicy and commits a new
 // policy only when every check passes:
-//   - A NOT_MODIFIED reply moves only fetched_at. A NOT_MODIFIED reply with
-//     another digest is a failed fetch.
+//   - A NOT_MODIFIED reply moves fetched_at and clears last_error. It
+//     changes no policy field. A NOT_MODIFIED reply with another digest is a
+//     failed fetch.
 //   - A MODIFIED reply must carry "sha256:" and the hex SHA-256 of the
 //     received bytes. A revision lower than highest_revision of the tenant
-//     is ignored. Then the Validate hook of the tool runs.
+//     is ignored. Then the Validator of the tool runs.
 //
 // The fetcher never decodes the policy bytes. Only the validator of the tool
 // does.

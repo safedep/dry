@@ -20,13 +20,50 @@ const (
 	policyPrefix  = "policy-"
 	policySuffix  = ".pb"
 
-	dirMode  = 0o700
-	fileMode = 0o600
+	defaultDirMode  os.FileMode = 0o700
+	defaultFileMode os.FileMode = 0o600
+
+	// tempFileMinAge keeps the cleanup away from a temp file that another
+	// writer still fills, when two writers run without the lock of the tool.
+	tempFileMinAge = time.Minute
 )
+
+// Accepted is the result of a Validator that accepts a policy.
+type Accepted struct {
+	// CapabilitySources maps a capability name to the digest of the policy
+	// file that the capability comes from, for each capability that failed
+	// in the checked policy. It can be empty. Store.Load ignores it.
+	CapabilitySources map[string]string
+}
+
+// Validator checks the bytes of a policy. A tool passes its header check and
+// its projection, because only the tool decodes the policy. An error rejects
+// the policy. The fetcher and Store.Load take the same type, so a tool runs
+// its projection once for each check and passes one function to both.
+type Validator func(raw []byte) (Accepted, error)
+
+// StoreOption changes a default of a Store.
+type StoreOption func(*Store)
+
+// WithDirMode sets the mode of the cache folder when the store creates it.
+// The default is 0700, for a cache that one user owns. The SafeDep daemon
+// writes as root and the tools read as the user, so it passes 0755.
+func WithDirMode(mode os.FileMode) StoreOption {
+	return func(s *Store) { s.dirMode = mode.Perm() }
+}
+
+// WithFileMode sets the mode of each file that the store writes. The
+// default is 0600. The SafeDep daemon passes 0644. Windows ignores it and
+// relies on the ACL of the folder.
+func WithFileMode(mode os.FileMode) StoreOption {
+	return func(s *Store) { s.fileMode = mode.Perm() }
+}
 
 // Store owns the layout of one policy cache folder.
 type Store struct {
-	dir string
+	dir      string
+	dirMode  os.FileMode
+	fileMode os.FileMode
 
 	// mu serializes the writers of one process. Writers in other processes
 	// hold a lock of the tool.
@@ -39,12 +76,17 @@ type Store struct {
 }
 
 // NewStore returns the store of the cache folder dir. It does not create the
-// folder. The first commit creates it with mode 0700.
-func NewStore(dir string) (*Store, error) {
+// folder. The first commit creates it, with mode 0700 unless WithDirMode
+// sets another mode.
+func NewStore(dir string, opts ...StoreOption) (*Store, error) {
 	if dir == "" {
 		return nil, errors.New("configsync: cache folder is required")
 	}
-	return &Store{dir: dir}, nil
+	s := &Store{dir: dir, dirMode: defaultDirMode, fileMode: defaultFileMode}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
 }
 
 // Dir returns the cache folder.
@@ -55,7 +97,7 @@ func (s *Store) Dir() string {
 // State reads state.json. A missing, unreadable or newer state returns an
 // error that wraps ErrNoCache.
 func (s *Store) State() (*State, error) {
-	data, err := os.ReadFile(filepath.Join(s.dir, stateFileName))
+	data, err := readCacheFile(s.dir, stateFileName, maxStateSize)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrNoCache, err)
 	}
@@ -82,12 +124,15 @@ func (s *Store) ReadPolicy(digest string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	raw, err := os.ReadFile(filepath.Join(s.dir, name))
+	raw, err := readCacheFile(s.dir, name, maxPolicySize)
 	if err != nil {
 		return nil, fmt.Errorf("configsync: cannot read policy %s: %w", digest, err)
 	}
-	if got := Digest(raw); got != digest {
-		return nil, fmt.Errorf("%w: policy file %s has digest %s", ErrDigestMismatch, name, got)
+	// The error does not give the digest of the bytes. A tool that runs as
+	// root reads the cache of the user, and the digest of a file that the
+	// user links in would tell the user about a file that only root reads.
+	if Digest(raw) != digest {
+		return nil, fmt.Errorf("%w: policy file %s does not match its name", ErrDigestMismatch, name)
 	}
 	return raw, nil
 }
@@ -117,13 +162,14 @@ type Loaded struct {
 
 // Load returns the current policy of the cache. It checks that the SHA-256
 // of the file equals the digest, then calls validate when it is not nil. A
-// tool passes its header check as validate, because only the tool decodes
-// the policy. When the current file fails a check, Load returns the previous
-// file with the same checks and reports the failure in Loaded.CurrentErr.
+// tool passes the Validator of its fetch, or only its header check. Load
+// ignores the Accepted result. When the current file fails a check, Load
+// returns the previous file with the same checks and reports the failure in
+// Loaded.CurrentErr.
 //
 // Load returns an error that wraps ErrNoCache when the state is missing,
 // unreadable or of a newer format, or when both files fail.
-func (s *Store) Load(validate func([]byte) error) (*Loaded, error) {
+func (s *Store) Load(validate Validator) (*Loaded, error) {
 	st, err := s.State()
 	if err != nil {
 		return nil, err
@@ -138,7 +184,7 @@ func (s *Store) Load(validate func([]byte) error) (*Loaded, error) {
 			return nil, err
 		}
 		if validate != nil {
-			if err := validate(raw); err != nil {
+			if _, err := validate(raw); err != nil {
 				return nil, fmt.Errorf("%w: %w", ErrRejected, err)
 			}
 		}
@@ -180,7 +226,7 @@ func (s *Store) commit(st *State, raw []byte) error {
 	if err := s.ensureDir(); err != nil {
 		return err
 	}
-	if err := writeFileAtomic(s.dir, name, raw); err != nil {
+	if err := s.writeFileAtomic(name, raw); err != nil {
 		return fmt.Errorf("configsync: cannot write policy file: %w", err)
 	}
 
@@ -206,15 +252,29 @@ func (s *Store) writeState(st *State) error {
 	if err := s.ensureDir(); err != nil {
 		return err
 	}
-	if err := writeFileAtomic(s.dir, stateFileName, append(data, '\n')); err != nil {
+	if err := s.writeFileAtomic(stateFileName, append(data, '\n')); err != nil {
 		return fmt.Errorf("configsync: cannot write state: %w", err)
 	}
 	return nil
 }
 
+// ensureDir creates the cache folder. Chmod sets the mode after the create,
+// because the umask of the process can remove bits, and a folder of the
+// daemon that readers cannot open hides the policy from each tool. Chmod
+// never changes a folder that exists.
 func (s *Store) ensureDir() error {
-	if err := os.MkdirAll(s.dir, dirMode); err != nil {
+	if _, err := os.Stat(s.dir); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("configsync: cannot read cache folder: %w", err)
+	}
+	if err := os.MkdirAll(s.dir, s.dirMode); err != nil {
 		return fmt.Errorf("configsync: cannot create cache folder: %w", err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(s.dir, s.dirMode); err != nil {
+			return fmt.Errorf("configsync: cannot set mode of cache folder: %w", err)
+		}
 	}
 	return nil
 }
@@ -236,14 +296,22 @@ func (s *Store) removeUnnamed(st *State) {
 		}
 	}
 
+	now := time.Now()
 	for _, e := range entries {
 		name := e.Name()
 		if !e.Type().IsRegular() || keep[name] {
 			continue
 		}
 		isPolicy := strings.HasPrefix(name, policyPrefix) && strings.HasSuffix(name, policySuffix)
-		if !isPolicy && !strings.HasPrefix(name, tempPrefix) {
+		isTemp := strings.HasPrefix(name, tempPrefix)
+		if !isPolicy && !isTemp {
 			continue
+		}
+		if isTemp {
+			info, err := e.Info()
+			if err != nil || now.Sub(info.ModTime()) < tempFileMinAge {
+				continue
+			}
 		}
 		if err := os.Remove(filepath.Join(s.dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			log.Warnf("configsync: cannot remove %s: %v", name, err)
@@ -251,10 +319,11 @@ func (s *Store) removeUnnamed(st *State) {
 	}
 }
 
-// writeFileAtomic writes data to name in dir through a synced temp file and
-// a rename, so a reader sees the old file or the new file and never a part.
-func writeFileAtomic(dir, name string, data []byte) (err error) {
-	tmp, err := os.CreateTemp(dir, tempPrefix+"*")
+// writeFileAtomic writes data to name in the folder through a synced temp
+// file and a rename, so a reader sees the old file or the new file and never
+// a part.
+func (s *Store) writeFileAtomic(name string, data []byte) (err error) {
+	tmp, err := os.CreateTemp(s.dir, tempPrefix+"*")
 	if err != nil {
 		return err
 	}
@@ -266,10 +335,10 @@ func writeFileAtomic(dir, name string, data []byte) (err error) {
 		}
 	}()
 
-	// CreateTemp uses mode 0600 on Unix. Chmod states it, so a change of the
-	// standard library cannot make the policy readable by other users.
+	// CreateTemp uses mode 0600. Chmod sets the mode of the store, so the
+	// readers of a daemon cache can read it.
 	if runtime.GOOS != "windows" {
-		if err = tmp.Chmod(fileMode); err != nil {
+		if err = tmp.Chmod(s.fileMode); err != nil {
 			return err
 		}
 	}
@@ -282,10 +351,10 @@ func writeFileAtomic(dir, name string, data []byte) (err error) {
 	if err = tmp.Close(); err != nil {
 		return err
 	}
-	if err = renameReplace(tmpPath, filepath.Join(dir, name)); err != nil {
+	if err = renameReplace(tmpPath, filepath.Join(s.dir, name)); err != nil {
 		return err
 	}
-	syncDir(dir)
+	syncDir(s.dir)
 	return nil
 }
 

@@ -31,18 +31,13 @@ type FetchRequest struct {
 
 	// Validate checks the bytes of a new policy before the commit. A tool
 	// passes its header check and its projection. An error rejects the
-	// policy and keeps the cache. It is required, because the fetcher never
-	// decodes the bytes.
-	Validate func(raw []byte) error
-
-	// CapabilitySources is optional. It runs after Validate passes, on the
-	// same bytes, and returns the capability_sources of the new commit: the
-	// digest of the policy file that each failed capability comes from. The
-	// store then keeps those files. A tool reads the current state with
-	// Store.State to compute it. The fetcher drops a source on a change of
-	// tenant, a source that names the new policy, and a digest that is not
-	// valid.
-	CapabilitySources func(raw []byte) map[string]string
+	// policy and keeps the cache. Accepted.CapabilitySources becomes the
+	// capability_sources of the commit, so the store keeps those files. A
+	// tool reads the current state with Store.State to compute it. The
+	// fetcher drops a source on a change of tenant, a source that names the
+	// new policy, and a digest that is not valid. Validate is required,
+	// because the fetcher never decodes the bytes.
+	Validate Validator
 }
 
 // FetchStatus tells what a successful fetch did.
@@ -111,13 +106,17 @@ func (f *Fetcher) Fetch(ctx context.Context, req FetchRequest) (*FetchResult, er
 	now := f.now().UTC()
 
 	st, err := f.store.State()
-	if err != nil {
+	readable := err == nil
+	if !readable {
 		// A missing, damaged or newer state is an empty cache for the
-		// fetcher. The next write replaces it. Without this, a tool that a
-		// user downgrades could never get a policy again.
+		// fetcher. Only a commit replaces it. A failed fetch leaves it as it
+		// is, so a tool that cannot read a state of a newer format does not
+		// destroy it, and a tool that a user downgrades still gets a policy
+		// at the next commit.
 		log.Debugf("configsync: fetch starts from an empty cache: %v", err)
 		st = &State{}
 	}
+	fail := func(err error) error { return f.fail(st, readable, now, err) }
 
 	sameTenant := st.Tenant == req.TenantDomain
 	var held string
@@ -137,51 +136,54 @@ func (f *Fetcher) Fetch(ctx context.Context, req FetchRequest) (*FetchResult, er
 
 	resp, err := f.transport.GetResolvedPolicy(ctx, rpcReq)
 	if err != nil {
-		return nil, f.fail(st, now, fmt.Errorf("configsync: fetch failed: %w", err))
+		return nil, fail(fmt.Errorf("configsync: fetch failed: %w", err))
 	}
 
 	switch resp.GetStatus() {
 	case policyv1.ResolvedPolicyStatus_RESOLVED_POLICY_STATUS_NOT_MODIFIED:
 		if held == "" || resp.GetDigest() != held {
-			return nil, f.fail(st, now, fmt.Errorf("%w: not modified reply has digest %q, the cache holds %q",
+			return nil, fail(fmt.Errorf("%w: not modified reply has digest %q, the cache holds %q",
 				ErrDigestMismatch, resp.GetDigest(), held))
 		}
 		st.FetchedAt = now
+		st.LastAttemptAt = now
+		st.LastError = ""
 		if err := f.store.writeState(st); err != nil {
 			return nil, err
 		}
 		return &FetchResult{Status: FetchNotModified, Digest: st.Digest, Revision: st.Revision}, nil
 
 	case policyv1.ResolvedPolicyStatus_RESOLVED_POLICY_STATUS_MODIFIED:
-		return f.commitModified(st, now, req, resp, sameTenant, held, highest)
+		return f.commitModified(st, now, req, resp, sameTenant, held, highest, fail)
 
 	default:
-		return nil, f.fail(st, now, fmt.Errorf("%w: %v", ErrUnknownStatus, resp.GetStatus()))
+		return nil, fail(fmt.Errorf("%w: %v", ErrUnknownStatus, resp.GetStatus()))
 	}
 }
 
 func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 	resp *policyv1.GetResolvedPolicyResponse, sameTenant bool, held string, highest uint64,
+	fail func(error) error,
 ) (*FetchResult, error) {
 	raw := resp.GetResolvedPolicy()
 	digest := resp.GetDigest()
 	revision := resp.GetRevision()
 
-	if got := Digest(raw); got != digest {
-		return nil, f.fail(st, now, fmt.Errorf("%w: reply digest %q, bytes have %q", ErrDigestMismatch, digest, got))
+	if Digest(raw) != digest {
+		return nil, fail(fmt.Errorf("%w: reply digest %q does not match the received bytes", ErrDigestMismatch, digest))
 	}
 
 	// A lower revision can come from a replica that lags or from a replay.
 	// The same revision with a new digest is accepted: the server can
 	// resolve one revision again, for example after a label change.
 	if revision < highest {
-		return nil, f.fail(st, now, fmt.Errorf("%w: revision %d, highest %d", ErrLowerRevision, revision, highest))
+		return nil, fail(fmt.Errorf("%w: revision %d, highest %d", ErrLowerRevision, revision, highest))
 	}
 
-	if err := req.Validate(raw); err != nil {
-		rejectErr := fmt.Errorf("%w: %w", ErrRejected, err)
+	accepted, err := req.Validate(raw)
+	if err != nil {
 		st.Rejected = &Rejection{Digest: digest, Revision: revision, Reason: err.Error(), At: now}
-		return nil, f.fail(st, now, rejectErr)
+		return nil, fail(fmt.Errorf("%w: %w", ErrRejected, err))
 	}
 
 	next := State{
@@ -206,12 +208,12 @@ func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 		}
 	}
 
-	if sameTenant && req.CapabilitySources != nil {
-		next.CapabilitySources = cleanSources(req.CapabilitySources(raw), digest)
+	if sameTenant {
+		next.CapabilitySources = cleanSources(accepted.CapabilitySources, digest)
 	}
 
 	if err := f.store.commit(&next, raw); err != nil {
-		return nil, f.fail(st, now, err)
+		return nil, fail(err)
 	}
 
 	log.Debugf("configsync: committed policy %s revision %d", digest, revision)
@@ -233,8 +235,13 @@ func (f *Fetcher) heldDigest(st *State) string {
 }
 
 // fail records a failed fetch in state.json and returns err. It writes no
-// policy bytes.
-func (f *Fetcher) fail(st *State, now time.Time, err error) error {
+// policy bytes. When the fetch could not read state.json, fail writes
+// nothing, because only a commit may replace a state that this package
+// cannot read.
+func (f *Fetcher) fail(st *State, readable bool, now time.Time, err error) error {
+	if !readable {
+		return err
+	}
 	st.LastAttemptAt = now
 	st.LastError = err.Error()
 	if werr := f.store.writeState(st); werr != nil {

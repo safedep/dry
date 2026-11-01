@@ -145,8 +145,18 @@ func request(tenant string) FetchRequest {
 		},
 		ToolName:    "pmg",
 		ToolVersion: "1.2.3",
-		Validate:    func([]byte) error { return nil },
+		Validate:    acceptAll,
 	}
+}
+
+func acceptAll([]byte) (Accepted, error) { return Accepted{}, nil }
+
+func refuseWith(err error) Validator {
+	return func([]byte) (Accepted, error) { return Accepted{}, err }
+}
+
+func withSources(sources map[string]string) Validator {
+	return func([]byte) (Accepted, error) { return Accepted{CapabilitySources: sources}, nil }
 }
 
 func TestFetch_FirstModifiedCommits(t *testing.T) {
@@ -217,7 +227,39 @@ func TestFetch_NotModifiedMovesOnlyFetchedAt(t *testing.T) {
 
 	want := *before
 	want.FetchedAt = now
+	want.LastAttemptAt = now
 	assert.Equal(t, &want, f.state())
+	assert.Equal(t, fileOf(t, policyA), f.policyFiles())
+}
+
+// A NOT_MODIFIED reply ends a failure: it clears last_error. It keeps the
+// record of the last rejection and every field of the policy.
+func TestFetch_NotModifiedClearsLastErrorAndKeepsRejected(t *testing.T) {
+	f := newFixture(t)
+	f.commit(tenantA, policyA, 3)
+	f.tick()
+	f.reply(modified(policyB, 4), nil)
+	req := request(tenantA)
+	req.Validate = refuseWith(errors.New("bad header"))
+	_, err := f.fetcher.Fetch(context.Background(), req)
+	require.ErrorIs(t, err, ErrRejected)
+	before := f.state()
+	require.True(t, before.LastFetchRejected())
+
+	now := f.tick()
+	f.reply(notModified(Digest(policyA)), nil)
+	_, err = f.fetcher.Fetch(context.Background(), request(tenantA))
+	require.NoError(t, err)
+
+	want := *before
+	want.FetchedAt = now
+	want.LastAttemptAt = now
+	want.LastError = ""
+	st := f.state()
+	assert.Equal(t, &want, st)
+	assert.NotNil(t, st.Rejected)
+	assert.False(t, st.LastFetchFailed())
+	assert.False(t, st.LastFetchRejected())
 	assert.Equal(t, fileOf(t, policyA), f.policyFiles())
 }
 
@@ -230,7 +272,7 @@ func TestFetch_FailedChecksKeepTheCache(t *testing.T) {
 		name         string
 		resp         *policyv1.GetResolvedPolicyResponse
 		rpcErr       error
-		validate     func([]byte) error
+		validate     Validator
 		wantErr      error
 		wantCode     codes.Code
 		wantRejected bool
@@ -253,7 +295,7 @@ func TestFetch_FailedChecksKeepTheCache(t *testing.T) {
 		{
 			name:         "validator failure keeps the cache and records the rejection",
 			resp:         modified(policyB, 6),
-			validate:     func([]byte) error { return refuse },
+			validate:     refuseWith(refuse),
 			wantErr:      ErrRejected,
 			wantRejected: true,
 		},
@@ -336,7 +378,7 @@ func TestFetch_CommitClearsTheLastFailure(t *testing.T) {
 	f.tick()
 	f.reply(modified(policyB, 6), nil)
 	req := request(tenantA)
-	req.Validate = func([]byte) error { return errors.New("bad") }
+	req.Validate = refuseWith(errors.New("bad"))
 	_, err := f.fetcher.Fetch(context.Background(), req)
 	require.ErrorIs(t, err, ErrRejected)
 
@@ -359,9 +401,7 @@ func TestFetch_NewTenantResetsHighestRevision(t *testing.T) {
 
 	got := f.reply(modified(policyC, 3), nil)
 	req := request(tenantB)
-	req.CapabilitySources = func([]byte) map[string]string {
-		return map[string]string{"package_admission": Digest(policyB)}
-	}
+	req.Validate = withSources(map[string]string{"package_admission": Digest(policyB)})
 	res, err := f.fetcher.Fetch(context.Background(), req)
 	require.NoError(t, err)
 	assert.Equal(t, FetchModified, res.Status)
@@ -390,20 +430,17 @@ func TestFetch_FailedFetchForNewTenantKeepsTheCache(t *testing.T) {
 	assert.Equal(t, fileOf(t, policyA), f.policyFiles())
 }
 
-func TestFetch_GRPCErrorWithNoCache(t *testing.T) {
+func TestFetch_GRPCErrorWithNoCacheWritesNothing(t *testing.T) {
 	f := newFixture(t)
-	now := f.tick()
+	f.tick()
 	f.reply(nil, status.Error(codes.Unavailable, "down"))
 
 	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 
-	st := f.state()
-	assert.False(t, st.HasPolicy())
-	assert.Equal(t, now, st.LastAttemptAt)
-	assert.Contains(t, st.LastError, "down")
-
+	_, statErr := os.Stat(f.dir)
+	assert.ErrorIs(t, statErr, os.ErrNotExist, "a failed fetch with no state writes no state")
 	_, err = f.store.Load(nil)
 	assert.ErrorIs(t, err, ErrNoCache)
 }
@@ -414,7 +451,76 @@ func TestFetch_NotModifiedWithNoCacheFails(t *testing.T) {
 
 	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
 	assert.ErrorIs(t, err, ErrDigestMismatch)
-	assert.True(t, f.state().LastFetchFailed())
+	assert.NoFileExists(t, filepath.Join(f.dir, stateFileName))
+}
+
+// A failed fetch never writes a state.json that it could not read. Only a
+// commit replaces it.
+func TestFetch_FailureKeepsAnUnreadableState(t *testing.T) {
+	states := []struct {
+		name    string
+		content []byte
+	}{
+		{"newer format", []byte(`{"format_version": 2, "tenant": "a.example.safedep.io", "future": {"x": 1}}` + "\n")},
+		{"bad json", []byte(`{"format_version": 1,`)},
+	}
+	failures := []struct {
+		name     string
+		resp     *policyv1.GetResolvedPolicyResponse
+		rpcErr   error
+		validate Validator
+		wantErr  error
+	}{
+		{name: "grpc error", rpcErr: status.Error(codes.Unavailable, "down")},
+		{name: "validator rejection", resp: modified(policyB, 6), validate: refuseWith(errors.New("bad")), wantErr: ErrRejected},
+		{name: "not modified", resp: notModified(Digest(policyA)), wantErr: ErrDigestMismatch},
+		{
+			name: "wrong digest",
+			resp: policyv1.GetResolvedPolicyResponse_builder{
+				Status:         policyv1.ResolvedPolicyStatus_RESOLVED_POLICY_STATUS_MODIFIED,
+				Digest:         Digest(policyA),
+				Revision:       6,
+				ResolvedPolicy: policyB,
+			}.Build(),
+			wantErr: ErrDigestMismatch,
+		},
+	}
+
+	for _, st := range states {
+		for _, fc := range failures {
+			t.Run(st.name+"/"+fc.name, func(t *testing.T) {
+				f := newFixture(t)
+				require.NoError(t, os.MkdirAll(f.dir, defaultDirMode))
+				path := filepath.Join(f.dir, stateFileName)
+				require.NoError(t, os.WriteFile(path, st.content, defaultFileMode))
+
+				f.reply(fc.resp, fc.rpcErr)
+				req := request(tenantA)
+				if fc.validate != nil {
+					req.Validate = fc.validate
+				}
+				_, err := f.fetcher.Fetch(context.Background(), req)
+				require.Error(t, err)
+				if fc.wantErr != nil {
+					assert.ErrorIs(t, err, fc.wantErr)
+				}
+
+				got, err := os.ReadFile(path)
+				require.NoError(t, err)
+				assert.Equal(t, st.content, got, "state.json is unchanged byte for byte")
+				assert.Empty(t, f.policyFiles())
+			})
+		}
+
+		t.Run(st.name+"/commit replaces it", func(t *testing.T) {
+			f := newFixture(t)
+			require.NoError(t, os.MkdirAll(f.dir, defaultDirMode))
+			require.NoError(t, os.WriteFile(filepath.Join(f.dir, stateFileName), st.content, defaultFileMode))
+
+			f.commit(tenantA, policyA, 1)
+			assert.Equal(t, Digest(policyA), f.state().Digest)
+		})
+	}
 }
 
 func TestFetch_DamagedCurrentFileSendsEmptyDigest(t *testing.T) {
@@ -422,7 +528,7 @@ func TestFetch_DamagedCurrentFileSendsEmptyDigest(t *testing.T) {
 	f.commit(tenantA, policyA, 1)
 	f.tick()
 	f.commit(tenantA, policyB, 2)
-	require.NoError(t, os.WriteFile(filepath.Join(f.dir, fileOf(t, policyB)[0]), []byte("damaged"), fileMode))
+	require.NoError(t, os.WriteFile(filepath.Join(f.dir, fileOf(t, policyB)[0]), []byte("damaged"), defaultFileMode))
 	f.tick()
 
 	got := f.reply(modified(policyB, 2), nil)
@@ -482,9 +588,9 @@ func TestFetch_CapabilitySourcesKeepTheirFiles(t *testing.T) {
 		f.tick()
 		f.reply(modified(raw, revision), nil)
 		req := request(tenantA)
-		req.CapabilitySources = func(got []byte) map[string]string {
+		req.Validate = func(got []byte) (Accepted, error) {
 			assert.Equal(t, raw, got)
-			return sources
+			return Accepted{CapabilitySources: sources}, nil
 		}
 		_, err := f.fetcher.Fetch(context.Background(), req)
 		require.NoError(t, err)

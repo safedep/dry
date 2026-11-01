@@ -20,10 +20,10 @@ var validDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // State is the content of state.json.
 //
-// fetched_at moves on each fetch that ends with the policy of the server in
-// the cache. last_attempt_at and last_error record the last fetch that
-// failed, and a commit. So the last fetch failed when last_attempt_at is
-// after fetched_at (LastFetchFailed).
+// Each fetch sets last_attempt_at. A successful fetch clears last_error, and
+// a failed fetch sets it. So last_error is not empty exactly when the last
+// fetch failed (LastFetchFailed). fetched_at moves only on a successful
+// fetch.
 type State struct {
 	FormatVersion int `json:"format_version"`
 
@@ -50,13 +50,13 @@ type State struct {
 	// the server in the cache.
 	FetchedAt time.Time `json:"fetched_at,omitzero"`
 
-	// LastAttemptAt and LastError record the last failed fetch, or the last
-	// commit, which clears LastError.
+	// LastAttemptAt is the time of the last fetch. LastError is the error of
+	// that fetch, or empty when it succeeded.
 	LastAttemptAt time.Time `json:"last_attempt_at,omitzero"`
 	LastError     string    `json:"last_error"`
 
-	// Rejected records the last policy that the validator refused. A commit
-	// clears it.
+	// Rejected records the last policy that the validator refused. A
+	// NOT_MODIFIED reply keeps it. A commit clears it.
 	Rejected *Rejection `json:"rejected,omitempty"`
 
 	// CapabilitySources maps a capability name to the digest of the policy
@@ -81,7 +81,7 @@ func (s *State) HasPolicy() bool {
 // LastFetchFailed reports whether the last fetch failed: a gRPC error, a
 // failed check or a rejection.
 func (s *State) LastFetchFailed() bool {
-	return s != nil && s.LastAttemptAt.After(s.FetchedAt)
+	return s != nil && s.LastError != ""
 }
 
 // LastFetchRejected reports whether the last fetch failed because the

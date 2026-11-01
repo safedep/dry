@@ -276,7 +276,7 @@ go command can leave `testdata` out of a vendor directory.
 | `expired-rule` | A trust and a block entry before, at and after the expiry |
 | `no-version` | A package with no version against rules with a version or a range |
 | `unordered-versions` | GitHub Actions, with no version order: a range and one tag |
-| `verified-malware` | No trust entry waives verified malware, also with every scope |
+| `verified-malware` | No trust entry waives verified malware, also with every scope, under every control |
 | `case-folding` | PyPI, NuGet and GitHub fold a name. PyPI also folds a version. npm does not fold |
 | `unknown-field` | A block entry with an unknown field stays. A trust entry with one is dropped |
 | `dropped-trust` | A trust entry with only an unknown scope, no expiry or a prefix selector is dropped |

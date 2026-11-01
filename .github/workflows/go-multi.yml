@@ -36,3 +36,8 @@ jobs:
           ## backend is unavailable. macOS and Windows runners have native
           ## keychains available out of the box.
           KEYCHAIN_ENABLE_E2E_TEST: ${{ runner.os != 'Linux' && 'true' || '' }}
+
+      ## The policy cache renames files and sets file modes, which differ on
+      ## each OS.
+      - name: Test policy cache package
+        run: go test -v ./cloud/configsync/...

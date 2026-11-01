@@ -15,3 +15,6 @@ packages:
     interfaces:
       AsyncRpcClient:
       MessagingService:
+  github.com/safedep/dry/cloud/configsync:
+    interfaces:
+      Transport:

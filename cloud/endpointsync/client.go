@@ -356,14 +356,31 @@ func (c *SyncClient) Sync(ctx context.Context) (int, error) {
 // An Unimplemented error means an older server: the caller should treat
 // it as a soft failure.
 func (c *SyncClient) CheckIn(ctx context.Context) error {
+	return c.CheckInWithOptions(ctx)
+}
+
+// CheckInWithOptions is CheckIn with the cloud policy state of the tools
+// (WithToolPolicy) and the labels of the endpoint (WithLabels). With no
+// option it sends the same request as CheckIn.
+//
+// CheckIn keeps its signature, because callers pass it as a
+// func(context.Context) error value.
+func (c *SyncClient) CheckInWithOptions(ctx context.Context, opts ...CheckInOption) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("endpointsync: check-in cancelled: %w", err)
+	}
+
+	var cfg checkInConfig
+	for _, opt := range opts {
+		opt(&cfg)
 	}
 
 	req := &servicev1.CheckInRequest{
 		Endpoint:    c.identity,
 		ToolName:    c.toolName,
 		ToolVersion: c.toolVersion,
+		Tools:       cfg.tools,
+		Labels:      cfg.labels,
 	}
 
 	_, err := c.checkInBreaker.Execute(func() (*servicev1.CheckInResponse, error) {

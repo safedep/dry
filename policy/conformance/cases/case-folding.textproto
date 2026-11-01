@@ -1,0 +1,54 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Selectors in a case or a form that differs from the name that the tool sees.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_pypi_name"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:pypi/requests-oauthlib" }
+      reason: "PyPI folds case and the separators - _ and ."
+    }
+    package_rules {
+      rule_id: "r_pypi_selector_case"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:pypi/Django_Extensions" }
+      reason: "A selector that is not in canonical form."
+    }
+    package_rules {
+      rule_id: "r_pypi_version"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:pypi/urllib3@2.0.0rc1" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "PyPI folds the version too."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_nuget_name"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:nuget/Newtonsoft.Json" }
+      reason: "NuGet folds the case of an id."
+    }
+    package_rules {
+      rule_id: "r_github_actions"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:githubactions/Actions/Checkout" }
+      reason: "GitHub folds the case of an owner and a repository."
+    }
+    package_rules {
+      rule_id: "r_github_repository"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:github/SafeDep/Vet" }
+      scopes: [TRUST_SCOPE_VULNERABILITY]
+      reason: "GitHub folds the case of an owner and a repository."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_npm_case"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/JSONStream" }
+      reason: "npm names are case-sensitive."
+    }
+  }
+}

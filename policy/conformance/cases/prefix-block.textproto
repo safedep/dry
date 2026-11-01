@@ -1,0 +1,38 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Block entries that select a prefix, with each boundary: "/*" and ".*".
+spec {
+  core {
+    package_rules {
+      rule_id: "r_npm_scope"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/@acme/*" }
+      reason: "Every package in the npm scope @acme."
+    }
+    package_rules {
+      rule_id: "r_go_path"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:golang/github.com/acme/*" }
+      reason: "Every Go module under github.com/acme/."
+    }
+    package_rules {
+      rule_id: "r_maven_group"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:maven/org.apache.*" }
+      reason: "Every Maven group under org.apache."
+    }
+    package_rules {
+      rule_id: "r_pypi_dot"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:pypi/foo.*" }
+      reason: "Every PyPI project whose name starts with foo and a separator."
+    }
+    package_rules {
+      rule_id: "r_nuget_dot"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:nuget/Microsoft.*" }
+      reason: "Every NuGet package whose id starts with Microsoft."
+    }
+  }
+}

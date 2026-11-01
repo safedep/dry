@@ -1,0 +1,23 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# A trust entry and a block entry for one package. The trust entry has the
+# lower id, so the id order does not decide.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_a_trust"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/left-pad" }
+      scopes: [TRUST_SCOPE_MALWARE, TRUST_SCOPE_COOLDOWN, TRUST_SCOPE_VULNERABILITY]
+      reason: "Reviewed by the security team."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_z_block"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/left-pad" }
+      reason: "Blocked after an incident."
+    }
+  }
+}

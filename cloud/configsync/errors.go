@@ -31,6 +31,14 @@ var (
 	// does not know.
 	ErrUnknownStatus = errors.New("configsync: unknown reply status")
 
+	// ErrUnsafeFile means that a cache file is a symlink, a FIFO, a device,
+	// a folder or another file that is not a regular file.
+	ErrUnsafeFile = errors.New("configsync: cache file is not a regular file")
+
+	// ErrTooLarge means that a cache file is larger than its limit: 4 MiB for
+	// a policy file, 1 MiB for state.json.
+	ErrTooLarge = errors.New("configsync: cache file is too large")
+
 	// ErrInvalidRequest means that a FetchRequest misses a required field.
 	ErrInvalidRequest = errors.New("configsync: invalid fetch request")
 )

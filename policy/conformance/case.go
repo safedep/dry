@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"strings"
@@ -312,6 +313,10 @@ func loadCase(fsys fs.FS, dir, name string) (Case, error) {
 		return Case{}, fmt.Errorf("%s: %w", c.File, err)
 	}
 
+	if err := strictJSON(raw); err != nil {
+		return Case{}, fmt.Errorf("%s: %w", c.File, err)
+	}
+
 	// An unknown key is a typo in a case, and a typo must not skip a check.
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
@@ -450,4 +455,69 @@ func toCheck(f checkFile, now time.Time) (Check, error) {
 		},
 		Want: Decision{Effect: effect, RuleID: f.Want.RuleID},
 	}, nil
+}
+
+// strictJSON refuses a key that one object holds twice, at any depth, and any
+// content after the first value. encoding/json keeps the last of two keys and
+// ignores what follows the value, so without this check a case file could
+// drop a check, or a whole second list of checks, with no error.
+func strictJSON(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if err := walkJSON(dec, "$"); err != nil {
+		return err
+	}
+
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("the file must hold one JSON object and nothing after it")
+	}
+
+	return nil
+}
+
+// walkJSON reads one value from dec and checks each object in it for a key
+// that appears twice. at names the value in an error, as "$.checks[2]".
+func walkJSON(dec *json.Decoder, at string) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+
+	switch tok {
+	case json.Delim('{'):
+		seen := map[string]bool{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+
+			key, ok := keyTok.(string)
+			if !ok {
+				return fmt.Errorf("%s: a key is not a string", at)
+			}
+
+			if seen[key] {
+				return fmt.Errorf("%s: key %q appears twice", at, key)
+			}
+
+			seen[key] = true
+
+			if err := walkJSON(dec, at+"."+key); err != nil {
+				return err
+			}
+		}
+	case json.Delim('['):
+		for i := 0; dec.More(); i++ {
+			if err := walkJSON(dec, fmt.Sprintf("%s[%d]", at, i)); err != nil {
+				return err
+			}
+		}
+	default:
+		return nil
+	}
+
+	// The closing bracket of the object or the list.
+	_, err = dec.Token()
+
+	return err
 }

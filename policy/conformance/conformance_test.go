@@ -289,6 +289,32 @@ func TestLoadCases(t *testing.T) {
 			wantErr: `cases/a.json: json: unknown field "nwo"`,
 		},
 		{
+			name: "checks twice",
+			files: fstest.MapFS{
+				"cases/a.json":      {Data: []byte(caseHeader(`"checks": [],`, validCheck))},
+				"cases/a.textproto": {Data: []byte(validPolicy)},
+			},
+			wantErr: `cases/a.json: $: key "checks" appears twice`,
+		},
+		{
+			name: "a key twice in a check",
+			files: fstest.MapFS{
+				"cases/a.json": {Data: []byte(caseHeader("", `{
+  "name": "c", "package": {"ecosystem": "npm", "name": "evil"},
+  "control": "malware", "verdict": "none", "want": {"effect": "none"}, "want": {"effect": "block"}}`))},
+				"cases/a.textproto": {Data: []byte(validPolicy)},
+			},
+			wantErr: `cases/a.json: $.checks[0]: key "want" appears twice`,
+		},
+		{
+			name: "content after the case object",
+			files: fstest.MapFS{
+				"cases/a.json":      {Data: []byte(caseHeader("", validCheck) + ` {"checks": []}`)},
+				"cases/a.textproto": {Data: []byte(validPolicy)},
+			},
+			wantErr: "cases/a.json: the file must hold one JSON object and nothing after it",
+		},
+		{
 			name: "policy sets a header",
 			files: fstest.MapFS{
 				"cases/a.json":      {Data: []byte(caseHeader("", validCheck))},

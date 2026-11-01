@@ -258,22 +258,41 @@ func (s *Store) writeState(st *State) error {
 	return nil
 }
 
-// ensureDir creates the cache folder. Chmod sets the mode after the create,
-// because the umask of the process can remove bits, and a folder of the
-// daemon that readers cannot open hides the policy from each tool. Chmod
-// never changes a folder that exists.
+// ensureDir creates the cache folder and each missing folder above it. Chmod
+// sets the mode after each create, because the umask of the process can
+// remove bits, and a folder of the daemon that readers cannot open or pass
+// through hides the policy from each tool. It never changes a folder that
+// exists, so a folder that an administrator set up keeps its mode.
 func (s *Store) ensureDir() error {
-	if _, err := os.Stat(s.dir); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("configsync: cannot read cache folder: %w", err)
+	var missing []string
+	for dir := filepath.Clean(s.dir); ; dir = filepath.Dir(dir) {
+		_, err := os.Stat(dir)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("configsync: cannot read cache folder: %w", err)
+		}
+		missing = append(missing, dir)
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
 	}
-	if err := os.MkdirAll(s.dir, s.dirMode); err != nil {
-		return fmt.Errorf("configsync: cannot create cache folder: %w", err)
-	}
-	if runtime.GOOS != "windows" {
-		if err := os.Chmod(s.dir, s.dirMode); err != nil {
-			return fmt.Errorf("configsync: cannot set mode of cache folder: %w", err)
+
+	// Create from the top down, so each folder has its parent.
+	for i := len(missing) - 1; i >= 0; i-- {
+		dir := missing[i]
+		if err := os.Mkdir(dir, s.dirMode); err != nil {
+			// Another process created it first. It owns that folder's mode.
+			if errors.Is(err, os.ErrExist) {
+				continue
+			}
+			return fmt.Errorf("configsync: cannot create cache folder: %w", err)
+		}
+		if runtime.GOOS != "windows" {
+			if err := os.Chmod(dir, s.dirMode); err != nil {
+				return fmt.Errorf("configsync: cannot set mode of cache folder: %w", err)
+			}
 		}
 	}
 	return nil

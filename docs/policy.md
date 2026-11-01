@@ -181,5 +181,5 @@ The contract has no `FieldExceptionReason` for a value that fails its limits, so
 
 ## Not in these packages
 
-`policy/bind` (the binding table runner) and `cloud/configsync` (the fetcher and the policy cache) come
-in later changes.
+`policy/bind` (the binding table runner) comes in a later change. `cloud/configsync` fetches the
+resolved policy and keeps the policy cache. See [cloud-configsync.md](cloud-configsync.md).

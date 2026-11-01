@@ -185,6 +185,30 @@ client, err := endpointsync.NewEventEmitterClient("pmg", "1.2.3",
 - Design: `safedep/control-tower`
   `docs/specs/2026-09-01-client-side-event-dedup-design.md`.
 
+## Check-In
+
+`CheckIn(ctx)` reports that the endpoint is present, with no events. The tool decides when to call
+it. An `Unimplemented` error means an older server, so treat it as a soft failure.
+
+`CheckInWithOptions(ctx, opts...)` adds data to the same request. With no option, it sends the
+request of `CheckIn`. `CheckIn` keeps its signature, because callers pass it as a
+`func(context.Context) error` value.
+
+```go
+err := syncClient.CheckInWithOptions(ctx,
+    // The cloud policy state of one tool. Each call adds one state.
+    endpointsync.WithToolPolicy(toolPolicyState),
+
+    // The "managed/" and "reported/" labels of the endpoint.
+    endpointsync.WithLabels(endpointsync.ReportedLabels()),
+)
+```
+
+`ReportedLabels()` returns `reported/os` and `reported/arch` with the values of `runtime.GOOS` and
+`runtime.GOARCH`, as `darwin` and `arm64`. A policy can select endpoints by these labels, so every
+tool sends them through this function, and the policy fetch of `cloud/configsync` sends the same
+labels. See [cloud-configsync.md](cloud-configsync.md).
+
 ## Configuration Options
 
 ```go

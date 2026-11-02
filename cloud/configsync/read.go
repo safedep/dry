@@ -17,7 +17,7 @@ const (
 
 // readCacheFile reads one file of the cache folder. Each read of a cache file
 // goes through it. The user owns the folder, and a tool that runs as root
-// can read it (spec 3.2). Without these checks, a symlink makes root read a
+// can read it. Without these checks, a symlink makes root read a
 // file that the user cannot read, a FIFO or a device blocks the tool, and a
 // large file uses all its memory.
 func readCacheFile(dir, name string, limit int64) ([]byte, error) {

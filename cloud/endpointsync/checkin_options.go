@@ -14,7 +14,7 @@ type checkInConfig struct {
 }
 
 // WithToolPolicy adds the cloud policy state of one tool to the check-in.
-// Each call adds one state, so a daemon can report each tool on the
+// Each call adds one state, so one check-in can report each tool on the
 // endpoint. A nil state adds nothing.
 func WithToolPolicy(state *servicev1.ToolPolicyState) CheckInOption {
 	return func(c *checkInConfig) {

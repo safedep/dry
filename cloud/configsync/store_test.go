@@ -260,7 +260,7 @@ func TestStore_FileModes(t *testing.T) {
 	}{
 		{name: "defaults for a cache of one user", wantDir: 0o700, wantFile: 0o600},
 		{
-			name:     "daemon cache that users read",
+			name:     "shared cache that users read",
 			opts:     []StoreOption{WithDirMode(0o755), WithFileMode(0o644)},
 			wantDir:  0o755,
 			wantFile: 0o644,
@@ -320,7 +320,7 @@ func TestStore_CommitRemovesOldTempFiles(t *testing.T) {
 	assert.FileExists(t, other, "the store deletes only files of its layout")
 }
 
-// The keys of state.json are a format that the M2 daemon and older tools
+// The keys of state.json are a format that other tools and older tools
 // read, so the test pins them.
 func TestStore_StateJSONKeys(t *testing.T) {
 	f := newFixture(t)

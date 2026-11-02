@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A daemon that runs with umask 077 asks for 0755 folders. Each folder that
+// A writer that runs with umask 077 asks for 0755 folders. Each folder that
 // the store creates, also above the cache folder, must get 0755, or a tool
 // cannot pass through it to read the cache. A folder that exists keeps its
 // mode.

@@ -46,15 +46,15 @@ type Validator func(raw []byte) (Accepted, error)
 type StoreOption func(*Store)
 
 // WithDirMode sets the mode of the cache folder when the store creates it.
-// The default is 0700, for a cache that one user owns. The SafeDep daemon
-// writes as root and the tools read as the user, so it passes 0755.
+// The default is 0700, for a cache that one user owns. A cache that root
+// writes and other users read needs 0755.
 func WithDirMode(mode os.FileMode) StoreOption {
 	return func(s *Store) { s.dirMode = mode.Perm() }
 }
 
 // WithFileMode sets the mode of each file that the store writes. The
-// default is 0600. The SafeDep daemon passes 0644. Windows ignores it and
-// relies on the ACL of the folder.
+// default is 0600. A cache that other users read needs 0644. Windows ignores
+// it and relies on the ACL of the folder.
 func WithFileMode(mode os.FileMode) StoreOption {
 	return func(s *Store) { s.fileMode = mode.Perm() }
 }
@@ -260,8 +260,8 @@ func (s *Store) writeState(st *State) error {
 
 // ensureDir creates the cache folder and each missing folder above it. Chmod
 // sets the mode after each create, because the umask of the process can
-// remove bits, and a folder of the daemon that readers cannot open or pass
-// through hides the policy from each tool. It never changes a folder that
+// remove bits, and a shared folder that readers cannot open or pass through
+// hides the policy from each tool. It never changes a folder that
 // exists, so a folder that an administrator set up keeps its mode.
 func (s *Store) ensureDir() error {
 	var missing []string
@@ -355,7 +355,7 @@ func (s *Store) writeFileAtomic(name string, data []byte) (err error) {
 	}()
 
 	// CreateTemp uses mode 0600. Chmod sets the mode of the store, so the
-	// readers of a daemon cache can read it.
+	// readers of a shared cache can read it.
 	if runtime.GOOS != "windows" {
 		if err = tmp.Chmod(s.fileMode); err != nil {
 			return err

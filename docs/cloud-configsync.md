@@ -1,11 +1,8 @@
 # cloud/configsync
 
 `cloud/configsync` fetches the resolved policy of an endpoint from SafeDep Cloud and keeps it in a
-local cache. pmg uses it now. The SafeDep daemon of M2 uses it with no change. A tool never writes the
-policy cache outside this package.
-
-The design is Design 2 and 3 of the spec `docs/specs/2026-10-30-pmg-cloud-policy-design.md` in
-control-tower. The API is `PolicySyncService.GetResolvedPolicy` in safedep/api.
+local cache. A tool never writes the policy cache outside this package. The API is
+`PolicySyncService.GetResolvedPolicy` in safedep/api.
 
 ## Flow in a tool
 
@@ -16,8 +13,8 @@ if err != nil {
 }
 defer client.Close()
 
-store, err := configsync.NewStore(cacheDir) // pmg: <pmg config dir>/cloud-policy
-// The daemon of M2 writes as root and the tools read as the user:
+store, err := configsync.NewStore(cacheDir)
+// A cache that root writes and other users read:
 // configsync.NewStore("/var/lib/safedep/cloud",
 //	configsync.WithDirMode(0o755), configsync.WithFileMode(0o644))
 if err != nil {
@@ -28,7 +25,7 @@ if err != nil {
 	return err
 }
 
-// The tool holds its writer lock across Fetch, as pmg does with cloud-sync.lock.
+// The tool holds its writer lock across Fetch.
 res, err := fetcher.Fetch(ctx, configsync.FetchRequest{
 	TenantDomain: tenant,
 	Endpoint:     endpoint, // the identity of the check-in
@@ -102,8 +99,7 @@ of a writer that stopped. It keeps the current file, the previous file, and each
 writer can still fill it. It deletes no other file in the folder.
 
 The store creates the folder with mode `0700` and writes the files with mode `0600`. `WithDirMode` and
-`WithFileMode` change them. The daemon of M2 writes as root and the tools read as the user, so it
-passes `0755` and `0644`. The store sets the mode of the folder only when it creates the folder. On
+`WithFileMode` change them. A cache that root writes and other users read needs `0755` and `0644`. The store sets the mode of the folder only when it creates the folder. On
 Windows it relies on the ACL of the folder.
 
 Readers need no lock, because the commit is one rename. `Store` serializes the writers of one process.
@@ -118,7 +114,7 @@ refusal of each reparse point on Windows), requires a regular file, and reads at
 policy file and 1 MiB for `state.json`. A symlink, a FIFO, a device or a folder returns
 `ErrUnsafeFile`. A larger file returns `ErrTooLarge`. The error of a digest mismatch does not give the
 digest of the bytes. These checks matter when a tool that runs as root reads the cache of the user
-under `sudo` (spec 3.2).
+under `sudo`.
 
 ### `state.json`
 

@@ -40,10 +40,10 @@ type fixture struct {
 	clock     time.Time
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T, opts ...StoreOption) *fixture {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "cloud-policy")
-	store, err := NewStore(dir)
+	store, err := NewStore(dir, opts...)
 	require.NoError(t, err)
 	transport := NewMockTransport(t)
 	fetcher, err := NewFetcher(store, transport)

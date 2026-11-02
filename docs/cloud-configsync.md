@@ -13,9 +13,10 @@ if err != nil {
 }
 defer client.Close()
 
-store, err := configsync.NewStore(cacheDir)
+// tenant is the tenant domain of the credentials of the tool.
+store, err := configsync.NewStore(cacheDir, configsync.WithTenant(tenant))
 // A cache that root writes and other users read:
-// configsync.NewStore("/var/lib/safedep/cloud",
+// configsync.NewStore("/var/lib/safedep/cloud", configsync.WithTenant(tenant),
 //	configsync.WithDirMode(0o755), configsync.WithFileMode(0o644))
 if err != nil {
 	return err
@@ -79,6 +80,23 @@ cannot read. `status.Code` reads the code of a gRPC error, so a tool can treat `
 A change of tenant resets `highest_revision`, and the new tenant gets no previous file and no
 capability sources: a policy of another tenant fails the header check, so it is no fallback. A failed
 fetch for a new tenant keeps the cache of the old tenant.
+
+### The tenant of the store
+
+`WithTenant(tenant)` binds the store to the tenant of the credentials of the tool. Set it whenever the
+tool knows its tenant.
+
+- `Load` refuses a cache of another tenant before it reads a policy file. The error wraps `ErrNoCache`
+  and `ErrTenantMismatch`, so the tool applies its baseline.
+- `Fetch` refuses a request for another tenant. The error wraps `ErrInvalidRequest` and
+  `ErrTenantMismatch`. The fetch sends no request and writes no state.
+
+Without `WithTenant`, the store loads the cache of any tenant. When the credentials of the tool move to
+a new tenant, the tool then applies the policy of the old tenant until a fetch for the new tenant
+commits. A fetch can fail for a long time: the endpoint is offline, the server refuses the
+credentials, or the validator rejects the policy of the new tenant. Only a validator that compares the
+tenant of the policy header stops this. A tool with no login does not know its tenant, so it leaves
+`WithTenant` out.
 
 `Validate` is required. Its type is `Validator`, `func(raw []byte) (Accepted, error)`, so the tool runs
 its projection once. `Accepted.CapabilitySources` becomes the `capability_sources` of the new commit
@@ -174,8 +192,8 @@ equals the digest, then calls `validate`. It takes the `Validator` type of the f
 
 When the current file fails a check, `Load` loads the previous file with the same checks. It sets
 `Loaded.FromPrevious` and gives the failure in `Loaded.CurrentErr`. The result is `ErrNoCache` only
-when both files fail, when the state names no policy, or when `state.json` is missing, does not parse
-or has a higher `format_version`.
+when both files fail, when the state names no policy, when the state names another tenant than
+`WithTenant`, or when `state.json` is missing, does not parse or has a higher `format_version`.
 
 When `Load` falls back, `State.CapabilitySources` describes the current file, not the loaded one.
 `Store.ReadPolicy(digest)` reads the file of one capability source, with the SHA-256 check.

@@ -59,11 +59,22 @@ func WithFileMode(mode os.FileMode) StoreOption {
 	return func(s *Store) { s.fileMode = mode.Perm() }
 }
 
+// WithTenant binds the store to the tenant domain of the credentials of the
+// tool. Load then refuses a cache of another tenant before it reads a policy
+// file, and Fetch refuses a request for another tenant. Without it, a tool
+// whose credentials move to a new tenant loads the policy of the old tenant
+// until a fetch for the new tenant commits, unless its Validator compares the
+// tenant of the policy. Set it whenever the tool knows its tenant.
+func WithTenant(tenant string) StoreOption {
+	return func(s *Store) { s.tenant = tenant }
+}
+
 // Store owns the layout of one policy cache folder.
 type Store struct {
 	dir      string
 	dirMode  os.FileMode
 	fileMode os.FileMode
+	tenant   string
 
 	// mu serializes the writers that share this Store. Writers that use
 	// another Store for the same folder, in this process or in another one,
@@ -169,7 +180,8 @@ type Loaded struct {
 // Loaded.CurrentErr.
 //
 // Load returns an error that wraps ErrNoCache when the state is missing,
-// unreadable or of a newer format, or when both files fail.
+// unreadable or of a newer format, when it names another tenant than
+// WithTenant (ErrTenantMismatch), or when both files fail.
 func (s *Store) Load(validate Validator) (*Loaded, error) {
 	st, err := s.State()
 	if err != nil {
@@ -177,6 +189,10 @@ func (s *Store) Load(validate Validator) (*Loaded, error) {
 	}
 	if !st.HasPolicy() {
 		return nil, fmt.Errorf("%w: the state names no policy", ErrNoCache)
+	}
+	if s.tenant != "" && st.Tenant != s.tenant {
+		return nil, fmt.Errorf("%w: %w: the cache holds tenant %q, the store expects %q",
+			ErrNoCache, ErrTenantMismatch, st.Tenant, s.tenant)
 	}
 
 	check := func(digest string) ([]byte, error) {

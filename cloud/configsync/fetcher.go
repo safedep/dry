@@ -14,7 +14,8 @@ import (
 type FetchRequest struct {
 	// TenantDomain is the tenant of the credentials of the data-plane
 	// client. A tenant that differs from the tenant of the cache resets
-	// highest_revision and sends an empty digest.
+	// highest_revision and sends an empty digest. When the store has
+	// WithTenant, it must equal that tenant.
 	TenantDomain string
 
 	// Endpoint is the identity that the check-in of the tool sends, so the
@@ -98,6 +99,10 @@ func NewFetcher(store *Store, transport Transport) (*Fetcher, error) {
 func (f *Fetcher) Fetch(ctx context.Context, req FetchRequest) (*FetchResult, error) {
 	if err := req.check(); err != nil {
 		return nil, err
+	}
+	if t := f.store.tenant; t != "" && req.TenantDomain != t {
+		return nil, fmt.Errorf("%w: %w: the request names tenant %q, the store expects %q",
+			ErrInvalidRequest, ErrTenantMismatch, req.TenantDomain, t)
 	}
 
 	f.store.mu.Lock()

@@ -56,9 +56,7 @@ func TestSlogWrapper_With_AddsAttrs(t *testing.T) {
 // tracking).
 func TestSlogWrapper_InfofInsideEvent_EmitsStandaloneLine(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	_, end := BeginEvent(context.Background(), "req")
 	Infof("step one")
@@ -70,9 +68,7 @@ func TestSlogWrapper_InfofInsideEvent_EmitsStandaloneLine(t *testing.T) {
 
 func TestSlogWrapper_InfofOutsideEvent_EmitsStandaloneLine(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
-	globalLogger = newSlogTestLogger(t, &buf)
+	defer swapGlobal(newSlogTestLogger(t, &buf))()
 
 	Infof("startup: port %d", 8080)
 
@@ -96,15 +92,13 @@ func TestDevHandler_PrintsHumanReadableLine(t *testing.T) {
 
 func TestDevHandler_CanonicalEventPrintedAsOneBlock(t *testing.T) {
 	var buf bytes.Buffer
-	prev := globalLogger
-	defer func() { globalLogger = prev }()
 
 	logger := slog.New(newDevHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})).With(
 		slog.String(loggerKeyServiceName, "TestSvc"),
 		slog.String(loggerKeyServiceEnv, "test"),
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
-	globalLogger = &slogLoggerWrapper{logger: logger}
+	defer swapGlobal(&slogLoggerWrapper{logger: logger})()
 
 	_, end := BeginEvent(context.Background(), "http.request")
 	end()

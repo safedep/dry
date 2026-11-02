@@ -1,0 +1,23 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# A trust entry and a block entry that expire at 2026-11-15T00:00:00Z.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_trust_expiring"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/left-pad" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A short review window."
+      expires_at { seconds: 1794700800 }  # 2026-11-15T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_block_expiring"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/is-promise" }
+      reason: "A block until the maintainer publishes a fix."
+      expires_at { seconds: 1794700800 }  # 2026-11-15T00:00:00Z
+    }
+  }
+}

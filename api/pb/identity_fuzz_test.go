@@ -113,6 +113,35 @@ func FuzzASCIILowerIdentityName(f *testing.F) {
 	})
 }
 
+// FuzzNuGetIdentityName checks that the NuGet fold merges two ids only when
+// they differ in the case of ASCII letters, also in an id with a non-ASCII
+// letter. NuGet merges such ids too. The KELVIN SIGN stays apart from "k".
+func FuzzNuGetIdentityName(f *testing.F) {
+	f.Add("Newtonsoft.Json", "newtonsoft.json")
+	f.Add("Microsoft.\u00c9vil", "microsoft.\u00c9vil")
+	f.Add("\u212aestrel", "kestrel")
+	f.Add("\u00c9vil", "\u00e9vil")
+	f.Fuzz(func(t *testing.T, a, b string) {
+		ca, cb := nugetIdentityName(a), nugetIdentityName(b)
+		require.Equal(t, ca, nugetIdentityName(ca), "the fold is idempotent")
+		require.Equal(t, len(a), len(ca), "the fold maps one byte to one byte")
+		require.Equal(t, sameButASCIICase(a, b), ca == cb, "%q vs %q", a, b)
+	})
+}
+
+func sameButASCIICase(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range len(a) {
+		x, y := a[i], b[i]
+		if x != y && (x|0x20 != y|0x20 || x|0x20 < 'a' || x|0x20 > 'z') {
+			return false
+		}
+	}
+	return true
+}
+
 // FuzzGitHubActionIdentityName checks that the action fold changes only the
 // owner and the repository, keeps the path in the repository raw, and merges
 // two names that differ only in the ASCII case of the owner and the repository.

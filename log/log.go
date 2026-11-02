@@ -1,5 +1,7 @@
 package log
 
+import "sync/atomic"
+
 const (
 	logLevelNameInfo  = "info"
 	logLevelNameDebug = "debug"
@@ -24,11 +26,36 @@ type Logger interface {
 	With(args map[string]any) Logger
 }
 
-// Global logger instance
-var globalLogger Logger
+// loggerSlot holds the global logger behind an atomic pointer. A program can
+// log from a goroutine while its main goroutine sets the logger, for example a
+// telemetry client that starts before the CLI configures logging. A plain
+// interface variable can tear in that race, and a call on the torn value
+// crashes the process.
+type loggerSlot struct{ Logger }
 
-func init() {
-	globalLogger = NewNopLogger()
+var globalLogger atomic.Pointer[loggerSlot]
+
+var nopGlobal Logger = &nopLogger{}
+
+// global returns the nop logger while the slot is empty, for example for a
+// log call from a package-level initializer that runs before any logger is
+// set.
+func global() Logger {
+	if slot := globalLogger.Load(); slot != nil {
+		return slot.Logger
+	}
+	return nopGlobal
+}
+
+// swapGlobal sets the global logger and returns a function that restores the
+// previous one. A nil logger becomes the nop logger, as no log call can use
+// nil.
+func swapGlobal(logger Logger) (restore func()) {
+	if logger == nil {
+		logger = nopGlobal
+	}
+	prev := globalLogger.Swap(&loggerSlot{logger})
+	return func() { globalLogger.Store(prev) }
 }
 
 // SetGlobal sets the global logger instance. A nil logger is ignored
@@ -37,7 +64,7 @@ func SetGlobal(logger Logger) {
 	if logger == nil {
 		return
 	}
-	globalLogger = logger
+	globalLogger.Store(&loggerSlot{logger})
 }
 
 // Nop logger for internal modules (default)

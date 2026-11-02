@@ -14,7 +14,6 @@ import (
 // Not safe for parallel tests that each expect their own logger —
 // globalLogger is a single slot. Use in serial tests.
 func SwapGlobalForTest(w io.Writer) (restore func()) {
-	prev := globalLogger
 	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: slog.LevelDebug})
 	logger := slog.New(handler).With(
 		slog.String(loggerKeyServiceName, "test"),
@@ -22,7 +21,5 @@ func SwapGlobalForTest(w io.Writer) (restore func()) {
 		slog.String(loggerKeyLoggerType, "slog"),
 	)
 
-	globalLogger = &slogLoggerWrapper{logger: logger}
-
-	return func() { globalLogger = prev }
+	return swapGlobal(&slogLoggerWrapper{logger: logger})
 }

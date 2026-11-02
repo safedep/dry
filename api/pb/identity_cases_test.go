@@ -144,6 +144,12 @@ var identityCases = []identityCase{
 	{"cargo version keeps build metadata", cargo, "serde", "1.0.0+build", "serde", "1.0.0+build", false},
 	{"packagist name folds case", packagist, "Monolog/Monolog", "3.0.0", "monolog/monolog", "3.0.0", false},
 	{"packagist version keeps short form", packagist, "monolog/monolog", "3.0", "monolog/monolog", "3.0", false},
+
+	// NuGet folds the id to lower case, as its package content resource
+	// does, and keeps the separators and the version raw.
+	{"nuget id folds case", nuget, "Newtonsoft.Json", "13.0.1", "newtonsoft.json", "13.0.1", false},
+	{"nuget id keeps separators", nuget, "dotnet-ef", "8.0.0", "dotnet-ef", "8.0.0", false},
+	{"nuget version keeps short form", nuget, "Newtonsoft.Json", "13.0", "newtonsoft.json", "13.0", false},
 	{"packagist name keeps its vendor", packagist, "vendor-a/library", "1.0.0", "vendor-a/library", "1.0.0", false},
 
 	// Git hosts: the name folds to lower case, and the ref keeps its case. An
@@ -174,7 +180,6 @@ var identityCases = []identityCase{
 		false,
 	},
 	{"maven coordinate keeps case", maven, "com.google.Guava:guava", "32.0", "com.google.Guava:guava", "32.0", false},
-	{"nuget id keeps case", nuget, "Newtonsoft.Json", "13.0.1", "Newtonsoft.Json", "13.0.1", false},
 	{"unspecified ecosystem keeps everything", unknown, "Whatever", "V1.0", "Whatever", "V1.0", false},
 	{"empty input is total", pypi, "", "", "", "", false},
 }

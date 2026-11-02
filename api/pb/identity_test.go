@@ -28,7 +28,7 @@ func TestIdentityRuleVersion(t *testing.T) {
 		{packagev1.Ecosystem_ECOSYSTEM_NPM, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_GO, 0},
 		{packagev1.Ecosystem_ECOSYSTEM_MAVEN, 0},
-		{packagev1.Ecosystem_ECOSYSTEM_NUGET, 0},
+		{packagev1.Ecosystem_ECOSYSTEM_NUGET, 1},
 		{packagev1.Ecosystem_ECOSYSTEM_UNSPECIFIED, 0},
 	}
 
@@ -337,12 +337,12 @@ func TestNewPackageVersionFromPurlAgreesWithParts(t *testing.T) {
 			"serde_json",
 		},
 		{
-			"nuget keeps case",
+			"nuget folds case",
 			"pkg:nuget/Newtonsoft.Json@13.0.1",
 			packagev1.Ecosystem_ECOSYSTEM_NUGET,
 			"Newtonsoft.Json",
 			"13.0.1",
-			"Newtonsoft.Json",
+			"newtonsoft.json",
 		},
 		{
 			"githubactions type of vet",

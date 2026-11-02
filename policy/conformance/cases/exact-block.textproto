@@ -1,0 +1,26 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Block entries that select one package. The runner writes the header.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_block_any"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/event-stream" }
+      reason: "Every version of the package is malware."
+    }
+    package_rules {
+      rule_id: "r_block_one"
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/ua-parser-js@0.7.29" }
+      reason: "One version of the package is malware."
+    }
+    package_rules {
+      # A block entry with no id still applies, with the id "-".
+      effect: EFFECT_BLOCK
+      selector { purl: "pkg:npm/flatmap-stream" }
+      reason: "A block entry with no rule id."
+    }
+  }
+}

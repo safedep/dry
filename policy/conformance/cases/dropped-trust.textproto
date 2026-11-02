@@ -1,0 +1,41 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# Trust entries that a tool drops, and one that it keeps.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_unknown_scope"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/pkg-a" }
+      # A scope value that a newer contract adds. The tool ignores it, so
+      # the entry has no known scope left.
+      scopes: [99]
+      reason: "Only an unknown scope."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_no_expiry"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/pkg-b" }
+      scopes: [TRUST_SCOPE_MALWARE, TRUST_SCOPE_COOLDOWN]
+      reason: "No expiry."
+    }
+    package_rules {
+      rule_id: "r_prefix"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/@acme/*" }
+      scopes: [TRUST_SCOPE_MALWARE, TRUST_SCOPE_COOLDOWN]
+      reason: "A prefix selector."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_known_and_unknown_scope"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/pkg-c" }
+      scopes: [99, TRUST_SCOPE_MALWARE]
+      reason: "One known scope stays."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

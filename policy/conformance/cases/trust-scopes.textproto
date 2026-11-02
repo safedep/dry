@@ -1,0 +1,32 @@
+# proto-file: safedep/policy/spec/v1/spec.proto
+# proto-message: safedep.policy.spec.v1.ResolvedPolicy
+#
+# One trust entry for each trust scope, each on its own package.
+spec {
+  core {
+    package_rules {
+      rule_id: "r_trust_malware"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/scope-malware" }
+      scopes: [TRUST_SCOPE_MALWARE]
+      reason: "A false positive of the malware analysis."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_trust_cooldown"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/scope-cooldown" }
+      scopes: [TRUST_SCOPE_COOLDOWN]
+      reason: "An urgent fix that cannot wait for the cooldown."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+    package_rules {
+      rule_id: "r_trust_vulnerability"
+      effect: EFFECT_TRUST
+      selector { purl: "pkg:npm/scope-vulnerability" }
+      scopes: [TRUST_SCOPE_VULNERABILITY]
+      reason: "The vulnerable code is not reachable."
+      expires_at { seconds: 1796083200 }  # 2026-12-01T00:00:00Z
+    }
+  }
+}

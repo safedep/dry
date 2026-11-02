@@ -1,0 +1,82 @@
+{
+  "description": "The version checks fail closed. A package with no version matches a block entry with a version or a range, and never a trust entry with one.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "block-any-version",
+      "package": {
+        "ecosystem": "npm",
+        "name": "node-ipc"
+      },
+      "control": "malware",
+      "verdict": "none",
+      "want": {
+        "effect": "block",
+        "rule_id": "r_block_any"
+      }
+    },
+    {
+      "name": "block-version",
+      "package": {
+        "ecosystem": "npm",
+        "name": "colors"
+      },
+      "control": "malware",
+      "verdict": "none",
+      "want": {
+        "effect": "block",
+        "rule_id": "r_block_version"
+      }
+    },
+    {
+      "name": "block-range",
+      "package": {
+        "ecosystem": "npm",
+        "name": "faker"
+      },
+      "control": "malware",
+      "verdict": "none",
+      "want": {
+        "effect": "block",
+        "rule_id": "r_block_range"
+      }
+    },
+    {
+      "name": "trust-any-version",
+      "package": {
+        "ecosystem": "npm",
+        "name": "ms"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "trust",
+        "rule_id": "r_trust_any"
+      }
+    },
+    {
+      "name": "trust-version",
+      "package": {
+        "ecosystem": "npm",
+        "name": "chalk"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "trust-range",
+      "package": {
+        "ecosystem": "npm",
+        "name": "debug"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "none"
+      }
+    }
+  ]
+}

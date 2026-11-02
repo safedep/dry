@@ -146,7 +146,7 @@ func BeginEvent(ctx context.Context, name string, opts ...EventOption) (context.
 		}
 		ev.mu.Unlock()
 
-		if emitter, ok := globalLogger.(canonicalEmitter); ok {
+		if emitter, ok := global().(canonicalEmitter); ok {
 			emitter.emitCanonical(ev)
 		}
 		if r != nil {

@@ -1,0 +1,126 @@
+{
+  "description": "A trust entry waives a verdict only for a control that its scopes name. Each trust scope gets a check under each control.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "malware-scope-malware-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-malware",
+        "version": "1.0.0"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "trust",
+        "rule_id": "r_trust_malware"
+      }
+    },
+    {
+      "name": "malware-scope-cooldown-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-malware",
+        "version": "1.0.0"
+      },
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "malware-scope-vulnerability-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-malware",
+        "version": "1.0.0"
+      },
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "cooldown-scope-malware-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-cooldown",
+        "version": "1.0.0"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "cooldown-scope-cooldown-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-cooldown",
+        "version": "1.0.0"
+      },
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {
+        "effect": "trust",
+        "rule_id": "r_trust_cooldown"
+      }
+    },
+    {
+      "name": "cooldown-scope-vulnerability-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-cooldown",
+        "version": "1.0.0"
+      },
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "vulnerability-scope-malware-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-vulnerability",
+        "version": "1.0.0"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "vulnerability-scope-cooldown-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-vulnerability",
+        "version": "1.0.0"
+      },
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "vulnerability-scope-vulnerability-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-vulnerability",
+        "version": "1.0.0"
+      },
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {
+        "effect": "trust",
+        "rule_id": "r_trust_vulnerability"
+      }
+    }
+  ]
+}

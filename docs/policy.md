@@ -9,6 +9,7 @@ control-tower, Design 4 and 5, under the parent spec `2026-10-28-cloud-policy-ma
 | `policy/project` | Decodes a `ResolvedPolicy`, checks the header, applies the projection rules, and returns a plain value tree and the package rules | Yes |
 | `policy/match` | Decides which package rule applies to a package | No |
 | `policy/pbidentity` | Gives `match` the canonical package identity of `api/pb` | Through `api/pb` |
+| `policy/conformance` | Holds the shared corpus of package rule decisions, and runs it through the loader of a tool | Yes |
 
 `match` has no import of the API contract, so vet, whose rules allow only `model` to import `api/pb`,
 can use it with its own `match.Identity`. `TestNoContractImport` keeps this rule.
@@ -178,6 +179,107 @@ each time.
 
 The contract has no `FieldExceptionReason` for a value that fails its limits, so
 `ExceptionInvalidValue` maps to `FIELD_EXCEPTION_REASON_UNSPECIFIED`.
+
+## `policy/conformance`
+
+pmg, the pull request check and vet each load a resolved policy through their own loader and pass
+their own `match.Identity`. The corpus is the one check that their decisions agree for one policy. It
+is the control for the risk "a bug in `match` lets a blocked package through".
+
+### Run the corpus in a tool
+
+A tool calls `conformance.Run` from its own test, with the subject kind of its policy and a function
+that loads the policy and decides one query:
+
+```go
+func TestPolicyConformance(t *testing.T) {
+	kind := specv1.SubjectKind_SUBJECT_KIND_ENDPOINT
+	conformance.Run(t, kind, func(raw []byte, q conformance.Query) (conformance.Decision, error) {
+		// The loader of the tool. conformance.Expect gives the tenant, the machine id and the
+		// project id that the runner writes into the header.
+		index, err := load(raw, conformance.Expect(kind))
+		if err != nil {
+			return conformance.Decision{}, err
+		}
+
+		// q.Package.Ecosystem is a name of pb.EcosystemName. pb.EcosystemFromName reads it.
+		d := index.Decide(match.Query{Package: pkg(q.Package), Control: q.Control, Verdict: q.Verdict, Now: q.Now})
+		return conformance.Decision{Effect: d.Effect, RuleID: d.Rule.ID}, nil
+	})
+}
+```
+
+- `raw` is the resolved policy on the wire. The runner writes a header for the subject kind: an
+  endpoint gets the machine id `conformance.MachineID`, and a project gets the subject id
+  `conformance.ProjectID`. The tenant is `conformance.Tenant`.
+- `Query.Package` is the package as a tool sees it: the ecosystem name, the name as the registry or
+  the manifest gives it, and the version, or "" when the tool has none. The tool puts it in canonical
+  form, as it does for a real request.
+- `Run` makes one subtest for each case and each check, as `TestX/exact-block/every-version`. A
+  failure names the case file, the query, and the expected and the actual decision.
+- The function gets a new copy of the bytes for each check. It returns an error only when the tool
+  cannot load the policy or read the package. The runner reports the error as a failure.
+
+dry runs the corpus through `project`, `match` and `pbidentity` in `TestCorpus`, for an endpoint and
+for a project.
+
+### Add a case
+
+A case is two files in `policy/conformance/cases` with one base name, as `exact-block`:
+
+- `exact-block.textproto` holds a `safedep.policy.spec.v1.ResolvedPolicy` in the text format, with
+  only a `spec`. The runner writes the header, and `Cases` refuses a file that sets one. Write a time
+  as `expires_at { seconds: 1796083200 }` with the date in a comment.
+- `exact-block.json` holds the description and the checks:
+
+```json
+{
+  "description": "What the case shows, in one or two sentences.",
+  "now": "2026-11-01T12:00:00Z",
+  "unknown_fields": [{"rule_id": "r_block_unknown", "field": 99}],
+  "checks": [
+    {
+      "name": "every-version",
+      "package": {"ecosystem": "npm", "name": "event-stream", "version": "3.3.6"},
+      "control": "malware",
+      "verdict": "none",
+      "now": "2026-11-14T23:59:59Z",
+      "want": {"effect": "block", "rule_id": "r_block_any"}
+    }
+  ]
+}
+```
+
+- `control` is `malware`, `cooldown` or `vulnerability`: the scopes of `match`.
+- `verdict` is `none`, `malware` or `verified-malware`: the verdicts of `match`.
+- `want.effect` is `none`, `trust` or `block`. A `trust` or a `block` decision has the `rule_id` of
+  the rule. A block entry with no id has the id `-`.
+- `now` of the case is the time of each check. A check can set its own `now`.
+- `unknown_fields` gives a package rule a varint field that the contract does not know. The text
+  format cannot hold such a field. The field number must be one that the contract does not use.
+- An unknown key in the JSON is an error, so a typo cannot skip a check.
+
+Each case must pass against `project`, `match` and `pbidentity`. When a case fails because the code
+and the spec disagree, do not change the case or the code alone. Decide the behaviour in the spec
+first.
+
+The directory is `cases`, not `testdata`, because a tool runs the corpus from another module, and the
+go command can leave `testdata` out of a vendor directory.
+
+| Case | Shows |
+|---|---|
+| `exact-block` | A block of one package, of one version, of an equal version, and with no rule id |
+| `block-wins-over-trust` | A block entry wins over a trust entry with a lower id, for each control |
+| `prefix-block` | Prefix boundaries for `/*` (npm, Go) and `.*` (Maven, PyPI, NuGet) |
+| `vers-range` | A block and a trust `vers` range, inside, outside and at each bound |
+| `trust-scopes` | A trust entry for each scope, under each control |
+| `expired-rule` | A trust and a block entry before, at and after the expiry |
+| `no-version` | A package with no version against rules with a version or a range |
+| `unordered-versions` | GitHub Actions, with no version order: a range and one tag |
+| `verified-malware` | No trust entry waives verified malware, also with every scope, under every control |
+| `case-folding` | PyPI, NuGet and GitHub fold a name. PyPI also folds a version. npm does not fold |
+| `unknown-field` | A block entry with an unknown field stays. A trust entry with one is dropped |
+| `dropped-trust` | A trust entry with only an unknown scope, no expiry or a prefix selector is dropped |
 
 ## Not in these packages
 

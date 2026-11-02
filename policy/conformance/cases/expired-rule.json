@@ -1,0 +1,53 @@
+{
+  "description": "A rule applies while the time of the check is before its expiry. At the expiry and after it, the rule does not apply.",
+  "checks": [
+    {
+      "name": "trust-before-expiry",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "now": "2026-11-14T23:59:59Z",
+      "want": {"effect": "trust", "rule_id": "r_trust_expiring"}
+    },
+    {
+      "name": "trust-at-expiry",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "now": "2026-11-15T00:00:00Z",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "trust-after-expiry",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "now": "2026-11-20T00:00:00Z",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "block-before-expiry",
+      "package": {"ecosystem": "npm", "name": "is-promise", "version": "2.2.0"},
+      "control": "malware",
+      "verdict": "none",
+      "now": "2026-11-14T23:59:59Z",
+      "want": {"effect": "block", "rule_id": "r_block_expiring"}
+    },
+    {
+      "name": "block-at-expiry",
+      "package": {"ecosystem": "npm", "name": "is-promise", "version": "2.2.0"},
+      "control": "malware",
+      "verdict": "none",
+      "now": "2026-11-15T00:00:00Z",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "block-after-expiry",
+      "package": {"ecosystem": "npm", "name": "is-promise", "version": "2.2.0"},
+      "control": "malware",
+      "verdict": "none",
+      "now": "2026-11-20T00:00:00Z",
+      "want": {"effect": "none"}
+    }
+  ]
+}

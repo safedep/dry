@@ -1,0 +1,27 @@
+{
+  "description": "A block entry wins over a trust entry for the same package, for every control.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "malware-control",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "block", "rule_id": "r_z_block"}
+    },
+    {
+      "name": "cooldown-control",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_z_block"}
+    },
+    {
+      "name": "vulnerability-control",
+      "package": {"ecosystem": "npm", "name": "left-pad", "version": "1.3.0"},
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_z_block"}
+    }
+  ]
+}

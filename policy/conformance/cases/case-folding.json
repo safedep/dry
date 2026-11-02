@@ -1,0 +1,83 @@
+{
+  "description": "A rule matches a package by the canonical name of its ecosystem. PyPI, NuGet and GitHub fold the case of a name, and PyPI also folds the separators and the version. npm does not fold: JSONStream and jsonstream are two packages.",
+  "now": "2026-11-01T12:00:00Z",
+  "checks": [
+    {
+      "name": "pypi-case-and-underscore",
+      "package": {"ecosystem": "pypi", "name": "Requests_OAuthlib", "version": "1.3.1"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_pypi_name"}
+    },
+    {
+      "name": "pypi-dot",
+      "package": {"ecosystem": "pypi", "name": "requests.oauthlib", "version": "1.3.1"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_pypi_name"}
+    },
+    {
+      "name": "pypi-selector-not-canonical",
+      "package": {"ecosystem": "pypi", "name": "django-extensions", "version": "3.2.3"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_pypi_selector_case"}
+    },
+    {
+      "name": "pypi-version-case",
+      "package": {"ecosystem": "pypi", "name": "URLLib3", "version": "2.0.0RC1"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "trust", "rule_id": "r_pypi_version"}
+    },
+    {
+      "name": "pypi-other-version",
+      "package": {"ecosystem": "pypi", "name": "urllib3", "version": "2.0.0rc2"},
+      "control": "malware",
+      "verdict": "malware",
+      "want": {"effect": "none"}
+    },
+    {
+      "name": "nuget-lower-case",
+      "package": {"ecosystem": "nuget", "name": "newtonsoft.json", "version": "13.0.3"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_nuget_name"}
+    },
+    {
+      "name": "nuget-upper-case",
+      "package": {"ecosystem": "nuget", "name": "NEWTONSOFT.JSON", "version": "13.0.3"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_nuget_name"}
+    },
+    {
+      "name": "github-actions-lower-case",
+      "package": {"ecosystem": "github-actions", "name": "actions/checkout", "version": "v4"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_github_actions"}
+    },
+    {
+      "name": "github-repository-lower-case",
+      "package": {"ecosystem": "github-repository", "name": "safedep/vet", "version": "v1.12.0"},
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {"effect": "trust", "rule_id": "r_github_repository"}
+    },
+    {
+      "name": "npm-same-case",
+      "package": {"ecosystem": "npm", "name": "JSONStream", "version": "1.3.5"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "block", "rule_id": "r_npm_case"}
+    },
+    {
+      "name": "npm-other-case",
+      "package": {"ecosystem": "npm", "name": "jsonstream", "version": "1.3.5"},
+      "control": "malware",
+      "verdict": "none",
+      "want": {"effect": "none"}
+    }
+  ]
+}

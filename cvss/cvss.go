@@ -3,6 +3,7 @@ package cvss
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	v2_metric "github.com/goark/go-cvss/v2/metric"
 	v3_metric "github.com/goark/go-cvss/v3/metric"
@@ -75,14 +76,17 @@ type cvssV3 struct {
 	base *v3_metric.Base
 }
 
+// The base decoder rejects a vector with temporal or environmental metrics,
+// and GHSA publishes many of them. The environmental decoder accepts all
+// three groups. Severity still comes from the base metrics only.
 func newBaseCvssV3(base string) (CVSS, error) {
-	bm, err := v3_metric.NewBase().Decode(base)
+	em, err := v3_metric.NewEnvironmental().Decode(base)
 	if err != nil {
 		return nil, err
 	}
 
 	return &cvssV3{
-		base: bm,
+		base: em.BaseMetrics(),
 	}, nil
 }
 
@@ -136,6 +140,10 @@ func (c *cvssV4) Severity() CvssRisk {
 
 // Factory
 func NewCvssBaseString(raw string, version CvssVersion) (CVSS, error) {
+	// Some GHSA records end the vector with a slash. Each parser reads the
+	// empty part after it as a bad metric and rejects a valid vector.
+	raw = strings.TrimSuffix(raw, "/")
+
 	switch version {
 	case CVSS_V2:
 		return newBaseCvssV2(raw)

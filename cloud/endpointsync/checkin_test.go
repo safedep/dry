@@ -130,14 +130,20 @@ func TestCheckIn_BreakerIsolatedFromSync(t *testing.T) {
 }
 
 func TestCheckInWithOptions(t *testing.T) {
-	pmgState := servicev1.ToolPolicyState_builder{
-		ToolName:    "pmg",
-		ToolVersion: "1.2.3",
-		Policy:      recordv1.ApplyReport_builder{Revision: 48, Digest: "sha256:9f2c"}.Build(),
-	}.Build()
-	daemonState := servicev1.ToolPolicyState_builder{ToolName: "safedep-daemon", ToolVersion: "0.1.0"}.Build()
-	labels := reportedLabels("linux", "amd64")
+	pmgState := func() *servicev1.ToolPolicyState {
+		return servicev1.ToolPolicyState_builder{
+			ToolName:    "pmg",
+			ToolVersion: "1.2.3",
+			Policy:      recordv1.ApplyReport_builder{Revision: 48, Digest: "sha256:9f2c"}.Build(),
+		}.Build()
+	}
+	gryphState := func() *servicev1.ToolPolicyState {
+		return servicev1.ToolPolicyState_builder{ToolName: "gryph", ToolVersion: "0.1.0"}.Build()
+	}
+	labels := func() []*controltowerv1.Label { return reportedLabels("linux", "amd64") }
 
+	// Each side builds its own messages, so a change that the client makes
+	// to an option value cannot also change the expected value.
 	cases := []struct {
 		name       string
 		opts       []CheckInOption
@@ -147,13 +153,13 @@ func TestCheckInWithOptions(t *testing.T) {
 		{name: "no option"},
 		{
 			name:      "tool policy",
-			opts:      []CheckInOption{WithToolPolicy(pmgState)},
-			wantTools: []*servicev1.ToolPolicyState{pmgState},
+			opts:      []CheckInOption{WithToolPolicy(pmgState())},
+			wantTools: []*servicev1.ToolPolicyState{pmgState()},
 		},
 		{
 			name:      "each tool policy adds one state",
-			opts:      []CheckInOption{WithToolPolicy(pmgState), WithToolPolicy(daemonState)},
-			wantTools: []*servicev1.ToolPolicyState{pmgState, daemonState},
+			opts:      []CheckInOption{WithToolPolicy(pmgState()), WithToolPolicy(gryphState())},
+			wantTools: []*servicev1.ToolPolicyState{pmgState(), gryphState()},
 		},
 		{
 			name: "nil tool policy adds nothing",
@@ -161,14 +167,19 @@ func TestCheckInWithOptions(t *testing.T) {
 		},
 		{
 			name:       "labels",
-			opts:       []CheckInOption{WithLabels(labels)},
-			wantLabels: labels,
+			opts:       []CheckInOption{WithLabels(labels())},
+			wantLabels: labels(),
+		},
+		{
+			name:       "nil label adds nothing",
+			opts:       []CheckInOption{WithLabels(append([]*controltowerv1.Label{nil}, labels()...))},
+			wantLabels: labels(),
 		},
 		{
 			name:       "tool policy and labels",
-			opts:       []CheckInOption{WithLabels(labels), WithToolPolicy(pmgState)},
-			wantTools:  []*servicev1.ToolPolicyState{pmgState},
-			wantLabels: labels,
+			opts:       []CheckInOption{WithLabels(labels()), WithToolPolicy(pmgState())},
+			wantTools:  []*servicev1.ToolPolicyState{pmgState()},
+			wantLabels: labels(),
 		},
 	}
 

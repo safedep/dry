@@ -25,9 +25,15 @@ func WithToolPolicy(state *servicev1.ToolPolicyState) CheckInOption {
 }
 
 // WithLabels adds the "managed/" and "reported/" labels of the endpoint to
-// the check-in, as ReportedLabels gives them.
+// the check-in, as ReportedLabels gives them. A nil label adds nothing,
+// because it goes on the wire as a label with no key and the server then
+// refuses the whole check-in.
 func WithLabels(labels []*controltowerv1.Label) CheckInOption {
 	return func(c *checkInConfig) {
-		c.labels = append(c.labels, labels...)
+		for _, label := range labels {
+			if label != nil {
+				c.labels = append(c.labels, label)
+			}
+		}
 	}
 }

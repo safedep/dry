@@ -41,7 +41,10 @@ At start, the tool reads the cache:
 ```go
 loaded, err := store.Load(validate) // the same Validator, Load ignores its Accepted result
 if errors.Is(err, configsync.ErrNoCache) {
-	// The tool baseline applies.
+	return applyBaseline() // loaded is nil
+}
+if err != nil {
+	return err
 }
 if loaded.FromPrevious {
 	// The current file failed. loaded.CurrentErr tells why. Report APPLY_STATE_REJECTED.
@@ -99,13 +102,19 @@ of a writer that stopped. It keeps the current file, the previous file, and each
 writer can still fill it. It deletes no other file in the folder.
 
 The store creates the folder with mode `0700` and writes the files with mode `0600`. `WithDirMode` and
-`WithFileMode` change them. A cache that root writes and other users read needs `0755` and `0644`. The store sets the mode of the folder only when it creates the folder. On
-Windows it relies on the ACL of the folder.
+`WithFileMode` change them. A cache that root writes and other users read needs `0755` and `0644`.
+The store sets the mode of the folder only when it creates the folder. On Windows it relies on the ACL
+of the folder.
 
-Readers need no lock, because the commit is one rename. `Store` serializes the writers of one process.
-Writers in more than one process hold a lock of the tool across `Fetch`. Without that lock, two writers
-fail toward the baseline, never toward a wrong policy: a state can name a file that the other writer
-deleted, `Load` then falls back or reports `ErrNoCache`, and the next fetch repairs the cache.
+The writer trusts its cache folder and each folder above it. Only the writer, or root, can write them.
+A tool never writes a cache in a folder that another user controls. A tool that runs as root keeps its
+own cache, and only reads the cache of another user.
+
+Readers need no lock, because the commit is one rename. One `Store` serializes the writers that share
+it. Writers that use more than one `Store` for the same folder, in one process or in more than one,
+hold a lock of the tool across `Fetch`. Without that lock, two writers fail toward the baseline, never
+toward a wrong policy: a state can name a file that the other writer deleted, `Load` then falls back or
+reports `ErrNoCache`, and the next fetch repairs the cache.
 
 ### Reads
 

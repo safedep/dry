@@ -23,6 +23,6 @@
 // A commit writes the policy file, then state.json, each to a temp file that
 // it syncs and renames. The rename of state.json is the one commit point, so
 // a crash between the two renames leaves the previous commit. Readers need no
-// lock. Writers in more than one process must hold a lock of the tool across
-// Fetch.
+// lock. Writers that do not share one Store, in one process or in more than
+// one, must hold a lock of the tool across Fetch.
 package configsync

@@ -65,7 +65,8 @@ type Store struct {
 	dirMode  os.FileMode
 	fileMode os.FileMode
 
-	// mu serializes the writers of one process. Writers in other processes
+	// mu serializes the writers that share this Store. Writers that use
+	// another Store for the same folder, in this process or in another one,
 	// hold a lock of the tool.
 	mu sync.Mutex
 

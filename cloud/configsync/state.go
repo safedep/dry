@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // FormatVersion is the format of state.json that this package writes. A
@@ -63,6 +64,24 @@ type State struct {
 	// file that the capability comes from, for each capability that does not
 	// come from the current file. The store keeps each file that it names.
 	CapabilitySources map[string]string `json:"capability_sources,omitempty"`
+}
+
+// maxTextSize bounds each error text that the state records. The server
+// controls the gRPC message and the digest in an error, and the tool
+// controls the text of a rejection. Without a bound, one long text makes a
+// state that State refuses, and the tool loses its policy.
+const maxTextSize = 4 << 10
+
+// clipText cuts s to maxTextSize bytes at a rune boundary.
+func clipText(s string) string {
+	if len(s) <= maxTextSize {
+		return s
+	}
+	cut := maxTextSize
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + " [truncated]"
 }
 
 // Rejection is a policy that the validator of the tool refused.

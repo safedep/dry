@@ -36,7 +36,8 @@ var (
 	ErrUnsafeFile = errors.New("configsync: cache file is not a regular file")
 
 	// ErrTooLarge means that a cache file is larger than its limit: 4 MiB for
-	// a policy file, 1 MiB for state.json.
+	// a policy file, 1 MiB for state.json. The store also refuses to write a
+	// state.json over the limit.
 	ErrTooLarge = errors.New("configsync: cache file is too large")
 
 	// ErrInvalidRequest means that a FetchRequest misses a required field,

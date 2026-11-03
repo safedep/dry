@@ -178,8 +178,10 @@ func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 		return nil, fail(fmt.Errorf("%w: reply digest %q does not match the received bytes", ErrDigestMismatch, digest))
 	}
 
-	// A lower revision can come from a replica that lags or from a replay.
-	// The same revision with a new digest is accepted: the server can
+	// A lower revision comes from a replica that lags. The check does not
+	// stop a replay: the user can edit state.json, and an unreadable state
+	// resets the floor. TLS and the header check of the validator decide
+	// whether a policy is genuine. The same revision with a new digest is accepted: the server can
 	// resolve one revision again, for example after a label change.
 	if revision < highest {
 		return nil, fail(fmt.Errorf("%w: revision %d, highest %d", ErrLowerRevision, revision, highest))
@@ -187,7 +189,7 @@ func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 
 	accepted, err := req.Validate(raw)
 	if err != nil {
-		st.Rejected = &Rejection{Digest: digest, Revision: revision, Reason: err.Error(), At: now}
+		st.Rejected = &Rejection{Digest: digest, Revision: revision, Reason: clipText(err.Error()), At: now}
 		return nil, fail(fmt.Errorf("%w: %w", ErrRejected, err))
 	}
 
@@ -248,7 +250,7 @@ func (f *Fetcher) fail(st *State, readable bool, now time.Time, err error) error
 		return err
 	}
 	st.LastAttemptAt = now
-	st.LastError = err.Error()
+	st.LastError = clipText(err.Error())
 	if werr := f.store.writeState(st); werr != nil {
 		log.Warnf("configsync: cannot record the failed fetch: %v", werr)
 	}

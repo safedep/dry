@@ -65,7 +65,9 @@ The reply goes through these checks, in order. A failed check writes no policy b
 2. `MODIFIED`: the reply digest must be `sha256:` and the hex SHA-256 of the received bytes
    (`ErrDigestMismatch`). The fetcher never computes it from a decoded message.
 3. The revision must not be lower than `highest_revision` of the tenant (`ErrLowerRevision`). The same
-   revision with a new digest is accepted.
+   revision with a new digest is accepted. This check stops a server replica that lags. It does not stop
+   a replay: the user can edit `state.json`, and a state that the fetch cannot read resets the floor. TLS
+   and the header check of the validator decide whether a policy is genuine.
 4. The `Validate` hook of the tool must pass (`ErrRejected`). The fetch records the rejection in
    `rejected`.
 
@@ -128,7 +130,9 @@ The writer trusts its cache folder and each folder above it. Only the writer, or
 A tool never writes a cache in a folder that another user controls. A tool that runs as root keeps its
 own cache, and only reads the cache of another user.
 
-Readers need no lock, because the commit is one rename. One `Store` serializes the writers that share
+Readers need no lock, because the commit is one rename. Two commits close together can delete both
+files that an older state names, so a reader that read that state gets `ErrNoCache` once and applies
+the baseline. The next `Load` reads the new state. One `Store` serializes the writers that share
 it. Writers that use more than one `Store` for the same folder, in one process or in more than one,
 hold a lock of the tool across `Fetch`. Without that lock, two writers fail toward the baseline, never
 toward a wrong policy: a state can name a file that the other writer deleted, `Load` then falls back or
@@ -138,10 +142,16 @@ reports `ErrNoCache`, and the next fetch repairs the cache.
 
 Each read of a cache file opens it without a follow of a symlink (`O_NOFOLLOW` on Unix, `Lstat` and a
 refusal of each reparse point on Windows), requires a regular file, and reads at most 4 MiB for a
-policy file and 1 MiB for `state.json`. A symlink, a FIFO, a device or a folder returns
-`ErrUnsafeFile`. A larger file returns `ErrTooLarge`. The error of a digest mismatch does not give the
-digest of the bytes. These checks matter when a tool that runs as root reads the cache of the user
-under `sudo`.
+policy file and 1 MiB for `state.json`. A cache file that is a symlink, a FIFO, a device or a folder
+returns `ErrUnsafeFile`. A larger file returns `ErrTooLarge`. The error of a digest mismatch does not
+give the digest of the bytes. These checks matter when a tool that runs as root reads the cache of the
+user under `sudo`: they keep a file of the user from blocking root or from making it read a large file.
+
+The checks apply to the cache file only. They do not stop a symlink at the cache folder or above it, or
+a hard link to a file that the user cannot read. Through these, root reads a file of the user's choice
+and leaks very little: the tenant in a mismatch error, a byte in a parse error, or whether a guessed
+content matches. The store writes `state.json` only up to 1 MiB, because `State` refuses a larger
+file. It cuts each error text that it records to 4 KiB.
 
 ### `state.json`
 

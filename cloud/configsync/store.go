@@ -266,6 +266,11 @@ func (s *Store) writeState(st *State) error {
 	if err != nil {
 		return fmt.Errorf("configsync: cannot encode state: %w", err)
 	}
+	// State refuses a larger file, so this write would lose the policy.
+	if int64(len(data))+1 > maxStateSize {
+		return fmt.Errorf("configsync: cannot write state: %w: %d bytes, limit %d",
+			ErrTooLarge, len(data)+1, maxStateSize)
+	}
 	if err := s.ensureDir(); err != nil {
 		return err
 	}

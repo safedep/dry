@@ -17,9 +17,9 @@ import (
 // at once and refuse the file.
 func TestStore_RefusesAFIFO(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	f.tick()
-	f.commit(tenantA, policyB, 2)
+	f.commit(policyB, 2)
 
 	current := filepath.Join(f.dir, fileOf(t, policyB)[0])
 	require.NoError(t, os.Remove(current))

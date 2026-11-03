@@ -13,7 +13,10 @@ if err != nil {
 }
 defer client.Close()
 
-// tenant is the tenant domain of the credentials of the tool.
+tenant, err := creds.GetTenantDomain()
+if err != nil {
+	return err
+}
 store, err := configsync.NewStore(cacheDir, configsync.WithTenant(tenant))
 // A cache that root writes and other users read:
 // configsync.NewStore("/var/lib/safedep/cloud", configsync.WithTenant(tenant),
@@ -28,12 +31,11 @@ if err != nil {
 
 // The tool holds its writer lock across Fetch.
 res, err := fetcher.Fetch(ctx, configsync.FetchRequest{
-	TenantDomain: tenant,
-	Endpoint:     endpoint, // the identity of the check-in
-	Labels:       endpointsync.ReportedLabels(),
-	ToolName:     "pmg",
-	ToolVersion:  version,
-	Validate:     validate, // configsync.Validator: the header check and the projection of the tool
+	Endpoint:    endpoint, // the identity of the check-in
+	Labels:      endpointsync.ReportedLabels(),
+	ToolName:    "pmg",
+	ToolVersion: version,
+	Validate:    validate, // configsync.Validator: the header check and the projection of the tool
 })
 ```
 
@@ -79,26 +81,28 @@ returns the error. When the fetch could not read `state.json` (missing, does not
 cannot read. `status.Code` reads the code of a gRPC error, so a tool can treat `UNAVAILABLE` as
 "try later".
 
-A change of tenant resets `highest_revision`, and the new tenant gets no previous file and no
-capability sources: a policy of another tenant fails the header check, so it is no fallback. A failed
-fetch for a new tenant keeps the cache of the old tenant.
-
 ### The tenant of the store
 
-`WithTenant(tenant)` binds the store to the tenant of the credentials of the tool. Set it whenever the
-tool knows its tenant.
+`WithTenant(tenant)` binds the store to the tenant of the credentials of the tool. It is the one
+source of the tenant: the server reads the tenant from the credentials, and the fetcher records the
+tenant of the store with each commit.
 
+- `NewFetcher` requires it and returns `ErrInvalidRequest` for a store with no tenant. Only a tool with
+  credentials fetches, so a fetcher always knows its tenant.
 - `Load` refuses a cache of another tenant before it reads a policy file. The error wraps `ErrNoCache`
   and `ErrTenantMismatch`, so the tool applies its baseline.
-- `Fetch` refuses a request for another tenant. The error wraps `ErrInvalidRequest` and
-  `ErrTenantMismatch`. The fetch sends no request and writes no state.
+
+A change of tenant resets `highest_revision`, because revisions count for each tenant. The new tenant
+gets no previous file and no capability sources: a policy of another tenant fails the header check, so
+it is no fallback. A failed fetch for a new tenant keeps the cache of the old tenant, and `Load` of a
+store with the new tenant refuses it.
 
 Without `WithTenant`, the store loads the cache of any tenant. When the credentials of the tool move to
 a new tenant, the tool then applies the policy of the old tenant until a fetch for the new tenant
 commits. A fetch can fail for a long time: the endpoint is offline, the server refuses the
 credentials, or the validator rejects the policy of the new tenant. Only a validator that compares the
 tenant of the policy header stops this. A tool with no login does not know its tenant, so it leaves
-`WithTenant` out.
+`WithTenant` out and only reads the cache.
 
 `Validate` is required. Its type is `Validator`, `func(raw []byte) (Accepted, error)`, so the tool runs
 its projection once. `Accepted.CapabilitySources` becomes the `capability_sources` of the new commit

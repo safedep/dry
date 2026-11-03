@@ -41,12 +41,10 @@ var (
 	ErrTooLarge = errors.New("configsync: cache file is too large")
 
 	// ErrInvalidRequest means that a FetchRequest misses a required field,
-	// or names another tenant than the store.
+	// or that NewFetcher got a store with no tenant.
 	ErrInvalidRequest = errors.New("configsync: invalid fetch request")
 
-	// ErrTenantMismatch means that the cache or a FetchRequest names another
-	// tenant than WithTenant. An error of Load that wraps it also wraps
-	// ErrNoCache. An error of Fetch that wraps it also wraps
-	// ErrInvalidRequest.
+	// ErrTenantMismatch means that the cache names another tenant than
+	// WithTenant. An error of Load that wraps it also wraps ErrNoCache.
 	ErrTenantMismatch = errors.New("configsync: tenant mismatch")
 )

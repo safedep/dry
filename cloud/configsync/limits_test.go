@@ -41,10 +41,10 @@ func TestFetch_LongErrorTextKeepsTheStateReadable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
-			f.commit(tenantA, policyA, 1)
+			f.commit(policyA, 1)
 
 			f.tick()
-			req := request(tenantA)
+			req := request()
 			tc.arrange(f, &req)
 			_, err := f.fetcher.Fetch(context.Background(), req)
 			require.Error(t, err)
@@ -67,7 +67,7 @@ func TestFetch_LongErrorTextKeepsTheStateReadable(t *testing.T) {
 
 func TestStore_WriteStateRefusesAnOversizedState(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	before := f.state()
 
 	big := f.state()

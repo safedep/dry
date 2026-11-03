@@ -28,14 +28,14 @@ func TestStore_NewParentFoldersGetTheDirMode(t *testing.T) {
 	require.NoError(t, os.Chmod(existing, 0o711))
 
 	dir := filepath.Join(existing, "safedep", "cloud")
-	store, err := NewStore(dir, WithDirMode(0o755), WithFileMode(0o644))
+	store, err := NewStore(dir, WithTenant(tenantA), WithDirMode(0o755), WithFileMode(0o644))
 	require.NoError(t, err)
 
 	transport := NewMockTransport(t)
 	fetcher, err := NewFetcher(store, transport)
 	require.NoError(t, err)
 	transport.EXPECT().GetResolvedPolicy(mock.Anything, mock.Anything).Return(modified(policyA, 1), nil).Once()
-	_, err = fetcher.Fetch(context.Background(), request(tenantA))
+	_, err = fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 
 	for _, d := range []string{filepath.Join(existing, "safedep"), dir} {

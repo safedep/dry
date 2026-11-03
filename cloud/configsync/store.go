@@ -60,11 +60,10 @@ func WithFileMode(mode os.FileMode) StoreOption {
 }
 
 // WithTenant binds the store to the tenant domain of the credentials of the
-// tool. Load then refuses a cache of another tenant before it reads a policy
-// file, and Fetch refuses a request for another tenant. Without it, a tool
-// whose credentials move to a new tenant loads the policy of the old tenant
-// until a fetch for the new tenant commits, unless its Validator compares the
-// tenant of the policy. Set it whenever the tool knows its tenant.
+// tool. NewFetcher requires it, and each commit records that tenant. Load
+// then refuses a cache of another tenant before it reads a policy file.
+// Without it, Load returns the cache of any tenant, so a tool that only
+// reads, with no login, leaves it out.
 func WithTenant(tenant string) StoreOption {
 	return func(s *Store) { s.tenant = tenant }
 }

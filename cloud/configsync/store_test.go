@@ -149,9 +149,9 @@ func TestStoreLoad(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
-			f.commit(tenantA, policyA, 1)
+			f.commit(policyA, 1)
 			f.tick()
-			f.commit(tenantA, policyB, 2)
+			f.commit(policyB, 2)
 			if tc.prepare != nil {
 				tc.prepare(t, f)
 			}
@@ -214,9 +214,9 @@ func TestStore_RefusesSymlinks(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
-			f.commit(tenantA, policyA, 1)
+			f.commit(policyA, 1)
 			f.tick()
-			f.commit(tenantA, policyB, 2)
+			f.commit(policyB, 2)
 
 			path := tc.link(t, f)
 			require.NoError(t, os.Remove(path))
@@ -233,7 +233,7 @@ func TestStore_RefusesSymlinks(t *testing.T) {
 // tool that runs as root reads the cache of the user under sudo.
 func TestStore_DigestMismatchHidesTheDigestOfTheBytes(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	content := []byte("a file that only root reads")
 	f.writePolicyFile(t, policyA, content)
 
@@ -270,14 +270,14 @@ func TestStore_FileModes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "cloud-policy")
-			store, err := NewStore(dir, tc.opts...)
+			store, err := NewStore(dir, append(tc.opts, WithTenant(tenantA))...)
 			require.NoError(t, err)
 			transport := NewMockTransport(t)
 			fetcher, err := NewFetcher(store, transport)
 			require.NoError(t, err)
 			for i, raw := range [][]byte{policyA, policyB} {
 				transport.EXPECT().GetResolvedPolicy(mock.Anything, mock.Anything).Return(modified(raw, uint64(i+1)), nil).Once()
-				_, err := fetcher.Fetch(context.Background(), request(tenantA))
+				_, err := fetcher.Fetch(context.Background(), request())
 				require.NoError(t, err)
 			}
 
@@ -299,7 +299,7 @@ func TestStore_FileModes(t *testing.T) {
 
 func TestStore_CommitRemovesOldTempFiles(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 
 	old := filepath.Join(f.dir, tempPrefix+"old")
 	require.NoError(t, os.WriteFile(old, []byte("part"), defaultFileMode))
@@ -313,7 +313,7 @@ func TestStore_CommitRemovesOldTempFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(other, []byte("keep"), defaultFileMode))
 
 	f.tick()
-	f.commit(tenantA, policyB, 2)
+	f.commit(policyB, 2)
 
 	assert.NoFileExists(t, old)
 	assert.FileExists(t, young, "another writer can still fill a young temp file")
@@ -324,10 +324,10 @@ func TestStore_CommitRemovesOldTempFiles(t *testing.T) {
 // read, so the test pins them.
 func TestStore_StateJSONKeys(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	f.tick()
 	f.reply(modified(policyB, 2), nil)
-	req := request(tenantA)
+	req := request()
 	req.Validate = withSources(map[string]string{"package_admission": Digest(policyA)})
 	_, err := f.fetcher.Fetch(t.Context(), req)
 	require.NoError(t, err)

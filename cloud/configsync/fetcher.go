@@ -12,12 +12,6 @@ import (
 
 // FetchRequest is one fetch of the resolved policy of an endpoint.
 type FetchRequest struct {
-	// TenantDomain is the tenant of the credentials of the data-plane
-	// client. A tenant that differs from the tenant of the cache resets
-	// highest_revision and sends an empty digest. When the store has
-	// WithTenant, it must equal that tenant.
-	TenantDomain string
-
 	// Endpoint is the identity that the check-in of the tool sends, so the
 	// fetch and the check-in name one endpoint.
 	Endpoint *controltowerv1.EndpointIdentity
@@ -81,10 +75,15 @@ type Fetcher struct {
 	now       func() time.Time
 }
 
-// NewFetcher returns a fetcher that writes to store through transport.
+// NewFetcher returns a fetcher that writes to store through transport. The
+// store must have WithTenant: the fetcher records that tenant with each
+// commit, and only a tool with credentials fetches, so it knows its tenant.
 func NewFetcher(store *Store, transport Transport) (*Fetcher, error) {
 	if store == nil {
 		return nil, fmt.Errorf("%w: store is required", ErrInvalidRequest)
+	}
+	if store.tenant == "" {
+		return nil, fmt.Errorf("%w: store has no tenant, use WithTenant", ErrInvalidRequest)
 	}
 	if transport == nil {
 		return nil, fmt.Errorf("%w: transport is required", ErrInvalidRequest)
@@ -99,10 +98,6 @@ func NewFetcher(store *Store, transport Transport) (*Fetcher, error) {
 func (f *Fetcher) Fetch(ctx context.Context, req FetchRequest) (*FetchResult, error) {
 	if err := req.check(); err != nil {
 		return nil, err
-	}
-	if t := f.store.tenant; t != "" && req.TenantDomain != t {
-		return nil, fmt.Errorf("%w: %w: the request names tenant %q, the store expects %q",
-			ErrInvalidRequest, ErrTenantMismatch, req.TenantDomain, t)
 	}
 
 	f.store.mu.Lock()
@@ -123,7 +118,10 @@ func (f *Fetcher) Fetch(ctx context.Context, req FetchRequest) (*FetchResult, er
 	}
 	fail := func(err error) error { return f.fail(st, readable, now, err) }
 
-	sameTenant := st.Tenant == req.TenantDomain
+	// The tenant of the store is the tenant of the credentials. A cache of
+	// another tenant resets highest_revision and sends an empty digest,
+	// because revisions count for each tenant.
+	sameTenant := st.Tenant == f.store.tenant
 	var held string
 	var highest uint64
 	if sameTenant {
@@ -194,7 +192,7 @@ func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 	}
 
 	next := State{
-		Tenant:          req.TenantDomain,
+		Tenant:          f.store.tenant,
 		Digest:          digest,
 		Revision:        revision,
 		HighestRevision: max(highest, revision),
@@ -277,8 +275,6 @@ func cleanSources(in map[string]string, current string) map[string]string {
 
 func (r *FetchRequest) check() error {
 	switch {
-	case r.TenantDomain == "":
-		return fmt.Errorf("%w: tenant domain is required", ErrInvalidRequest)
 	case r.Endpoint == nil:
 		return fmt.Errorf("%w: endpoint identity is required", ErrInvalidRequest)
 	case r.ToolName == "":

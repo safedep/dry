@@ -40,25 +40,34 @@ type fixture struct {
 	clock     time.Time
 }
 
-func newFixture(t *testing.T, opts ...StoreOption) *fixture {
+// newFixture returns a store and a fetcher for tenantA.
+func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "cloud-policy")
-	store, err := NewStore(dir, opts...)
-	require.NoError(t, err)
-	transport := NewMockTransport(t)
-	fetcher, err := NewFetcher(store, transport)
-	require.NoError(t, err)
-
 	f := &fixture{
 		t:         t,
-		dir:       dir,
-		store:     store,
-		transport: transport,
-		fetcher:   fetcher,
+		dir:       filepath.Join(t.TempDir(), "cloud-policy"),
+		transport: NewMockTransport(t),
 		clock:     time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC),
 	}
-	fetcher.now = func() time.Time { return f.clock }
+	f.rebind(WithTenant(tenantA))
 	return f
+}
+
+// rebind gives the fixture a new store on the same folder with opts, as a
+// tool does when it starts with new credentials. A store with no tenant gets
+// no fetcher.
+func (f *fixture) rebind(opts ...StoreOption) {
+	f.t.Helper()
+	store, err := NewStore(f.dir, opts...)
+	require.NoError(f.t, err)
+	f.store, f.fetcher = store, nil
+	if store.tenant == "" {
+		return
+	}
+	fetcher, err := NewFetcher(store, f.transport)
+	require.NoError(f.t, err)
+	fetcher.now = func() time.Time { return f.clock }
+	f.fetcher = fetcher
 }
 
 func (f *fixture) tick() time.Time {
@@ -76,10 +85,10 @@ func (f *fixture) reply(resp *policyv1.GetResolvedPolicyResponse, err error) **p
 	return got
 }
 
-func (f *fixture) commit(tenant string, raw []byte, revision uint64) {
+func (f *fixture) commit(raw []byte, revision uint64) {
 	f.t.Helper()
 	f.reply(modified(raw, revision), nil)
-	res, err := f.fetcher.Fetch(context.Background(), request(tenant))
+	res, err := f.fetcher.Fetch(context.Background(), request())
 	require.NoError(f.t, err)
 	require.Equal(f.t, FetchModified, res.Status)
 }
@@ -133,9 +142,8 @@ func notModified(digest string) *policyv1.GetResolvedPolicyResponse {
 	}.Build()
 }
 
-func request(tenant string) FetchRequest {
+func request() FetchRequest {
 	return FetchRequest{
-		TenantDomain: tenant,
 		Endpoint: controltowerv1.EndpointIdentity_builder{
 			Identifier: "laptop-1",
 			MachineId:  "machine-1",
@@ -163,7 +171,7 @@ func TestFetch_FirstModifiedCommits(t *testing.T) {
 	f := newFixture(t)
 	got := f.reply(modified(policyA, 7), nil)
 
-	res, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	res, err := f.fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 	assert.Equal(t, &FetchResult{Status: FetchModified, Digest: Digest(policyA), Revision: 7}, res)
 
@@ -197,11 +205,11 @@ func TestFetch_FirstModifiedCommits(t *testing.T) {
 
 func TestFetch_SecondModifiedKeepsPrevious(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	f.tick()
 
 	got := f.reply(modified(policyB, 2), nil)
-	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	_, err := f.fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 
 	assert.Equal(t, Digest(policyA), (*got).GetDigest(), "the fetch sends the digest of the cache")
@@ -215,12 +223,12 @@ func TestFetch_SecondModifiedKeepsPrevious(t *testing.T) {
 
 func TestFetch_NotModifiedMovesOnlyFetchedAt(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 3)
+	f.commit(policyA, 3)
 	before := f.state()
 
 	now := f.tick()
 	got := f.reply(notModified(Digest(policyA)), nil)
-	res, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	res, err := f.fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 	assert.Equal(t, &FetchResult{Status: FetchNotModified, Digest: Digest(policyA), Revision: 3}, res)
 	assert.Equal(t, Digest(policyA), (*got).GetDigest())
@@ -236,10 +244,10 @@ func TestFetch_NotModifiedMovesOnlyFetchedAt(t *testing.T) {
 // record of the last rejection and every field of the policy.
 func TestFetch_NotModifiedClearsLastErrorAndKeepsRejected(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 3)
+	f.commit(policyA, 3)
 	f.tick()
 	f.reply(modified(policyB, 4), nil)
-	req := request(tenantA)
+	req := request()
 	req.Validate = refuseWith(errors.New("bad header"))
 	_, err := f.fetcher.Fetch(context.Background(), req)
 	require.ErrorIs(t, err, ErrRejected)
@@ -248,7 +256,7 @@ func TestFetch_NotModifiedClearsLastErrorAndKeepsRejected(t *testing.T) {
 
 	now := f.tick()
 	f.reply(notModified(Digest(policyA)), nil)
-	_, err = f.fetcher.Fetch(context.Background(), request(tenantA))
+	_, err = f.fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 
 	want := *before
@@ -321,12 +329,12 @@ func TestFetch_FailedChecksKeepTheCache(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
-			f.commit(tenantA, policyA, 5)
+			f.commit(policyA, 5)
 			before := f.state()
 
 			now := f.tick()
 			f.reply(tc.resp, tc.rpcErr)
-			req := request(tenantA)
+			req := request()
 			if tc.validate != nil {
 				req.Validate = tc.validate
 			}
@@ -363,9 +371,9 @@ func TestFetch_FailedChecksKeepTheCache(t *testing.T) {
 
 func TestFetch_SameRevisionWithNewDigestIsAccepted(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 5)
+	f.commit(policyA, 5)
 	f.tick()
-	f.commit(tenantA, policyB, 5)
+	f.commit(policyB, 5)
 
 	st := f.state()
 	assert.Equal(t, Digest(policyB), st.Digest)
@@ -374,16 +382,16 @@ func TestFetch_SameRevisionWithNewDigestIsAccepted(t *testing.T) {
 
 func TestFetch_CommitClearsTheLastFailure(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 5)
+	f.commit(policyA, 5)
 	f.tick()
 	f.reply(modified(policyB, 6), nil)
-	req := request(tenantA)
+	req := request()
 	req.Validate = refuseWith(errors.New("bad"))
 	_, err := f.fetcher.Fetch(context.Background(), req)
 	require.ErrorIs(t, err, ErrRejected)
 
 	now := f.tick()
-	f.commit(tenantA, policyC, 7)
+	f.commit(policyC, 7)
 
 	st := f.state()
 	assert.Nil(t, st.Rejected)
@@ -394,13 +402,14 @@ func TestFetch_CommitClearsTheLastFailure(t *testing.T) {
 
 func TestFetch_NewTenantResetsHighestRevision(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 40)
+	f.commit(policyA, 40)
 	f.tick()
-	f.commit(tenantA, policyB, 50)
+	f.commit(policyB, 50)
 	f.tick()
 
+	f.rebind(WithTenant(tenantB))
 	got := f.reply(modified(policyC, 3), nil)
-	req := request(tenantB)
+	req := request()
 	req.Validate = withSources(map[string]string{"package_admission": Digest(policyB)})
 	res, err := f.fetcher.Fetch(context.Background(), req)
 	require.NoError(t, err)
@@ -417,11 +426,12 @@ func TestFetch_NewTenantResetsHighestRevision(t *testing.T) {
 
 func TestFetch_FailedFetchForNewTenantKeepsTheCache(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 40)
+	f.commit(policyA, 40)
 	f.tick()
 
+	f.rebind(WithTenant(tenantB))
 	f.reply(nil, status.Error(codes.Unavailable, "down"))
-	_, err := f.fetcher.Fetch(context.Background(), request(tenantB))
+	_, err := f.fetcher.Fetch(context.Background(), request())
 	require.Error(t, err)
 
 	st := f.state()
@@ -435,7 +445,7 @@ func TestFetch_GRPCErrorWithNoCacheWritesNothing(t *testing.T) {
 	f.tick()
 	f.reply(nil, status.Error(codes.Unavailable, "down"))
 
-	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	_, err := f.fetcher.Fetch(context.Background(), request())
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 
@@ -449,7 +459,7 @@ func TestFetch_NotModifiedWithNoCacheFails(t *testing.T) {
 	f := newFixture(t)
 	f.reply(notModified(""), nil)
 
-	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	_, err := f.fetcher.Fetch(context.Background(), request())
 	assert.ErrorIs(t, err, ErrDigestMismatch)
 	assert.NoFileExists(t, filepath.Join(f.dir, stateFileName))
 }
@@ -495,7 +505,7 @@ func TestFetch_FailureKeepsAnUnreadableState(t *testing.T) {
 				require.NoError(t, os.WriteFile(path, st.content, defaultFileMode))
 
 				f.reply(fc.resp, fc.rpcErr)
-				req := request(tenantA)
+				req := request()
 				if fc.validate != nil {
 					req.Validate = fc.validate
 				}
@@ -517,7 +527,7 @@ func TestFetch_FailureKeepsAnUnreadableState(t *testing.T) {
 			require.NoError(t, os.MkdirAll(f.dir, defaultDirMode))
 			require.NoError(t, os.WriteFile(filepath.Join(f.dir, stateFileName), st.content, defaultFileMode))
 
-			f.commit(tenantA, policyA, 1)
+			f.commit(policyA, 1)
 			assert.Equal(t, Digest(policyA), f.state().Digest)
 		})
 	}
@@ -525,14 +535,14 @@ func TestFetch_FailureKeepsAnUnreadableState(t *testing.T) {
 
 func TestFetch_DamagedCurrentFileSendsEmptyDigest(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	f.tick()
-	f.commit(tenantA, policyB, 2)
+	f.commit(policyB, 2)
 	require.NoError(t, os.WriteFile(filepath.Join(f.dir, fileOf(t, policyB)[0]), []byte("damaged"), defaultFileMode))
 	f.tick()
 
 	got := f.reply(modified(policyB, 2), nil)
-	_, err := f.fetcher.Fetch(context.Background(), request(tenantA))
+	_, err := f.fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 
 	assert.Empty(t, (*got).GetDigest())
@@ -549,19 +559,19 @@ func TestFetch_DamagedCurrentFileSendsEmptyDigest(t *testing.T) {
 // new Store, as the next process does.
 func TestFetch_CrashBetweenRenamesLeavesThePreviousCommit(t *testing.T) {
 	f := newFixture(t)
-	f.commit(tenantA, policyA, 1)
+	f.commit(policyA, 1)
 	before := f.state()
 
 	f.tick()
 	f.store.afterPolicyRename = func() { panic("crash") }
 	f.reply(modified(policyB, 2), nil)
 	require.PanicsWithValue(t, "crash", func() {
-		_, _ = f.fetcher.Fetch(context.Background(), request(tenantA))
+		_, _ = f.fetcher.Fetch(context.Background(), request())
 	})
 
 	assert.Equal(t, fileOf(t, policyA, policyB), f.policyFiles(), "the policy file of the crashed commit is on disk")
 
-	store, err := NewStore(f.dir)
+	store, err := NewStore(f.dir, WithTenant(tenantA))
 	require.NoError(t, err)
 	st, err := store.State()
 	require.NoError(t, err)
@@ -576,7 +586,7 @@ func TestFetch_CrashBetweenRenamesLeavesThePreviousCommit(t *testing.T) {
 	fetcher, err := NewFetcher(store, transport)
 	require.NoError(t, err)
 	transport.EXPECT().GetResolvedPolicy(mock.Anything, mock.Anything).Return(modified(policyC, 3), nil).Once()
-	_, err = fetcher.Fetch(context.Background(), request(tenantA))
+	_, err = fetcher.Fetch(context.Background(), request())
 	require.NoError(t, err)
 	assert.Equal(t, fileOf(t, policyA, policyC), f.policyFiles())
 }
@@ -587,7 +597,7 @@ func TestFetch_CapabilitySourcesKeepTheirFiles(t *testing.T) {
 		t.Helper()
 		f.tick()
 		f.reply(modified(raw, revision), nil)
-		req := request(tenantA)
+		req := request()
 		req.Validate = func(got []byte) (Accepted, error) {
 			assert.Equal(t, raw, got)
 			return Accepted{CapabilitySources: sources}, nil
@@ -623,7 +633,6 @@ func TestFetch_InvalidRequest(t *testing.T) {
 		name   string
 		mutate func(*FetchRequest)
 	}{
-		{"no tenant", func(r *FetchRequest) { r.TenantDomain = "" }},
 		{"no endpoint", func(r *FetchRequest) { r.Endpoint = nil }},
 		{"no tool name", func(r *FetchRequest) { r.ToolName = "" }},
 		{"no validator", func(r *FetchRequest) { r.Validate = nil }},
@@ -631,7 +640,7 @@ func TestFetch_InvalidRequest(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFixture(t)
-			req := request(tenantA)
+			req := request()
 			tc.mutate(&req)
 			_, err := f.fetcher.Fetch(context.Background(), req)
 			assert.ErrorIs(t, err, ErrInvalidRequest)
@@ -641,11 +650,15 @@ func TestFetch_InvalidRequest(t *testing.T) {
 	}
 }
 
-func TestNewFetcher_RequiresStoreAndTransport(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+func TestNewFetcher_RequiresStoreTenantAndTransport(t *testing.T) {
+	store, err := NewStore(t.TempDir(), WithTenant(tenantA))
+	require.NoError(t, err)
+	noTenant, err := NewStore(t.TempDir())
 	require.NoError(t, err)
 
 	_, err = NewFetcher(nil, NewMockTransport(t))
+	assert.ErrorIs(t, err, ErrInvalidRequest)
+	_, err = NewFetcher(noTenant, NewMockTransport(t))
 	assert.ErrorIs(t, err, ErrInvalidRequest)
 	_, err = NewFetcher(store, nil)
 	assert.ErrorIs(t, err, ErrInvalidRequest)

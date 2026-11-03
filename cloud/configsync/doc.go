@@ -26,7 +26,6 @@
 // lock. Writers that do not share one Store, in one process or in more than
 // one, must hold a lock of the tool across Fetch.
 //
-// WithTenant binds a Store to the tenant of the credentials of the tool. Load
-// then refuses a cache of another tenant, and Fetch refuses a request for
-// another tenant. A tool sets it whenever it knows its tenant.
+// WithTenant binds a Store to the tenant of the credentials of the tool.
+// NewFetcher requires it. Load then refuses a cache of another tenant.
 package configsync

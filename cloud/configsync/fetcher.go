@@ -175,12 +175,18 @@ func (f *Fetcher) commitModified(st *State, now time.Time, req FetchRequest,
 	if Digest(raw) != digest {
 		return nil, fail(fmt.Errorf("%w: reply digest %q does not match the received bytes", ErrDigestMismatch, digest))
 	}
+	// ReadPolicy refuses a larger file, so a commit would lose the policy.
+	// The gRPC transport stops at the same size, a custom transport may not.
+	if int64(len(raw)) > maxPolicySize {
+		return nil, fail(fmt.Errorf("%w: policy has %d bytes, limit %d", ErrTooLarge, len(raw), maxPolicySize))
+	}
 
 	// A lower revision comes from a replica that lags. The check does not
 	// stop a replay: the user can edit state.json, and an unreadable state
 	// resets the floor. TLS and the header check of the validator decide
-	// whether a policy is genuine. The same revision with a new digest is accepted: the server can
-	// resolve one revision again, for example after a label change.
+	// whether a policy is genuine. The same revision with a new digest is
+	// accepted: the server can resolve one revision again, for example after
+	// a label change.
 	if revision < highest {
 		return nil, fail(fmt.Errorf("%w: revision %d, highest %d", ErrLowerRevision, revision, highest))
 	}

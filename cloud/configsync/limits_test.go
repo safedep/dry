@@ -99,3 +99,43 @@ func TestClipText(t *testing.T) {
 		})
 	}
 }
+
+// ReadPolicy refuses a policy over maxPolicySize, so the fetch must refuse it
+// too, or the commit makes a cache that Load cannot read.
+func TestFetch_RefusesAnOversizedPolicy(t *testing.T) {
+	f := newFixture(t)
+	f.commit(policyA, 1)
+	before := f.state()
+
+	f.tick()
+	f.reply(modified(make([]byte, maxPolicySize+1), 2), nil)
+	_, err := f.fetcher.Fetch(context.Background(), request())
+
+	require.ErrorIs(t, err, ErrTooLarge)
+	assert.Equal(t, fileOf(t, policyA), f.policyFiles(), "the fetch must write no policy file")
+	st := f.state()
+	assert.Equal(t, before.Digest, st.Digest)
+	assert.Equal(t, before.HighestRevision, st.HighestRevision)
+	loaded, err := f.store.Load(acceptAll)
+	require.NoError(t, err)
+	assert.Equal(t, policyA, loaded.Policy)
+}
+
+// A commit whose state write fails must not leave its policy file behind.
+func TestStore_FailedStateWriteRemovesTheNewPolicyFile(t *testing.T) {
+	f := newFixture(t)
+	f.commit(policyA, 1)
+
+	f.tick()
+	f.reply(modified(policyB, 2), nil)
+	req := request()
+	// A capability name this long makes a state over maxStateSize.
+	req.Validate = withSources(map[string]string{strings.Repeat("c", maxStateSize): Digest(policyA)})
+	_, err := f.fetcher.Fetch(context.Background(), req)
+
+	require.ErrorIs(t, err, ErrTooLarge)
+	assert.Equal(t, fileOf(t, policyA), f.policyFiles())
+	loaded, err := f.store.Load(acceptAll)
+	require.NoError(t, err)
+	assert.Equal(t, policyA, loaded.Policy)
+}

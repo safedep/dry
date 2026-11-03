@@ -251,6 +251,12 @@ func (s *Store) commit(st *State, raw []byte) error {
 	}
 
 	if err := s.writeState(st); err != nil {
+		// The policy file of this commit is now unnamed. Without this
+		// cleanup, each failed commit leaves one file until a commit
+		// succeeds. The old state keeps the files that it names.
+		if old, serr := s.State(); serr == nil {
+			s.removeUnnamed(old)
+		}
 		return err
 	}
 

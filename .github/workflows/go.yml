@@ -39,6 +39,14 @@ jobs:
         sudo apt-get install -y jq
         sudo apt-get install -y ./sysbox-ce_0.7.1.linux_amd64.deb
 
+    # The fusermount3 AppArmor profile of the runner image denies the FUSE
+    # mount that sysbox-fs makes for each container, so sysbox-runc fails.
+    - name: Allow the FUSE mount of sysbox-fs
+      run: |
+        if [ -f /etc/apparmor.d/fusermount3 ]; then
+          sudo apparmor_parser -R /etc/apparmor.d/fusermount3
+        fi
+
     # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
     - name: Check sysbox status
       run: sudo systemctl status sysbox -n20
@@ -60,7 +68,9 @@ jobs:
 
     - name: Show sysbox logs
       if: failure()
-      run: sudo journalctl -u sysbox-fs -u sysbox-mgr -n 100 --no-pager
+      run: |
+        sudo journalctl -u sysbox-fs -u sysbox-mgr -n 100 --no-pager
+        sudo dmesg | grep -i 'apparmor="DENIED"' | tail -n 20 || true
 
     - name: TUI discipline checks
       run: bash scripts/check-tui-discipline.sh

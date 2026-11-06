@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -76,12 +77,12 @@ func TestDockerSandboxExecute(t *testing.T) {
 			}
 
 			sandbox, err := NewDockerSandbox(config)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			defer sandbox.Close()
 
 			err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			r, err := sandbox.Execute(context.Background(), c.command, c.args, SandboxExecOpts{
 				SkipWaitForCompletion: c.skipWaitForCompletion,
@@ -91,7 +92,7 @@ func TestDockerSandboxExecute(t *testing.T) {
 				assert.Error(t, err)
 				assert.Equal(t, c.err, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Contains(t, c.expectedExitCodes, r.ExitCode)
 			}
 		})
@@ -110,7 +111,7 @@ func TestDockerSandboxSetup(t *testing.T) {
 
 		sandbox, err := NewDockerSandbox(config)
 		assert.NotNil(t, sandbox)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -125,12 +126,12 @@ func TestDockerSandboxSetup(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("when the image already exists it should not be pulled again", func(t *testing.T) {
@@ -140,23 +141,25 @@ func TestDockerSandboxSetup(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, sandbox.Close()) })
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = sandbox.Close()
 		assert.NoError(t, err)
 
 		config.PullImageIfMissing = false
 		secondSandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, secondSandbox.Close()) })
 
 		err = secondSandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		r, err := secondSandbox.Execute(context.Background(), "echo", []string{"hello"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 
 		err = secondSandbox.Close()
@@ -180,25 +183,25 @@ func TestDockerSandboxWithEnvironmentVariables(t *testing.T) {
 		}
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
 			EnvironmentVariables: envVars,
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		r, err := sandbox.Execute(context.Background(), "sh", []string{"-c", "env > /tmp/env.txt"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Zero(t, r.ExitCode)
 
 		output, err := sandbox.ReadFile(context.Background(), "/tmp/env.txt")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, output)
 
 		content, err := io.ReadAll(output)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Contains(t, string(content), "ENV_VAR_1=value1")
 		assert.Contains(t, string(content), "ENV_VAR_2=value2")
@@ -217,12 +220,12 @@ func TestDockerSandboxReadWriteFile(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		_, err = sandbox.ReadFile(context.Background(), "/tmp/test.txt")
 		assert.Error(t, err)
@@ -235,22 +238,22 @@ func TestDockerSandboxReadWriteFile(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = sandbox.WriteFile(context.Background(), "/tmp/test.txt", bytes.NewReader([]byte("test")))
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		output, err := sandbox.ReadFile(context.Background(), "/tmp/test.txt")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, output)
 
 		content, err := io.ReadAll(output)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "test", string(content))
 	})
 }
@@ -266,18 +269,18 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
 			HealthCheckCommand: []string{"echo", "healthy"},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify sandbox is ready to execute commands
 		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})
 
@@ -288,7 +291,7 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.CreateWaitTimeout = 2 * time.Second
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -308,7 +311,7 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.CreateWaitTimeout = 2 * time.Second
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -327,7 +330,7 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.CreateWaitTimeout = 2 * time.Second
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -344,17 +347,17 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
 		// Setup without health check - should work as before
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify sandbox works normally
 		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})
 
@@ -364,7 +367,7 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -372,11 +375,11 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
 			HealthCheckCommand: []string{},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify sandbox works normally
 		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})
 
@@ -386,7 +389,7 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		config.PullImageIfMissing = true
 
 		sandbox, err := NewDockerSandbox(config)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		defer sandbox.Close()
 
@@ -394,11 +397,11 @@ func TestDockerSandboxHealthCheck(t *testing.T) {
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{
 			HealthCheckCommand: []string{"sh", "-c", "test -d /tmp && echo 'healthy'"},
 		})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify sandbox is ready
 		r, err := sandbox.Execute(context.Background(), "echo", []string{"test"}, SandboxExecOpts{})
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, r.ExitCode)
 	})
 }
@@ -507,11 +510,11 @@ func TestDockerSandboxExecuteWithIO(t *testing.T) {
 			config.PullImageIfMissing = true
 
 			sandbox, err := NewDockerSandbox(config)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer sandbox.Close()
 
 			err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			var stdin io.Reader
 			if tc.stdinData != "" {
@@ -547,7 +550,7 @@ func TestDockerSandboxExecuteWithIO(t *testing.T) {
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tc.expectedExitCode, r.ExitCode)
 
 			if tc.expectedStdout != "" {

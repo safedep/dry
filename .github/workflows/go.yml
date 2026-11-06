@@ -33,10 +33,11 @@ jobs:
     - name: Install sysbox-run docker host runtime
       run: |
         cd /tmp
-        wget https://downloads.nestybox.com/sysbox/releases/v0.7.0/sysbox-ce_0.7.0-0.linux_amd64.deb
+        wget https://github.com/nestybox/sysbox/releases/download/v0.7.1/sysbox-ce_0.7.1.linux_amd64.deb
+        echo "9d6d5484f980d0a17f86c492c1262015c2afb66280bdb97215b79fde6a0261c5  sysbox-ce_0.7.1.linux_amd64.deb" | sha256sum --check
         sudo apt-get update
         sudo apt-get install -y jq
-        sudo apt-get install -y ./sysbox-ce_0.7.0-0.linux_amd64.deb
+        sudo apt-get install -y ./sysbox-ce_0.7.1.linux_amd64.deb
 
     # Docs: https://github.com/nestybox/sysbox/blob/master/docs/user-guide/install-package.md#installing-sysbox
     - name: Check sysbox status
@@ -56,6 +57,10 @@ jobs:
       env:
         SANDBOX_ENABLE_E2E_TEST: true
         TEST_DOCKER_SANDBOX_SOCKET_PATH: /var/run/docker.sock
+
+    - name: Show sysbox logs
+      if: failure()
+      run: sudo journalctl -u sysbox-fs -u sysbox-mgr -n 100 --no-pager
 
     - name: TUI discipline checks
       run: bash scripts/check-tui-discipline.sh

@@ -69,7 +69,8 @@ jobs:
     - name: Show sysbox logs
       if: failure()
       run: |
-        sudo journalctl -u sysbox-fs -u sysbox-mgr -n 100 --no-pager
+        sudo journalctl -u sysbox-fs -n 100 --no-pager
+        sudo journalctl -u sysbox-mgr -n 100 --no-pager
         sudo dmesg | grep -i 'apparmor="DENIED"' | tail -n 20 || true
 
     - name: TUI discipline checks

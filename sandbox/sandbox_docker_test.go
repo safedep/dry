@@ -142,6 +142,7 @@ func TestDockerSandboxSetup(t *testing.T) {
 
 		sandbox, err := NewDockerSandbox(config)
 		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, sandbox.Close()) })
 
 		err = sandbox.Setup(context.Background(), SandboxSetupConfig{})
 		require.NoError(t, err)
@@ -152,6 +153,7 @@ func TestDockerSandboxSetup(t *testing.T) {
 		config.PullImageIfMissing = false
 		secondSandbox, err := NewDockerSandbox(config)
 		require.NoError(t, err)
+		t.Cleanup(func() { assert.NoError(t, secondSandbox.Close()) })
 
 		err = secondSandbox.Setup(context.Background(), SandboxSetupConfig{})
 		require.NoError(t, err)

@@ -1,6 +1,8 @@
 // Command gen writes list.json, the SPDX License List data that the
 // spdxlicense package embeds. It reads licenses.json from the go-spdx module
 // that go.mod pins, so the flags and the ids of go-spdx come from one list.
+// After a run that changes the list version, change the version and the
+// date in NOTICE.
 package main
 
 import (

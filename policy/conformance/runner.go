@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	specv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/policy/spec/v1"
+
+	"github.com/safedep/dry/policy/match"
 )
 
 // DecideFunc loads a resolved policy through the loader of a tool and decides
@@ -19,7 +21,13 @@ type DecideFunc func(policy []byte, q Query) (Decision, error)
 // case and each check. kind is the subject kind that the tool loads a policy
 // for: the runner writes the header for it, and Expect gives the values that
 // the loader must expect.
-func Run(t *testing.T, kind specv1.SubjectKind, decide DecideFunc) {
+//
+// controls are the controls that the tool decides, such as
+// match.ScopeMalware and match.ScopeCooldown for pmg. The runner skips a
+// check of another control. With no controls, every check runs. A tool that
+// decides match.ScopeVulnerability must pass Query.VulnerabilityIDs to match
+// and return Decision.VulnerabilityID, or the named-vulnerability case fails.
+func Run(t *testing.T, kind specv1.SubjectKind, decide DecideFunc, controls ...match.Scope) {
 	t.Helper()
 
 	cases, err := Cases()
@@ -36,6 +44,9 @@ func Run(t *testing.T, kind specv1.SubjectKind, decide DecideFunc) {
 
 			for _, chk := range c.Checks {
 				t.Run(chk.Name, func(t *testing.T) {
+					if len(controls) > 0 && !slices.Contains(controls, chk.Query.Control) {
+						t.Skipf("the tool does not decide the control %s", chk.Query.Control)
+					}
 					verify(t, c, chk, raw, decide)
 				})
 			}

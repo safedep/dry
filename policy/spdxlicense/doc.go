@@ -27,5 +27,5 @@
 //
 // list.json holds the ids of the SPDX License List and their OSI and FSF
 // flags, which go generate copies from the go-spdx module. The SPDX License
-// List is a work of the SPDX Legal Team (https://spdx.org/licenses/).
+// List is under CC-BY-3.0, and NOTICE gives its version, source and author.
 package spdxlicense

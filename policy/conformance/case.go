@@ -70,6 +70,11 @@ type Query struct {
 
 	Verdict match.Verdict
 
+	// VulnerabilityIDs are the id of the vulnerability finding and its
+	// aliases, for the control match.ScopeVulnerability. The tool passes
+	// them as match.Query.VulnerabilityIDs.
+	VulnerabilityIDs []string
+
 	// Now is the time of the check. It is never zero.
 	Now time.Time
 }
@@ -82,8 +87,13 @@ func (q Query) String() string {
 		}
 	}
 
-	return fmt.Sprintf("%s %q version %q, control %s, verdict %s, now %s",
-		q.Package.Ecosystem, q.Package.Name, q.Package.Version, q.Control, verdict, q.Now.Format(time.RFC3339))
+	ids := ""
+	if len(q.VulnerabilityIDs) > 0 {
+		ids = fmt.Sprintf(", vulnerability ids %q", q.VulnerabilityIDs)
+	}
+
+	return fmt.Sprintf("%s %q version %q, control %s, verdict %s%s, now %s",
+		q.Package.Ecosystem, q.Package.Name, q.Package.Version, q.Control, verdict, ids, q.Now.Format(time.RFC3339))
 }
 
 // Decision is the result that the corpus checks.
@@ -94,13 +104,24 @@ type Decision struct {
 	// RuleID is the id of the rule that decides, or "" when no rule
 	// decides. A block entry with no id has the id match.BlockRuleIDNone.
 	RuleID string
+
+	// VulnerabilityID is the id of match.Decision.Vulnerability: the waived
+	// vulnerability of a trust entry with match.ScopeNamedVulnerability that
+	// the query names, in the spelling of the rule. It is "" for every other
+	// decision. A tool shows it with the waived finding, so the corpus
+	// checks it.
+	VulnerabilityID string
 }
 
 func (d Decision) String() string {
-	if d.RuleID == "" {
-		return d.Effect.String()
+	s := d.Effect.String()
+	if d.RuleID != "" {
+		s += " " + d.RuleID
 	}
-	return d.Effect.String() + " " + d.RuleID
+	if d.VulnerabilityID != "" {
+		s += " waives " + d.VulnerabilityID
+	}
+	return s
 }
 
 // Check is one query against the policy of a case, and the decision that it
@@ -142,12 +163,13 @@ type caseFile struct {
 }
 
 type checkFile struct {
-	Name    string      `json:"name"`
-	Package packageFile `json:"package"`
-	Control string      `json:"control"`
-	Verdict string      `json:"verdict"`
-	Now     time.Time   `json:"now"`
-	Want    wantFile    `json:"want"`
+	Name             string      `json:"name"`
+	Package          packageFile `json:"package"`
+	Control          string      `json:"control"`
+	Verdict          string      `json:"verdict"`
+	VulnerabilityIDs []string    `json:"vulnerability_ids"`
+	Now              time.Time   `json:"now"`
+	Want             wantFile    `json:"want"`
 }
 
 type packageFile struct {
@@ -157,8 +179,9 @@ type packageFile struct {
 }
 
 type wantFile struct {
-	Effect string `json:"effect"`
-	RuleID string `json:"rule_id"`
+	Effect          string `json:"effect"`
+	RuleID          string `json:"rule_id"`
+	VulnerabilityID string `json:"vulnerability_id"`
 }
 
 var controls = map[string]match.Scope{
@@ -434,6 +457,14 @@ func toCheck(f checkFile, now time.Time) (Check, error) {
 		return Check{}, errors.New("a decision of a rule has a rule id, and no other decision has one")
 	}
 
+	if len(f.VulnerabilityIDs) > 0 && control != match.ScopeVulnerability {
+		return Check{}, errors.New("only a check of the control vulnerability has vulnerability ids")
+	}
+
+	if f.Want.VulnerabilityID != "" && (effect != match.EffectTrust || len(f.VulnerabilityIDs) == 0) {
+		return Check{}, errors.New("only a trust decision of a check with vulnerability ids has a vulnerability id")
+	}
+
 	if !f.Now.IsZero() {
 		now = f.Now
 	}
@@ -450,11 +481,12 @@ func toCheck(f checkFile, now time.Time) (Check, error) {
 				Name:      f.Package.Name,
 				Version:   f.Package.Version,
 			},
-			Control: control,
-			Verdict: verdict,
-			Now:     now,
+			Control:          control,
+			Verdict:          verdict,
+			VulnerabilityIDs: f.VulnerabilityIDs,
+			Now:              now,
 		},
-		Want: Decision{Effect: effect, RuleID: f.Want.RuleID},
+		Want: Decision{Effect: effect, RuleID: f.Want.RuleID, VulnerabilityID: f.Want.VulnerabilityID},
 	}, nil
 }
 

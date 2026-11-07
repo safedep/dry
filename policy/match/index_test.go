@@ -106,6 +106,12 @@ func TestCompareRulesIsTotal(t *testing.T) {
 	}
 }
 
+// The waived ids order as match compares them, with no regard to case.
+func TestCompareWaivedFoldsCase(t *testing.T) {
+	assert.Positive(t, compareWaived(WaivedVulnerability{ID: "CVE-B"}, WaivedVulnerability{ID: "cve-a"}))
+	assert.Negative(t, compareWaived(WaivedVulnerability{ID: "CVE-A"}, WaivedVulnerability{ID: "cve-a"}), "the exact id breaks a tie")
+}
+
 func TestNewIndexWithNoIdentity(t *testing.T) {
 	ix, dropped := NewIndex([]Rule{block("r_1", "pkg:npm/x")}, nil)
 	require.Len(t, dropped, 1)
@@ -157,6 +163,19 @@ func TestNormalize(t *testing.T) {
 			name: "named vulnerability trust keeps its vulnerabilities",
 			rule: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1", Justification: JustificationComponentNotPresent}),
 			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1", Justification: JustificationComponentNotPresent}),
+		},
+		{
+			name: "named vulnerability trust drops an item with no id",
+			rule: named("r_1", "pkg:npm/x", WaivedVulnerability{}, WaivedVulnerability{ID: "CVE-2024-1"}),
+			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1"}),
+		},
+		{
+			name: "named vulnerability trust keeps the first of two ids that differ only in case",
+			rule: named("r_1", "pkg:npm/x",
+				WaivedVulnerability{ID: "GHSA-jfh8-c2jp-5v3q", Justification: JustificationComponentNotPresent},
+				WaivedVulnerability{ID: "ghsa-JFH8-c2jp-5v3q", Justification: JustificationInlineMitigationsAlreadyExist},
+			),
+			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "GHSA-jfh8-c2jp-5v3q", Justification: JustificationComponentNotPresent}),
 		},
 		{
 			name: "trust keeps the license and named vulnerability scopes",

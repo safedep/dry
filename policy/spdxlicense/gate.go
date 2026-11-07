@@ -107,6 +107,11 @@ func (g *Gate) Evaluate(values []string) Result {
 // set name, as osi-approved, because only a vet config can hold one. It
 // does not compare two entries: the server refuses two entries that differ
 // only in case.
+//
+// It is more lenient than the pattern of the contract: it takes white space
+// around the entry, parentheses around a term and a lower case "with". The
+// server runs protovalidate first, so a stored entry matches the pattern
+// too.
 func ValidateEntry(entry string) error {
 	if slices.Contains(Sets, entry) {
 		return fmt.Errorf("%q: %w: a policy list cannot hold a set name", entry, ErrInvalidEntry)

@@ -172,7 +172,10 @@ type Rule struct {
 
 	// Vulnerabilities are the vulnerabilities that a trust entry with
 	// ScopeNamedVulnerability waives. Normalize clears them on every other
-	// rule.
+	// rule. It drops an item with no id, and an item whose id equals the id
+	// of an earlier item with no regard to case, so the first item gives the
+	// justification. A server that refuses duplicate ids must fold case too,
+	// to agree with match.
 	Vulnerabilities []WaivedVulnerability
 
 	// Reason says why the rule exists.
@@ -290,7 +293,9 @@ func normalizeTrust(r Rule) (Rule, error) {
 	// Ids without ScopeNamedVulnerability waive nothing, so a decision must
 	// not show them. An entry with the scope and no ids stays: it matches no
 	// query, so it waives nothing.
-	if !slices.Contains(scopes, ScopeNamedVulnerability) {
+	if slices.Contains(scopes, ScopeNamedVulnerability) {
+		r.Vulnerabilities = uniqueVulnerabilities(r.Vulnerabilities)
+	} else {
 		r.Vulnerabilities = nil
 	}
 
@@ -305,6 +310,27 @@ func normalizeTrust(r Rule) (Rule, error) {
 	}
 
 	return r, nil
+}
+
+// uniqueVulnerabilities drops an item with no id, which no query names, and
+// an item that repeats an earlier id in another case, which no query could
+// tell apart. It returns a new list, so Normalize never changes the list of
+// its caller.
+func uniqueVulnerabilities(vulns []WaivedVulnerability) []WaivedVulnerability {
+	var out []WaivedVulnerability
+	for _, v := range vulns {
+		if v.ID == "" {
+			continue
+		}
+
+		if slices.ContainsFunc(out, func(w WaivedVulnerability) bool { return strings.EqualFold(w.ID, v.ID) }) {
+			continue
+		}
+
+		out = append(out, v)
+	}
+
+	return out
 }
 
 // isPrefix reports whether a selector is a prefix. An encoded "*" counts, so

@@ -1,0 +1,14 @@
+list.json holds data of the SPDX License List: the id of each license, and
+its deprecated, OSI approved and FSF libre flags.
+
+Source:   SPDX License List, version 297da51, released 2026-01-30
+          https://spdx.org/licenses/
+          https://github.com/spdx/license-list-data
+Copy of:  cmd/licenses.json of github.com/github/go-spdx/v2 v2.4.0
+Author:   The SPDX Legal Team, SPDX Workgroup, a Linux Foundation project
+Licence:  Creative Commons Attribution 3.0 Unported (CC-BY-3.0)
+          https://creativecommons.org/licenses/by/3.0/
+
+Changes:  list.json keeps only the id and the three flags of each license,
+          sorted by id. It holds no license text and no other field.
+          "go generate ./policy/spdxlicense" writes it.

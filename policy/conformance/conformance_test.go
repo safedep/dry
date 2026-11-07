@@ -20,13 +20,24 @@ import (
 // decideWithDry is the path of pmg and the pull request check: project,
 // match and pbidentity.
 func decideWithDry(kind specv1.SubjectKind) DecideFunc {
+	return decideWithLoader(kind, func(r match.Rule) match.Rule { return r })
+}
+
+// decideWithLoader runs the path of decideWithDry with a change to each rule
+// after the projection, as a loader with a bug would make.
+func decideWithLoader(kind specv1.SubjectKind, change func(match.Rule) match.Rule) DecideFunc {
 	return func(raw []byte, q Query) (Decision, error) {
 		proj, err := project.Decode(raw, Expect(kind))
 		if err != nil {
 			return Decision{}, err
 		}
 
-		index, _ := match.NewIndex(proj.Rules, pbidentity.Identity{})
+		rules := make([]match.Rule, 0, len(proj.Rules))
+		for _, r := range proj.Rules {
+			rules = append(rules, change(r))
+		}
+
+		index, _ := match.NewIndex(rules, pbidentity.Identity{})
 
 		ecosystem, err := pb.EcosystemFromName(q.Package.Ecosystem)
 		if err != nil {
@@ -35,13 +46,14 @@ func decideWithDry(kind specv1.SubjectKind) DecideFunc {
 
 		pv := pb.NewPackageVersionFromParts(ecosystem, q.Package.Name, q.Package.Version)
 		d := index.Decide(match.Query{
-			Package: pbidentity.Package(pv),
-			Control: q.Control,
-			Verdict: q.Verdict,
-			Now:     q.Now,
+			Package:          pbidentity.Package(pv),
+			Control:          q.Control,
+			Verdict:          q.Verdict,
+			VulnerabilityIDs: q.VulnerabilityIDs,
+			Now:              q.Now,
 		})
 
-		return Decision{Effect: d.Effect, RuleID: d.Rule.ID}, nil
+		return Decision{Effect: d.Effect, RuleID: d.Rule.ID, VulnerabilityID: d.Vulnerability.ID}, nil
 	}
 }
 
@@ -52,6 +64,76 @@ func TestCorpus(t *testing.T) {
 	} {
 		t.Run(kind.String(), func(t *testing.T) {
 			Run(t, kind, decideWithDry(kind))
+		})
+	}
+}
+
+func TestRunSkipsTheControlsThatAToolDoesNotDecide(t *testing.T) {
+	kind := specv1.SubjectKind_SUBJECT_KIND_ENDPOINT
+	decide := decideWithDry(kind)
+
+	var asked []match.Scope
+	Run(t, kind, func(raw []byte, q Query) (Decision, error) {
+		asked = append(asked, q.Control)
+		return decide(raw, q)
+	}, match.ScopeMalware, match.ScopeCooldown)
+
+	assert.NotEmpty(t, asked)
+	assert.NotContains(t, asked, match.ScopeVulnerability)
+	assert.NotContains(t, asked, match.ScopeLicense)
+}
+
+// The named-vulnerability case is the one shared check that a loader maps
+// PackageRule.vulnerabilities and TRUST_SCOPE_NAMED_VULNERABILITY. Each
+// loader bug here must fail a check of the case.
+func TestNamedVulnerabilityCaseCatchesLoaderBugs(t *testing.T) {
+	kind := specv1.SubjectKind_SUBJECT_KIND_PROJECT
+	decide := decideWithDry(kind)
+	bugs := map[string]DecideFunc{
+		"drops the ids": decideWithLoader(kind, func(r match.Rule) match.Rule {
+			r.Vulnerabilities = nil
+			return r
+		}),
+		"maps the named scope to the wide scope": decideWithLoader(kind, func(r match.Rule) match.Rule {
+			for i, s := range r.Scopes {
+				if s == match.ScopeNamedVulnerability {
+					r.Scopes[i] = match.ScopeVulnerability
+				}
+			}
+			return r
+		}),
+		"passes no ids": func(raw []byte, q Query) (Decision, error) {
+			q.VulnerabilityIDs = nil
+			return decide(raw, q)
+		},
+		"does not show the waived id": func(raw []byte, q Query) (Decision, error) {
+			d, err := decide(raw, q)
+			d.VulnerabilityID = ""
+			return d, err
+		},
+	}
+
+	cases, err := Cases()
+	require.NoError(t, err)
+
+	var named Case
+	for _, c := range cases {
+		if c.Name == "named-vulnerability" {
+			named = c
+		}
+	}
+	require.NotEmpty(t, named.Name)
+
+	raw, err := named.Policy(kind)
+	require.NoError(t, err)
+
+	for name, bug := range bugs {
+		t.Run(name, func(t *testing.T) {
+			r := &recorder{}
+			for _, chk := range named.Checks {
+				verify(r, named, chk, raw, bug)
+			}
+			assert.NotEmpty(t, r.messages)
 		})
 	}
 }
@@ -194,6 +276,14 @@ func TestVerify(t *testing.T) {
 				`control malware, verdict verified-malware, now 2026-11-01T00:00:00Z: want block r_block_any, got block r_other`,
 		},
 		{
+			name: "a waived vulnerability that the check does not want",
+			decide: func([]byte, Query) (Decision, error) {
+				return Decision{Effect: match.EffectBlock, RuleID: "r_block_any", VulnerabilityID: "CVE-2024-1"}, nil
+			},
+			wantMsg: `cases/exact-block.json, check "every-version": npm "event-stream" version "3.3.6", ` +
+				`control malware, verdict verified-malware, now 2026-11-01T00:00:00Z: want block r_block_any, got block r_block_any waives CVE-2024-1`,
+		},
+		{
 			name: "error",
 			decide: func([]byte, Query) (Decision, error) {
 				return Decision{}, errors.New("cannot load")
@@ -260,6 +350,26 @@ func TestLoadCases(t *testing.T) {
 				"cases/a.json":      {Data: []byte(caseHeader("", validCheck))},
 				"cases/a.textproto": {Data: []byte(validPolicy)},
 			},
+		},
+		{
+			name: "vulnerability ids under another control",
+			files: fstest.MapFS{
+				"cases/a.json": {Data: []byte(caseHeader("", `{
+  "name": "c", "package": {"ecosystem": "npm", "name": "evil"}, "vulnerability_ids": ["CVE-2024-1"],
+  "control": "malware", "verdict": "none", "want": {"effect": "none"}}`))},
+				"cases/a.textproto": {Data: []byte(validPolicy)},
+			},
+			wantErr: `cases/a.json: check "c": only a check of the control vulnerability has vulnerability ids`,
+		},
+		{
+			name: "vulnerability id of no trust decision",
+			files: fstest.MapFS{
+				"cases/a.json": {Data: []byte(caseHeader("", `{
+  "name": "c", "package": {"ecosystem": "npm", "name": "evil"}, "vulnerability_ids": ["CVE-2024-1"],
+  "control": "vulnerability", "verdict": "none", "want": {"effect": "block", "rule_id": "r_1", "vulnerability_id": "CVE-2024-1"}}`))},
+				"cases/a.textproto": {Data: []byte(validPolicy)},
+			},
+			wantErr: `cases/a.json: check "c": only a trust decision of a check with vulnerability ids has a vulnerability id`,
 		},
 		{
 			name:    "no case",

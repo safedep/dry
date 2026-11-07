@@ -2,6 +2,7 @@ package spdxlicense
 
 import (
 	"go/build"
+	"os"
 	"strings"
 	"testing"
 
@@ -58,6 +59,9 @@ func TestGateEvaluate(t *testing.T) {
 			got := g.Evaluate(tc.values)
 			assert.Equal(t, tc.want, got.Verdict)
 			assert.Equal(t, tc.wantFails, got.Fails)
+			if tc.want == Pass {
+				assert.Empty(t, got.Denied, "a pass names no denied term")
+			}
 		})
 	}
 }
@@ -106,6 +110,9 @@ func TestValidateEntry(t *testing.T) {
 		{"GPL-2.0-only+", true, ""},
 		{"GPL-2.0-only WITH Classpath-exception-2.0", true, ""},
 		{"LicenseRef-acme", true, ""},
+		{" MIT ", true, ""},
+		{"(MIT)", true, ""},
+		{"GPL-2.0-only with Classpath-exception-2.0", true, ""},
 		{SetOSIApproved, false, "set name"},
 		{SetFSFLibre, false, "set name"},
 		{SetOSIApprovedOrFSF, false, "set name"},
@@ -130,6 +137,17 @@ func TestValidateEntry(t *testing.T) {
 			assert.ErrorContains(t, err, tc.wantText)
 		})
 	}
+}
+
+// NOTICE names the version of the SPDX License List in list.json. go
+// generate changes list.json after a go-spdx upgrade, and NOTICE must follow.
+func TestNoticeNamesTheListVersion(t *testing.T) {
+	notice, err := os.ReadFile("NOTICE")
+	require.NoError(t, err)
+
+	assert.Contains(t, string(notice), "version "+list.Version+",")
+	assert.Contains(t, string(notice), "released "+strings.SplitN(list.ReleaseDate, "T", 2)[0])
+	assert.Contains(t, string(notice), "CC-BY-3.0")
 }
 
 // TestNoContractImport keeps the rule that the package has no import of the

@@ -251,8 +251,8 @@ func TestNoLicense(t *testing.T) {
 
 // The embedded data is the only source of ids, so a set must name only ids
 // of the list, and the exceptions must be there for a WITH term to parse.
-// go generate ./policy/spdxlicense rewrites list.json from the SPDX
-// License List.
+// "go run ./policy/spdxlicense/internal/gen" rewrites list.json from the
+// SPDX License List.
 func TestEmbeddedList(t *testing.T) {
 	assert.NotEmpty(t, list.Version)
 	assert.True(t, strings.HasPrefix(ListVersion(), list.Version))

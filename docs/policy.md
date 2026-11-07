@@ -378,9 +378,12 @@ r := gate.Evaluate(pkg.Licenses) // Verdict: Denied, NotAllowed, Unknown or Pass
   parentheses around a term and a lower case `with`. The server runs protovalidate first.
 - `NewPolicy` and `Policy.Check` are the lower layer that the vet license control uses. They accept
   the set names.
-- `list.json` holds the ids of the SPDX License List with their OSI and FSF flags. `go generate
-  ./policy/spdxlicense` writes it from a pinned commit of `spdx/license-list-data`, with the active
-  license exception ids. The package reads only this embedded data. The SPDX License List is under
+- `list.json` holds the ids of the SPDX License List with their OSI and FSF flags, and the active
+  license exception ids. The package reads only this embedded data. To update it, change the commit
+  of `spdx/license-list-data` in `policy/spdxlicense/internal/gen`, run
+  `go run ./policy/spdxlicense/internal/gen` from the root of the module, and read the diff. The
+  command reads the network, so it has no `go:generate` directive and CI does not run it.
+  `TestEmbeddedList` and `TestNoticeNamesTheListVersion` guard the data. The SPDX License List is under
   CC-BY-3.0. `NOTICE` gives its version, source and author, and a test fails when `NOTICE` names
   another version than `list.json`.
 

@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-//go:generate go run ./internal/gen
-
 //go:embed list.json
 var listJSON []byte
 
@@ -36,7 +34,7 @@ var list = mustList()
 func mustList() listData {
 	var l listData
 	if err := json.Unmarshal(listJSON, &l); err != nil {
-		// go generate writes the file, and a test reads it.
+		// internal/gen writes the file, and a test reads it.
 		panic(err)
 	}
 	return l

@@ -27,7 +27,10 @@
 // lower layer that the vet license control uses, with the vet set names.
 //
 // list.json holds the license ids of the SPDX License List with their OSI
-// and FSF flags, and the active exception ids. go generate copies them from
-// a pinned commit of github.com/spdx/license-list-data. The SPDX License
-// List is under CC-BY-3.0, and NOTICE gives its version, source and author.
+// and FSF flags, and the active exception ids. They come from a pinned
+// commit of github.com/spdx/license-list-data. To update them, change the
+// commit in internal/gen and run "go run ./policy/spdxlicense/internal/gen"
+// from the root of the module. The command reads the network, so go
+// generate does not run it. The SPDX License List is under CC-BY-3.0, and
+// NOTICE gives its version, source and author.
 package spdxlicense

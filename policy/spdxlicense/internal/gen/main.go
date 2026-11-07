@@ -4,8 +4,10 @@
 // same file until a person changes the commit.
 //
 // To move to a newer list, set commit to the license-list-data commit of the
-// new build, run go generate ./policy/spdxlicense, and change the version,
-// the date and the commit in NOTICE. Read the diff of list.json.
+// new build, run "go run ./policy/spdxlicense/internal/gen" from the root of
+// the module, and change the version, the date and the commit in NOTICE.
+// Read the diff of list.json. The command reads the network, and CI runs
+// "go generate" on each change, so no generate directive runs it.
 package main
 
 import (
@@ -23,6 +25,9 @@ import (
 const commit = "7e1f010ac88e4b8b58bc889e9a9bf42cf6624273"
 
 const baseURL = "https://raw.githubusercontent.com/spdx/license-list-data/" + commit + "/json/"
+
+// output is relative to the root of the module, where the command runs.
+const output = "policy/spdxlicense/list.json"
 
 type licenseSource struct {
 	Version     string `json:"licenseListVersion"`
@@ -98,7 +103,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile("list.json", append(b, '\n'), 0o644)
+	return os.WriteFile(output, append(b, '\n'), 0o644)
 }
 
 func fetch(name string, v any) error {

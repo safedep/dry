@@ -27,7 +27,6 @@ require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	github.com/getkin/kin-openapi v0.118.0
-	github.com/github/go-spdx/v2 v2.4.0
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/goark/go-cvss v1.6.7

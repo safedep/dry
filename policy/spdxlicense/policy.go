@@ -60,13 +60,22 @@ type Result struct {
 	Fails bool
 }
 
-// Check applies the deny list, then the allow list. A license that has a
-// choice with no denied term is not denied, so "MIT OR GPL-3.0-only" passes
-// a deny list with GPL-3.0-only. With both lists, one choice must satisfy
-// both: "GPL-3.0-only OR SSPL-1.0" fails allow [GPL-3.0-only, MIT] with deny
-// [GPL-3.0-only]. The values join with AND, so a known value that fails a
-// list fails the package, whatever its unknown values are. NONE alone fails
-// an allow list. A deny list alone cannot decide it, so it is unknown.
+// Check decides each choice of the expression: the terms of one operand of
+// each OR, with every operand of each AND. A choice passes when no term of
+// it is denied and, with an allow list, the allow list allows each term of
+// it. The license passes when one choice passes. Otherwise:
+//   - Denied, when each choice has a denied term. A choice that fails both
+//     lists counts as denied.
+//   - NotAllowed, when a choice has no denied term but a term that the allow
+//     list does not allow.
+//
+// So "MIT OR GPL-3.0-only" passes a deny list with GPL-3.0-only, and
+// "GPL-3.0-only OR SSPL-1.0" is NotAllowed under allow [GPL-3.0-only, MIT]
+// with deny [GPL-3.0-only]. A denied or-later term stays denied: the allow
+// list cannot pass it through one of its later versions. The values join
+// with AND, so a known value that fails a list fails the package, whatever
+// its unknown values are. NONE alone fails an allow list. A deny list alone
+// cannot decide it, so it is unknown.
 func (p *Policy) Check(d Declared) Result {
 	if d.root != nil && p.Denies() && p.denied(d.root) {
 		return Result{Verdict: Denied, Denied: p.deniedTerms(d.root), Fails: true}
@@ -104,7 +113,7 @@ func Restricted(d Declared) bool {
 }
 
 // allowed reports whether a choice of the expression has only terms that
-// the allow list names and the deny list does not.
+// the deny list does not deny and the allow list allows.
 func (p *Policy) allowed(n *node) bool {
 	switch n.op {
 	case opAnd:
@@ -118,7 +127,10 @@ func (p *Policy) allowed(n *node) bool {
 		return slices.ContainsFunc(n.kids, p.allowed)
 	}
 	t := n.term
-	if p.allow[t.key()] && !p.termDenied(t) {
+	if p.termDenied(t) {
+		return false
+	}
+	if p.allow[t.key()] {
 		return true
 	}
 	return t.orLater && slices.ContainsFunc(choices(t), func(c term) bool { return p.allow[c.key()] && !p.deny[c.key()] })

@@ -140,7 +140,8 @@ func TestValidateEntry(t *testing.T) {
 }
 
 // NOTICE names the version of the SPDX License List in list.json. go
-// generate changes list.json after a go-spdx upgrade, and NOTICE must follow.
+// generate changes list.json when the pinned commit changes, and NOTICE must
+// follow.
 func TestNoticeNamesTheListVersion(t *testing.T) {
 	notice, err := os.ReadFile("NOTICE")
 	require.NoError(t, err)

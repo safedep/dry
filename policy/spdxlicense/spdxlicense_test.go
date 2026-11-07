@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/github/go-spdx/v2/spdxexp/spdxlicenses"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,6 +154,10 @@ func TestCheck(t *testing.T) {
 		{"deny a GFDL variant or-later", nil, []string{"GFDL-1.1-invariants-only", "GFDL-1.2-invariants-only", "GFDL-1.3-invariants-only"}, []string{"GFDL-1.1-invariants-or-later"}, Denied, []string{"GFDL-1.1-invariants-or-later"}},
 		{"plus on a license ref is not SPDX", nil, []string{"LicenseRef-a"}, []string{"LicenseRef-a+"}, Unknown, nil},
 		{"no lists", nil, nil, []string{"GPL-3.0-only"}, Pass, nil},
+		{"a denied or-later choice is not allowed through a later version", []string{"GPL-3.0-only"}, []string{"GPL-2.0-or-later"}, []string{"GPL-2.0-or-later OR MIT"}, NotAllowed, nil},
+		{"a denied or-later term alone is denied", []string{"GPL-3.0-only"}, []string{"GPL-2.0-or-later"}, []string{"GPL-2.0-or-later"}, Denied, []string{"GPL-2.0-or-later"}},
+		{"allow passes or-later through a later version with no deny", []string{"GPL-3.0-only"}, nil, []string{"GPL-2.0-or-later"}, Pass, nil},
+		{"a choice that passes both lists beside one that fails", []string{"MIT", "GPL-3.0-only"}, []string{"GPL-3.0-only"}, []string{"GPL-3.0-only OR MIT"}, Pass, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -246,22 +249,31 @@ func TestNoLicense(t *testing.T) {
 	assert.False(t, Parse(nil).NoLicense())
 }
 
-// The embedded list and go-spdx must come from one SPDX License List, so a
-// set never names an id that go-spdx does not know. go generate rewrites
-// the list from the go-spdx module after a go-spdx upgrade.
-func TestListMatchesGoSPDX(t *testing.T) {
-	var active, deprecated []string
-	for _, l := range list.Licenses {
-		if l.Deprecated {
-			deprecated = append(deprecated, l.ID)
-		} else {
-			active = append(active, l.ID)
-		}
-	}
-	assert.ElementsMatch(t, spdxlicenses.GetLicenses(), active, "run go generate ./policy/spdxlicense")
-	assert.ElementsMatch(t, spdxlicenses.GetDeprecated(), deprecated, "run go generate ./policy/spdxlicense")
+// The embedded data is the only source of ids, so a set must name only ids
+// of the list, and the exceptions must be there for a WITH term to parse.
+// go generate ./policy/spdxlicense rewrites list.json from the SPDX
+// License List.
+func TestEmbeddedList(t *testing.T) {
 	assert.NotEmpty(t, list.Version)
 	assert.True(t, strings.HasPrefix(ListVersion(), list.Version))
+	assert.NotEmpty(t, list.Licenses)
+
+	for _, set := range Sets {
+		members, ok := setIDs(set)
+		require.True(t, ok, set)
+		assert.NotEmpty(t, members, set)
+		for _, id := range members {
+			_, ok := ids[strings.ToLower(id)]
+			assert.True(t, ok, "%s names %s", set, id)
+		}
+	}
+
+	assert.NotEmpty(t, list.Exceptions)
+	assert.True(t, slices.IsSorted(list.Exceptions))
+	assert.Len(t, exceptions, len(list.Exceptions), "each exception id is once in the list")
+	for _, e := range []string{"Classpath-exception-2.0", "LLVM-exception", "GCC-exception-3.1"} {
+		assert.Equal(t, e, exceptions[strings.ToLower(e)])
+	}
 }
 
 func TestSuccessors(t *testing.T) {

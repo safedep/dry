@@ -1,8 +1,8 @@
 // Package spdxlicense reads the license of a package as an SPDX license
 // expression (SPDX 2.3 Annex D), and checks it against allow and deny
 // lists. It parses the expression itself, in linear time, and takes the
-// license and exception ids from the SPDX License List of the go-spdx
-// version that go.mod pins, with the OSI and FSF flags.
+// license and exception ids, with the OSI and FSF flags, from the SPDX
+// License List data that it embeds.
 //
 // The package holds the one copy of the SPDX rules of the cloud policy. The
 // pull request check and vet both call it, so a license gate decides the
@@ -18,14 +18,16 @@
 //     or one of those versions.
 //   - A package passes when one choice of an OR expression fails no list.
 //     Every part of an AND must pass. The license values of one package join
-//     with AND.
+//     with AND. A denied or-later term stays denied, and the allow list
+//     cannot pass it through one of its later versions.
 //
 // NewGate and Gate.Evaluate apply a license gate of a policy: the deny list,
 // the allow list and the action on an unknown license. ValidateEntry checks
 // one entry of a list of the policy contract. NewPolicy and Check are the
 // lower layer that the vet license control uses, with the vet set names.
 //
-// list.json holds the ids of the SPDX License List and their OSI and FSF
-// flags, which go generate copies from the go-spdx module. The SPDX License
+// list.json holds the license ids of the SPDX License List with their OSI
+// and FSF flags, and the active exception ids. go generate copies them from
+// a pinned commit of github.com/spdx/license-list-data. The SPDX License
 // List is under CC-BY-3.0, and NOTICE gives its version, source and author.
 package spdxlicense

@@ -357,9 +357,17 @@ r := gate.Evaluate(pkg.Licenses) // Verdict: Denied, NotAllowed, Unknown or Pass
 - An or-later license fails a deny list when the list names it or each version that it allows. It
   passes an allow list when the list names it or one of those versions.
 - A package passes when one choice of an OR expression fails no list. Every part of an AND must pass.
-  The license values of one package join with AND.
-- The deny list goes first, then the allow list. An empty deny list denies nothing, and an empty
-  allow list is off. The unknown action decides only for a license that the lists do not fail.
+  The license values of one package join with AND. Each choice meets both lists at once, so
+  `GPL-2.0-or-later OR MIT` fails allow `[GPL-3.0-only]` with deny `[GPL-2.0-or-later]`: the first
+  choice is denied, and the second is not allowed.
+- A denied or-later term stays denied. The allow list cannot pass it through one of its later
+  versions.
+- When no choice passes, the verdict is `Denied` if each choice has a denied term, and `NotAllowed`
+  otherwise. A choice that fails both lists counts as denied. vet's `internal/spdxlicense` checked
+  the two lists one after the other over the whole expression, and passed the example above. vet
+  takes the new rule when it wraps this package.
+- An empty deny list denies nothing, and an empty allow list is off. The unknown action decides only
+  for a license that the lists do not fail.
 - A license is unknown when the package has no license data, when a value is `NOASSERTION` or is not
   an SPDX expression, and when the value is `NONE` and no allow list is set. `NONE` fails an allow
   list.
@@ -371,9 +379,10 @@ r := gate.Evaluate(pkg.Licenses) // Verdict: Denied, NotAllowed, Unknown or Pass
 - `NewPolicy` and `Policy.Check` are the lower layer that the vet license control uses. They accept
   the set names.
 - `list.json` holds the ids of the SPDX License List with their OSI and FSF flags. `go generate
-  ./policy/spdxlicense` writes it from the `go-spdx` module that `go.mod` pins. A test fails when the
-  two lists differ. The SPDX License List is under CC-BY-3.0. `NOTICE` gives its version, source and
-  author, and a test fails when `NOTICE` names another version than `list.json`.
+  ./policy/spdxlicense` writes it from a pinned commit of `spdx/license-list-data`, with the active
+  license exception ids. The package reads only this embedded data. The SPDX License List is under
+  CC-BY-3.0. `NOTICE` gives its version, source and author, and a test fails when `NOTICE` names
+  another version than `list.json`.
 
 ## Not in these packages
 

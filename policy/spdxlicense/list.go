@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/github/go-spdx/v2/spdxexp/spdxlicenses"
 )
 
 //go:generate go run ./internal/gen
@@ -27,6 +25,10 @@ type listData struct {
 	Version     string      `json:"version"`
 	ReleaseDate string      `json:"release_date"`
 	Licenses    []listEntry `json:"licenses"`
+
+	// Exceptions holds the ids of the SPDX License Exceptions List that are
+	// not deprecated.
+	Exceptions []string `json:"exceptions"`
 }
 
 var list = mustList()
@@ -91,11 +93,11 @@ var ids = func() map[string]listEntry {
 	return out
 }()
 
-// exceptions holds each id of the SPDX License Exceptions List, in lower
-// case.
+// exceptions holds each active id of the SPDX License Exceptions List, in
+// lower case.
 var exceptions = func() map[string]string {
 	out := map[string]string{}
-	for _, e := range spdxlicenses.GetExceptions() {
+	for _, e := range list.Exceptions {
 		out[strings.ToLower(e)] = e
 	}
 	return out

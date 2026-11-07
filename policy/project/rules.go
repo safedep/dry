@@ -1,6 +1,7 @@
 package project
 
 import (
+	"errors"
 	"fmt"
 
 	corev1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/policy/core/v1"
@@ -41,10 +42,11 @@ var justifications = map[corev1.VulnerabilityJustification]match.Justification{
 // The list has no cap here. The receive limit of the fetch, 4 MiB, bounds it.
 func (p *Projection) projectRules(rules []*corev1.PackageRule) {
 	for _, pr := range rules {
-		r := toMatchRule(pr)
-
-		if r.Effect == match.EffectNone {
-			p.dropRule(r.ID, fmt.Sprintf("%v: %d", match.ErrUnknownEffect, int32(pr.GetEffect())))
+		// match.Normalize below repeats ErrNoKnownScope. It runs after the
+		// checks that decide the drop reason of a trust entry first.
+		r, err := ToMatchRule(pr)
+		if errors.Is(err, match.ErrUnknownEffect) {
+			p.dropRule(r.ID, err.Error())
 			continue
 		}
 
@@ -109,7 +111,25 @@ func (p *Projection) dropRule(ruleID, detail string) {
 	})
 }
 
-func toMatchRule(pr *corev1.PackageRule) match.Rule {
+// ToMatchRule converts a package rule of the contract to a match.Rule. It
+// is the one copy of the mapping, so the rule that a server checks is the
+// rule that a tool applies. It has two callers:
+//   - the projection of Decode, which then drops or keeps the rule by the
+//     projection rules;
+//   - a server that checks a rule before it stores it, with match.Validate.
+//
+// A scope that the package does not know is ignored, because the scope is an
+// open enum. A justification that it does not know becomes
+// match.JustificationNone. The rule keeps its id, also when it has none.
+//
+// It returns the converted rule with an error that wraps:
+//   - match.ErrUnknownEffect, for an effect that is not trust or block;
+//   - match.ErrNoKnownScope, for a trust entry with no scope that the
+//     package knows.
+//
+// It does not apply the other checks of match.Normalize, such as the id and
+// the expiry. match.Validate applies them.
+func ToMatchRule(pr *corev1.PackageRule) (match.Rule, error) {
 	r := match.Rule{
 		ID:     pr.GetRuleId(),
 		PURL:   pr.GetSelector().GetPurl(),
@@ -144,5 +164,12 @@ func toMatchRule(pr *corev1.PackageRule) match.Rule {
 		r.ExpiresAt = pr.GetExpiresAt().AsTime()
 	}
 
-	return r
+	switch {
+	case r.Effect == match.EffectNone:
+		return r, fmt.Errorf("%w: %d", match.ErrUnknownEffect, int32(pr.GetEffect()))
+	case r.Effect == match.EffectTrust && len(r.Scopes) == 0:
+		return r, match.ErrNoKnownScope
+	default:
+		return r, nil
+	}
 }

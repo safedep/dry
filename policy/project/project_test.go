@@ -801,6 +801,89 @@ func TestPackageRules(t *testing.T) {
 	}
 }
 
+// A server checks a rule with the same mapping that the projection uses, so
+// the rule that it stores is the rule that a tool applies.
+func TestToMatchRule(t *testing.T) {
+	const (
+		trust = corev1.Effect_EFFECT_TRUST
+		block = corev1.Effect_EFFECT_BLOCK
+	)
+
+	named := rule("", trust, "pkg:npm/fp", corev1.TrustScope(9), corev1.TrustScope_TRUST_SCOPE_NAMED_VULNERABILITY)
+	named.SetVulnerabilities([]*corev1.WaivedVulnerability{
+		corev1.WaivedVulnerability_builder{
+			Id:            "CVE-2024-1234",
+			Justification: corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_COMPONENT_NOT_PRESENT,
+		}.Build(),
+		corev1.WaivedVulnerability_builder{Id: "GHSA-jfh8-c2jp-5v3q", Justification: corev1.VulnerabilityJustification(9)}.Build(),
+	})
+
+	cases := []struct {
+		name    string
+		rule    *corev1.PackageRule
+		want    match.Rule
+		wantErr error
+		errText string
+	}{
+		{
+			name: "a rule to create, with no id",
+			rule: named,
+			want: match.Rule{
+				Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeNamedVulnerability},
+				Vulnerabilities: []match.WaivedVulnerability{
+					{ID: "CVE-2024-1234", Justification: match.JustificationComponentNotPresent},
+					{ID: "GHSA-jfh8-c2jp-5v3q"},
+				},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "license scope",
+			rule: rule("r_1", trust, "pkg:npm/fp", corev1.TrustScope_TRUST_SCOPE_LICENSE),
+			want: match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeLicense},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "block entry",
+			rule: rule("r_1", block, "pkg:npm/evil"),
+			want: match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
+		},
+		{
+			name: "trust entry with only an unknown scope",
+			rule: rule("r_1", trust, "pkg:npm/fp", corev1.TrustScope(9)),
+			want: match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp",
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+			wantErr: match.ErrNoKnownScope,
+		},
+		{
+			name: "unknown effect",
+			rule: rule("r_1", corev1.Effect(5), "pkg:npm/evil"),
+			want: match.Rule{
+				ID: "r_1", PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+			wantErr: match.ErrUnknownEffect,
+			errText: "unknown effect: 5",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ToMatchRule(tc.rule)
+			assert.Equal(t, tc.want, got)
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tc.wantErr)
+			assert.ErrorContains(t, err, tc.errText)
+		})
+	}
+}
+
 func TestFields(t *testing.T) {
 	fields := Fields()
 

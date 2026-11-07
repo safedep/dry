@@ -188,6 +188,10 @@ each time.
   `{licenses: []}` turns off the allow list of a lower layer. `scan_gate.licenses.unknown` is an
   `Enum` of `UnknownLicenseGate`. A message setting of another shape fails its capability as
   `ExceptionUnsupported`.
+- **`ToMatchRule`** converts one `PackageRule` to a `match.Rule`. The projection uses it, and a server
+  calls it with `match.Validate` before it stores a rule, so the server owns no copy of the mapping. It
+  ignores an unknown scope, and returns `ErrUnknownEffect` for an unknown effect and `ErrNoKnownScope`
+  for a trust entry with no known scope. It returns the converted rule with the error.
 - **Package rule fields.** `TRUST_SCOPE_LICENSE` and `TRUST_SCOPE_NAMED_VULNERABILITY` map to
   `match.ScopeLicense` and `match.ScopeNamedVulnerability`. `PackageRule.vulnerabilities` becomes
   `Rule.Vulnerabilities`. A justification that the tool does not know becomes

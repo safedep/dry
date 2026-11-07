@@ -155,8 +155,12 @@ func TestCheck(t *testing.T) {
 		{"plus on a license ref is not SPDX", nil, []string{"LicenseRef-a"}, []string{"LicenseRef-a+"}, Unknown, nil},
 		{"no lists", nil, nil, []string{"GPL-3.0-only"}, Pass, nil},
 		{"a denied or-later choice is not allowed through a later version", []string{"GPL-3.0-only"}, []string{"GPL-2.0-or-later"}, []string{"GPL-2.0-or-later OR MIT"}, NotAllowed, nil},
+		{"a denied or-later choice beside a choice outside the allow list", []string{"GPL-3.0-only"}, []string{"GPL-2.0-or-later"}, []string{"GPL-2.0-or-later OR SSPL-1.0"}, NotAllowed, nil},
 		{"a denied or-later term alone is denied", []string{"GPL-3.0-only"}, []string{"GPL-2.0-or-later"}, []string{"GPL-2.0-or-later"}, Denied, []string{"GPL-2.0-or-later"}},
 		{"allow passes or-later through a later version with no deny", []string{"GPL-3.0-only"}, nil, []string{"GPL-2.0-or-later"}, Pass, nil},
+		{"allow or-later with a letter in the version", []string{"LPPL-1.3c"}, nil, []string{"LPPL-1.3a+"}, Pass, nil},
+		{"deny or-later with a letter in the version", nil, []string{"LPPL-1.3a"}, []string{"LPPL-1.3a+"}, Pass, nil},
+		{"deny or-later when each lettered version is denied", nil, []string{"LPPL-1.3a", "LPPL-1.3c"}, []string{"LPPL-1.3a+"}, Denied, []string{"LPPL-1.3a+"}},
 		{"a choice that passes both lists beside one that fails", []string{"MIT", "GPL-3.0-only"}, []string{"GPL-3.0-only"}, []string{"GPL-3.0-only OR MIT"}, Pass, nil},
 	}
 	for _, tc := range cases {
@@ -318,6 +322,8 @@ func TestLaterVersions(t *testing.T) {
 	assert.Equal(t, []string{"EUPL-1.2"}, laterVersions("EUPL-1.2"))
 	assert.Equal(t, []string{"EUPL-1.1", "EUPL-1.2"}, laterVersions("EUPL-1.1"))
 	assert.Equal(t, []string{"MIT"}, laterVersions("MIT"))
+	assert.Equal(t, []string{"LPPL-1.3a", "LPPL-1.3c"}, laterVersions("LPPL-1.3a"))
+	assert.Equal(t, []string{"LPPL-1.2", "LPPL-1.3a", "LPPL-1.3c"}, laterVersions("LPPL-1.2"))
 }
 
 func TestSets(t *testing.T) {

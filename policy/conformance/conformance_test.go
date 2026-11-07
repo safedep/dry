@@ -78,9 +78,44 @@ func TestRunSkipsTheControlsThatAToolDoesNotDecide(t *testing.T) {
 		return decide(raw, q)
 	}, match.ScopeMalware, match.ScopeCooldown)
 
-	assert.NotEmpty(t, asked)
+	assert.Contains(t, asked, match.ScopeMalware)
+	assert.Contains(t, asked, match.ScopeCooldown)
 	assert.NotContains(t, asked, match.ScopeVulnerability)
 	assert.NotContains(t, asked, match.ScopeLicense)
+}
+
+// A scope that no check asks with would skip every check, and the test of
+// the tool would pass with no decision.
+func TestCheckControls(t *testing.T) {
+	cases := []struct {
+		name     string
+		controls []match.Scope
+		wantErr  string
+	}{
+		{name: "no controls"},
+		{name: "every control", controls: []match.Scope{match.ScopeMalware, match.ScopeCooldown, match.ScopeVulnerability, match.ScopeLicense}},
+		{
+			name:     "the named vulnerability scope",
+			controls: []match.Scope{match.ScopeMalware, match.ScopeNamedVulnerability},
+			wantErr:  "named-vulnerability is not a control: a check of a named vulnerability asks with vulnerability",
+		},
+		{
+			name:     "an unknown scope",
+			controls: []match.Scope{match.Scope(99)},
+			wantErr:  "scope(99) is not a control that a check asks with",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := checkControls(tc.controls)
+			if tc.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			assert.EqualError(t, err, tc.wantErr)
+		})
+	}
 }
 
 // The named-vulnerability case is the one shared check that a loader maps

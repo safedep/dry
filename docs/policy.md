@@ -243,8 +243,10 @@ func TestPolicyConformance(t *testing.T) {
 ```
 
 - The last arguments of `Run` are the controls that the tool decides. The runner skips each check
-  of another control. With no controls, every check runs. pmg decides `ScopeMalware` and
-  `ScopeCooldown` only, so it names those two and skips the vulnerability and license checks.
+  of another control. With no controls, every check runs. `Run` fails the test on a scope that no
+  check asks with, such as `ScopeNamedVulnerability`: a check of a named vulnerability asks with
+  `ScopeVulnerability`. pmg decides `ScopeMalware` and `ScopeCooldown` only, so it names those two
+  and skips the vulnerability and license checks.
 - A tool that decides `ScopeVulnerability` must pass `Query.VulnerabilityIDs` to `match` and return
   `Decision.VulnerabilityID`. Until its loader does, the `named-vulnerability` case fails. This is
   intended: the case is the one shared check that a loader maps `PackageRule.vulnerabilities` and
@@ -356,6 +358,7 @@ r := gate.Evaluate(pkg.Licenses) // Verdict: Denied, NotAllowed, Unknown or Pass
   `GPL-2.0-only WITH Classpath-exception-2.0`.
 - An or-later license fails a deny list when the list names it or each version that it allows. It
   passes an allow list when the list names it or one of those versions.
+  A letter after the version numbers is part of the version, so `LPPL-1.3a+` allows `LPPL-1.3c`.
 - A package passes when one choice of an OR expression fails no list. Every part of an AND must pass.
   The license values of one package join with AND. Each choice meets both lists at once, so
   `GPL-2.0-or-later OR MIT` fails allow `[GPL-3.0-only]` with deny `[GPL-2.0-or-later]`: the first

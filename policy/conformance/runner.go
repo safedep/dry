@@ -1,6 +1,8 @@
 package conformance
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 	"testing"
 
@@ -30,6 +32,10 @@ type DecideFunc func(policy []byte, q Query) (Decision, error)
 func Run(t *testing.T, kind specv1.SubjectKind, decide DecideFunc, controls ...match.Scope) {
 	t.Helper()
 
+	if err := checkControls(controls); err != nil {
+		t.Fatalf("conformance.Run: %v", err)
+	}
+
 	cases, err := Cases()
 	if err != nil {
 		t.Fatalf("cannot load the conformance corpus: %v", err)
@@ -52,6 +58,24 @@ func Run(t *testing.T, kind specv1.SubjectKind, decide DecideFunc, controls ...m
 			}
 		})
 	}
+}
+
+// checkControls refuses a scope that no check asks with. The filter would
+// skip every check of the tool, and the test would pass with no decision.
+func checkControls(controls []match.Scope) error {
+	for _, c := range controls {
+		if slices.Contains(slices.Collect(maps.Values(controlNames)), c) {
+			continue
+		}
+
+		if c == match.ScopeNamedVulnerability {
+			return fmt.Errorf("%s is not a control: a check of a named vulnerability asks with %s", c, match.ScopeVulnerability)
+		}
+
+		return fmt.Errorf("%s is not a control that a check asks with", c)
+	}
+
+	return nil
 }
 
 // errorer is the part of testing.TB that verify uses, so a test can record

@@ -184,7 +184,7 @@ type wantFile struct {
 	VulnerabilityID string `json:"vulnerability_id"`
 }
 
-var controls = map[string]match.Scope{
+var controlNames = map[string]match.Scope{
 	"malware":       match.ScopeMalware,
 	"cooldown":      match.ScopeCooldown,
 	"vulnerability": match.ScopeVulnerability,
@@ -438,7 +438,7 @@ func toCheck(f checkFile, now time.Time) (Check, error) {
 		return Check{}, errors.New("the package has no name")
 	}
 
-	control, ok := controls[f.Control]
+	control, ok := controlNames[f.Control]
 	if !ok {
 		return Check{}, fmt.Errorf("unknown control %q", f.Control)
 	}

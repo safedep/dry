@@ -101,13 +101,24 @@ var exceptions = func() map[string]string {
 	return out
 }()
 
-// versioned matches an id with a version, such as GPL-2.0-only, EUPL-1.2 or
-// GFDL-1.3-invariants-or-later. The GFDL variants are families of their own.
-var versioned = regexp.MustCompile(`^(.+)-(\d+(?:\.\d+)*)(-invariants|-no-invariants)?(-only|-or-later)?$`)
+// versioned matches an id with a version, such as GPL-2.0-only, EUPL-1.2,
+// LPPL-1.3c or GFDL-1.3-invariants-or-later. A letter after the numbers is
+// part of the version, so LPPL-1.3a+ lets a user take LPPL-1.3c. The GFDL
+// variants are families of their own.
+var versioned = regexp.MustCompile(`^(.+)-(\d+(?:\.\d+)*)([a-z]?)(-invariants|-no-invariants)?(-only|-or-later)?$`)
 
 type version struct {
 	family  string
 	numbers []int
+	letter  string
+}
+
+// compare orders the numbers first, then the letter: 1.3 < 1.3a < 1.3c.
+func (v version) compare(w version) int {
+	if c := slices.Compare(v.numbers, w.numbers); c != 0 {
+		return c
+	}
+	return strings.Compare(v.letter, w.letter)
 }
 
 func versionOf(id string) (version, bool) {
@@ -115,7 +126,7 @@ func versionOf(id string) (version, bool) {
 	if m == nil {
 		return version{}, false
 	}
-	v := version{family: strings.ToLower(m[1] + m[3])}
+	v := version{family: strings.ToLower(m[1] + m[4]), letter: m[3]}
 	for _, n := range strings.Split(m[2], ".") {
 		i, err := strconv.Atoi(n)
 		if err != nil {
@@ -141,7 +152,7 @@ func laterVersions(id string) []string {
 			continue
 		}
 		w, ok := versionOf(l.ID)
-		if ok && w.family == v.family && slices.Compare(w.numbers, v.numbers) >= 0 {
+		if ok && w.family == v.family && w.compare(v) >= 0 {
 			out = append(out, l.ID)
 		}
 	}

@@ -23,6 +23,11 @@ type Field struct {
 	DefaultEnforcement optionsv1.Enforcement
 	Stricter           optionsv1.Stricter
 
+	// ItemDirection is the direction of an item that a change adds to a list
+	// setting, such as a license id of scan_gate.licenses.deny. A removed
+	// item has the other direction.
+	ItemDirection optionsv1.Direction
+
 	// BindingRequired is true when every tool that implements the capability
 	// must map the field in its binding table.
 	BindingRequired bool
@@ -68,6 +73,7 @@ func walkFields(md protoreflect.MessageDescriptor, path string, seen map[protore
 				Merge:              contract.GetMerge(),
 				DefaultEnforcement: contract.GetDefaultEnforcement(),
 				Stricter:           contract.GetStricter(),
+				ItemDirection:      contract.GetItemDirection(),
 				BindingRequired:    contract.GetBindingRequired(),
 			})
 		}

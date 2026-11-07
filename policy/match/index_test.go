@@ -88,6 +88,7 @@ func TestCompareRulesIsTotal(t *testing.T) {
 		func(r *Rule) { r.PURL = "pkg:npm/y" },
 		func(r *Rule) { r.Vers = "vers:npm/>=1.0.0" },
 		func(r *Rule) { r.Scopes = []Scope{ScopeMalware, ScopeCooldown} },
+		func(r *Rule) { r.Vulnerabilities = []WaivedVulnerability{{ID: "CVE-2024-1"}} },
 		func(r *Rule) { r.ExpiresAt = r.ExpiresAt.Add(time.Hour) },
 		func(r *Rule) { r.Reason = "other" },
 		func(r *Rule) { r.Origin.Kind = OriginLocal },
@@ -97,11 +98,18 @@ func TestCompareRulesIsTotal(t *testing.T) {
 	for i, change := range variants {
 		other := base
 		other.Scopes = slices.Clone(base.Scopes)
+		other.Vulnerabilities = slices.Clone(base.Vulnerabilities)
 		change(&other)
 
 		assert.NotZero(t, compareRules(base, other), "variant %d", i)
 		assert.Equal(t, -compareRules(base, other), compareRules(other, base), "variant %d", i)
 	}
+}
+
+// The waived ids order as match compares them, with no regard to case.
+func TestCompareWaivedFoldsCase(t *testing.T) {
+	assert.Positive(t, compareWaived(WaivedVulnerability{ID: "CVE-B"}, WaivedVulnerability{ID: "cve-a"}))
+	assert.Negative(t, compareWaived(WaivedVulnerability{ID: "CVE-A"}, WaivedVulnerability{ID: "cve-a"}), "the exact id breaks a tie")
 }
 
 func TestNewIndexWithNoIdentity(t *testing.T) {
@@ -136,6 +144,43 @@ func TestNormalize(t *testing.T) {
 			name: "block keeps a prefix",
 			rule: block("r_1", "pkg:npm/*"),
 			want: block("r_1", "pkg:npm/*"),
+		},
+		{
+			name: "block loses its vulnerabilities",
+			rule: Rule{ID: "r_1", Effect: EffectBlock, PURL: "pkg:npm/x", Vulnerabilities: []WaivedVulnerability{{ID: "CVE-2024-1"}}},
+			want: Rule{ID: "r_1", Effect: EffectBlock, PURL: "pkg:npm/x"},
+		},
+		{
+			name: "trust with another scope loses its vulnerabilities",
+			rule: func() Rule {
+				r := trust("r_1", "pkg:npm/x", ScopeVulnerability)
+				r.Vulnerabilities = []WaivedVulnerability{{ID: "CVE-2024-1"}}
+				return r
+			}(),
+			want: trust("r_1", "pkg:npm/x", ScopeVulnerability),
+		},
+		{
+			name: "named vulnerability trust keeps its vulnerabilities",
+			rule: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1", Justification: JustificationComponentNotPresent}),
+			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1", Justification: JustificationComponentNotPresent}),
+		},
+		{
+			name: "named vulnerability trust drops an item with no id",
+			rule: named("r_1", "pkg:npm/x", WaivedVulnerability{}, WaivedVulnerability{ID: "CVE-2024-1"}),
+			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "CVE-2024-1"}),
+		},
+		{
+			name: "named vulnerability trust keeps the first of two ids that differ only in case",
+			rule: named("r_1", "pkg:npm/x",
+				WaivedVulnerability{ID: "GHSA-jfh8-c2jp-5v3q", Justification: JustificationComponentNotPresent},
+				WaivedVulnerability{ID: "ghsa-JFH8-c2jp-5v3q", Justification: JustificationInlineMitigationsAlreadyExist},
+			),
+			want: named("r_1", "pkg:npm/x", WaivedVulnerability{ID: "GHSA-jfh8-c2jp-5v3q", Justification: JustificationComponentNotPresent}),
+		},
+		{
+			name: "trust keeps the license and named vulnerability scopes",
+			rule: trust("r_1", "pkg:npm/x", ScopeNamedVulnerability, ScopeLicense),
+			want: trust("r_1", "pkg:npm/x", ScopeLicense, ScopeNamedVulnerability),
 		},
 		{
 			name: "trust keeps only known scopes, in order, once each",

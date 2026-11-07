@@ -319,6 +319,83 @@ func TestKnownEnumValue(t *testing.T) {
 	assert.Empty(t, p.Exceptions)
 }
 
+func TestLicenseGate(t *testing.T) {
+	list := func(ids ...string) *scangatev1.LicenseList {
+		return scangatev1.LicenseList_builder{Licenses: ids}.Build()
+	}
+
+	cases := []struct {
+		name string
+		gate *scangatev1.LicenseGate
+		want map[string]any
+	}{
+		{
+			name: "every setting",
+			gate: scangatev1.LicenseGate_builder{
+				Deny:    list("GPL-3.0-only", "AGPL-3.0-only"),
+				Allow:   list("MIT"),
+				Unknown: scangatev1.UnknownLicenseGate_UNKNOWN_LICENSE_GATE_REPORT.Enum(),
+			}.Build(),
+			want: map[string]any{
+				"scan_gate.licenses.deny":    []any{"GPL-3.0-only", "AGPL-3.0-only"},
+				"scan_gate.licenses.allow":   []any{"MIT"},
+				"scan_gate.licenses.unknown": Enum(scangatev1.UnknownLicenseGate_UNKNOWN_LICENSE_GATE_REPORT),
+			},
+		},
+		{
+			name: "a set wrapper with no items is an empty list",
+			gate: scangatev1.LicenseGate_builder{Deny: list(), Allow: list()}.Build(),
+			want: map[string]any{
+				"scan_gate.licenses.deny":  []any{},
+				"scan_gate.licenses.allow": []any{},
+			},
+		},
+		{
+			name: "an absent wrapper is not set",
+			gate: scangatev1.LicenseGate_builder{Allow: list("MIT")}.Build(),
+			want: map[string]any{"scan_gate.licenses.allow": []any{"MIT"}},
+		},
+		{
+			name: "a gate with no setting sets nothing",
+			gate: scangatev1.LicenseGate_builder{}.Build(),
+			want: map[string]any{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			policy := newPolicy()
+			policy.GetSpec().ClearPackageAdmission()
+			policy.GetSpec().SetScanGate(scangatev1.ScanGate_builder{Licenses: tc.gate}.Build())
+
+			p := decode(t, policy)
+
+			assert.Equal(t, tc.want, p.Values)
+			assert.Empty(t, p.Exceptions)
+			assert.Empty(t, p.FailedCapabilities)
+		})
+	}
+}
+
+func TestLicenseGateLimitFailsItsCapability(t *testing.T) {
+	policy := newPolicy()
+	policy.GetSpec().SetScanGate(scangatev1.ScanGate_builder{
+		FailOn: scangatev1.Severity_SEVERITY_HIGH.Enum(),
+		Licenses: scangatev1.LicenseGate_builder{
+			Deny: scangatev1.LicenseList_builder{Licenses: []string{"MIT OR GPL-3.0-only"}}.Build(),
+		}.Build(),
+	}.Build())
+
+	p := decode(t, policy)
+
+	assert.Equal(t, []string{"scan_gate"}, p.FailedCapabilities)
+	assert.NotContains(t, p.Values, "scan_gate.licenses.deny")
+	assert.NotContains(t, p.Values, "scan_gate.fail_on")
+	require.Len(t, p.Exceptions, 1)
+	assert.Equal(t, ExceptionInvalidValue, p.Exceptions[0].Kind)
+	assert.Equal(t, "scan_gate.licenses.deny.licenses[0]", p.Exceptions[0].Path)
+}
+
 func TestInvalidValueFailsItsCapability(t *testing.T) {
 	policy := newPolicy()
 	policy.GetSpec().GetPackageAdmission().GetCooldown().SetMinAge(durationpb.New(2 * 365 * 24 * time.Hour))
@@ -438,7 +515,17 @@ func TestPackageRules(t *testing.T) {
 		malware  = corev1.TrustScope_TRUST_SCOPE_MALWARE
 		cooldown = corev1.TrustScope_TRUST_SCOPE_COOLDOWN
 		vuln     = corev1.TrustScope_TRUST_SCOPE_VULNERABILITY
+		license  = corev1.TrustScope_TRUST_SCOPE_LICENSE
+		namedVul = corev1.TrustScope_TRUST_SCOPE_NAMED_VULNERABILITY
 	)
+
+	withVulns := func(r *corev1.PackageRule, vulns ...*corev1.WaivedVulnerability) *corev1.PackageRule {
+		r.SetVulnerabilities(vulns)
+		return r
+	}
+	waived := func(id string, j corev1.VulnerabilityJustification) *corev1.WaivedVulnerability {
+		return corev1.WaivedVulnerability_builder{Id: id, Justification: j}.Build()
+	}
 
 	unknownInRule := func(r *corev1.PackageRule) *corev1.PackageRule {
 		addUnknown(r, 9)
@@ -568,6 +655,56 @@ func TestPackageRules(t *testing.T) {
 			},
 		},
 		{
+			name: "trust entry with the license scope",
+			rule: rule("r_1", trust, "pkg:npm/fp", license),
+			want: &match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeLicense},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "narrowed vulnerability trust entry carries its ids and justifications",
+			rule: withVulns(rule("r_1", trust, "pkg:npm/fp", namedVul),
+				waived("CVE-2024-1234", corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_VULNERABLE_CODE_NOT_IN_EXECUTE_PATH),
+				waived("GHSA-jfh8-c2jp-5v3q", corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_UNSPECIFIED),
+			),
+			want: &match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeNamedVulnerability},
+				Vulnerabilities: []match.WaivedVulnerability{
+					{ID: "CVE-2024-1234", Justification: match.JustificationVulnerableCodeNotInExecutePath},
+					{ID: "GHSA-jfh8-c2jp-5v3q"},
+				},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "a later justification shows the reason only",
+			rule: withVulns(rule("r_1", trust, "pkg:npm/fp", namedVul), waived("CVE-2024-1234", corev1.VulnerabilityJustification(9))),
+			want: &match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeNamedVulnerability},
+				Vulnerabilities: []match.WaivedVulnerability{{ID: "CVE-2024-1234"}},
+				Reason:          "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name:        "narrowed vulnerability trust entry with no ids",
+			rule:        rule("r_1", trust, "pkg:npm/fp", namedVul),
+			wantDropped: true,
+			wantDetail:  "package_rule.named_vulnerability_scope_lists_vulnerabilities",
+		},
+		{
+			name:        "ids under another scope",
+			rule:        withVulns(rule("r_1", trust, "pkg:npm/fp", vuln), waived("CVE-2024-1234", 0)),
+			wantDropped: true,
+			wantDetail:  "package_rule.named_vulnerability_scope_lists_vulnerabilities",
+		},
+		{
+			name:        "named vulnerability scope beside another scope",
+			rule:        withVulns(rule("r_1", trust, "pkg:npm/fp", namedVul, license), waived("CVE-2024-1234", 0)),
+			wantDropped: true,
+			wantDetail:  "contract limit",
+		},
+		{
 			name:        "trust entry with no scope",
 			rule:        rule("r_1", trust, "pkg:npm/fp"),
 			wantDropped: true,
@@ -664,6 +801,89 @@ func TestPackageRules(t *testing.T) {
 	}
 }
 
+// A server checks a rule with the same mapping that the projection uses, so
+// the rule that it stores is the rule that a tool applies.
+func TestToMatchRule(t *testing.T) {
+	const (
+		trust = corev1.Effect_EFFECT_TRUST
+		block = corev1.Effect_EFFECT_BLOCK
+	)
+
+	named := rule("", trust, "pkg:npm/fp", corev1.TrustScope(9), corev1.TrustScope_TRUST_SCOPE_NAMED_VULNERABILITY)
+	named.SetVulnerabilities([]*corev1.WaivedVulnerability{
+		corev1.WaivedVulnerability_builder{
+			Id:            "CVE-2024-1234",
+			Justification: corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_COMPONENT_NOT_PRESENT,
+		}.Build(),
+		corev1.WaivedVulnerability_builder{Id: "GHSA-jfh8-c2jp-5v3q", Justification: corev1.VulnerabilityJustification(9)}.Build(),
+	})
+
+	cases := []struct {
+		name    string
+		rule    *corev1.PackageRule
+		want    match.Rule
+		wantErr error
+		errText string
+	}{
+		{
+			name: "a rule to create, with no id",
+			rule: named,
+			want: match.Rule{
+				Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeNamedVulnerability},
+				Vulnerabilities: []match.WaivedVulnerability{
+					{ID: "CVE-2024-1234", Justification: match.JustificationComponentNotPresent},
+					{ID: "GHSA-jfh8-c2jp-5v3q"},
+				},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "license scope",
+			rule: rule("r_1", trust, "pkg:npm/fp", corev1.TrustScope_TRUST_SCOPE_LICENSE),
+			want: match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp", Scopes: []match.Scope{match.ScopeLicense},
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+		},
+		{
+			name: "block entry",
+			rule: rule("r_1", block, "pkg:npm/evil"),
+			want: match.Rule{ID: "r_1", Effect: match.EffectBlock, PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud}},
+		},
+		{
+			name: "trust entry with only an unknown scope",
+			rule: rule("r_1", trust, "pkg:npm/fp", corev1.TrustScope(9)),
+			want: match.Rule{
+				ID: "r_1", Effect: match.EffectTrust, PURL: "pkg:npm/fp",
+				Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+			wantErr: match.ErrNoKnownScope,
+		},
+		{
+			name: "unknown effect",
+			rule: rule("r_1", corev1.Effect(5), "pkg:npm/evil"),
+			want: match.Rule{
+				ID: "r_1", PURL: "pkg:npm/evil", Reason: "IR-2291 credential stealer", ExpiresAt: expires, Origin: match.Origin{Kind: match.OriginCloud},
+			},
+			wantErr: match.ErrUnknownEffect,
+			errText: "unknown effect: 5",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := ToMatchRule(tc.rule)
+			assert.Equal(t, tc.want, got)
+			if tc.wantErr == nil {
+				assert.NoError(t, err)
+				return
+			}
+			assert.ErrorIs(t, err, tc.wantErr)
+			assert.ErrorContains(t, err, tc.errText)
+		})
+	}
+}
+
 func TestFields(t *testing.T) {
 	fields := Fields()
 
@@ -694,6 +914,12 @@ func TestFields(t *testing.T) {
 
 	assert.Contains(t, byPath, "scan_gate.fail_on")
 	assert.Contains(t, byPath, "scan_gate.fail_on_attacks")
+
+	// A wrapped list is one setting at the path of its message field.
+	assert.Equal(t, optionsv1.Direction_DIRECTION_TIGHTEN, byPath["scan_gate.licenses.deny"].ItemDirection)
+	assert.Equal(t, optionsv1.Direction_DIRECTION_LOOSEN, byPath["scan_gate.licenses.allow"].ItemDirection)
+	assert.Contains(t, byPath, "scan_gate.licenses.unknown")
+	assert.NotContains(t, byPath, "scan_gate.licenses.deny.licenses")
 }
 
 func TestExceptionFieldException(t *testing.T) {

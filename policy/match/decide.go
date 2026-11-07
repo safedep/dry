@@ -2,6 +2,7 @@ package match
 
 import (
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -33,6 +34,13 @@ type Query struct {
 
 	Verdict Verdict
 
+	// VulnerabilityIDs are the id of the vulnerability finding and its
+	// aliases, as "CVE-2024-3094" and "GHSA-jfh8-c2jp-5v3q", for the control
+	// ScopeVulnerability. A trust entry with ScopeNamedVulnerability applies
+	// only when one of them equals one of its ids, with no regard to case. A
+	// query with no ids never matches such an entry.
+	VulnerabilityIDs []string
+
 	// Now is the time of the check. A rule applies while Now is before its
 	// expiry. The zero value means time.Now().
 	Now time.Time
@@ -47,6 +55,12 @@ type Decision struct {
 	// Rule is the rule that decided. It is the zero Rule when Effect is
 	// EffectNone.
 	Rule Rule
+
+	// Vulnerability is the item of Rule.Vulnerabilities that the query
+	// names, with its justification, when a trust entry with
+	// ScopeNamedVulnerability decided. A tool shows it with the waived
+	// finding. It is the zero value otherwise.
+	Vulnerability WaivedVulnerability
 }
 
 // Decide finds the rule that applies to the package of the query:
@@ -54,7 +68,9 @@ type Decision struct {
 //  2. A verdict of verified malware: EffectNone. No trust entry applies, for
 //     any scope and any control. This is the verified malware guard.
 //  3. A trust entry that matches the package and whose scopes hold the
-//     control: EffectTrust.
+//     control: EffectTrust. Under the control ScopeVulnerability, a trust
+//     entry with ScopeNamedVulnerability also matches when the query names
+//     one of its vulnerabilities.
 //  4. Otherwise: EffectNone.
 //
 // A rule matches while the time of the query is before its expiry. When two
@@ -101,7 +117,8 @@ func (ix *Index) Decide(q Query) Decision {
 	case q.Verdict == VerdictVerifiedMalware:
 		return Decision{}
 	case trust != nil:
-		return Decision{Effect: EffectTrust, Rule: trust.rule.clone()}
+		waived, _ := namedVulnerability(&trust.rule, q)
+		return Decision{Effect: EffectTrust, Rule: trust.rule.clone(), Vulnerability: waived}
 	default:
 		return Decision{}
 	}
@@ -127,7 +144,7 @@ func better(e *entry, q Query, now time.Time, block, trust *entry) (*entry, *ent
 		if trust != nil && compareEntries(e, trust) >= 0 {
 			return block, trust
 		}
-		if slices.Contains(r.Scopes, q.Control) && e.active(now) && e.matchesVersion(q.Package) {
+		if waives(r, q) && e.active(now) && e.matchesVersion(q.Package) {
 			return block, e
 		}
 
@@ -135,6 +152,40 @@ func better(e *entry, q Query, now time.Time, block, trust *entry) (*entry, *ent
 	}
 
 	return block, trust
+}
+
+// waives reports whether the scopes of a trust entry cover the control of the
+// query. ScopeNamedVulnerability is not a control, so a query that asks with
+// it gets no trust entry.
+func waives(r *Rule, q Query) bool {
+	if q.Control == ScopeNamedVulnerability {
+		return false
+	}
+
+	if slices.Contains(r.Scopes, q.Control) {
+		return true
+	}
+
+	_, ok := namedVulnerability(r, q)
+	return ok
+}
+
+// namedVulnerability returns the first vulnerability of a trust entry with
+// ScopeNamedVulnerability that a vulnerability query names.
+func namedVulnerability(r *Rule, q Query) (WaivedVulnerability, bool) {
+	if q.Control != ScopeVulnerability || !slices.Contains(r.Scopes, ScopeNamedVulnerability) {
+		return WaivedVulnerability{}, false
+	}
+
+	for _, v := range r.Vulnerabilities {
+		for _, id := range q.VulnerabilityIDs {
+			if id != "" && strings.EqualFold(id, v.ID) {
+				return v, true
+			}
+		}
+	}
+
+	return WaivedVulnerability{}, false
 }
 
 func (e *entry) active(now time.Time) bool {

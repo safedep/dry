@@ -6,6 +6,9 @@
 //
 //   - A block entry wins over a trust entry.
 //   - A trust entry waives a verdict only for a control that its scopes name.
+//     A trust entry with ScopeNamedVulnerability waives a vulnerability
+//     finding only when the query names one of its vulnerability ids, or an
+//     alias of the finding equals one.
 //   - No trust entry waives a verdict of verified malware, whatever its scopes
 //     are. This is the verified malware guard.
 //   - A trust entry with a prefix selector, no known scope, no rule id, no

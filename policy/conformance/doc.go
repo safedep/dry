@@ -13,7 +13,8 @@
 //			func(policy []byte, q conformance.Query) (conformance.Decision, error) {
 //				// Load the policy bytes through the loader of the tool, with
 //				// conformance.Expect for the header check, and decide q.
-//			})
+//			},
+//			match.ScopeMalware, match.ScopeCooldown) // the controls of the tool
 //	}
 //
 // The runner gives the policy as the bytes of a resolved policy on the wire,

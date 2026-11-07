@@ -10,6 +10,7 @@ control-tower, Design 4 and 5, under the parent spec `2026-10-28-cloud-policy-ma
 | `policy/match` | Decides which package rule applies to a package | No |
 | `policy/pbidentity` | Gives `match` the canonical package identity of `api/pb` | Through `api/pb` |
 | `policy/conformance` | Holds the shared corpus of package rule decisions, and runs it through the loader of a tool | Yes |
+| `policy/spdxlicense` | Parses SPDX license expressions and applies the license gate of a policy | No |
 
 `match` has no import of the API contract, so vet, whose rules allow only `model` to import `api/pb`,
 can use it with its own `match.Identity`. `TestNoContractImport` keeps this rule.
@@ -56,6 +57,19 @@ Rules:
 
 - A rule applies while `now` is before its expiry. A zero `Query.Now` means `time.Now()`.
 - A query with no control (`Control` zero) gets no trust entry. A block entry still applies.
+- **Named vulnerabilities.** A trust entry with `ScopeNamedVulnerability` waives only the
+  vulnerabilities in `Rule.Vulnerabilities`. It applies to a query with the control
+  `ScopeVulnerability` when one of `Query.VulnerabilityIDs`, the id of the finding and its aliases,
+  equals one of its ids, with no regard to case. A query with no ids never matches it, and
+  `ScopeNamedVulnerability` is not a control. `Decide` then picks among the matching entries by id,
+  so with a narrowed entry for CVE-A and a wide `ScopeVulnerability` entry on one package, a query
+  for CVE-B gets the wide entry. `Decision.Vulnerability` is the waived item that matched, with its
+  justification, so a tool can show it with the waived finding.
+- `Normalize` drops a waived item with no id, and an item whose id equals an earlier id with no regard
+  to case. The first item keeps its justification. The duplicate check of the server must fold case
+  too, to agree with `match`.
+- `ScopeLicense` waives the license findings of a scan gate: a denied license, a license outside
+  the allow list and an unknown license.
 - When two rules of one effect match, the rule with the lower id decides. The other fields of the rule
   break a tie, so the order of the input never decides.
 - `Normalize` drops a rule with an unknown effect, and a trust entry with no id, no expiry
@@ -167,6 +181,22 @@ each time.
 - **Settings.** `Values` maps each contract path to a `time.Duration`, `time.Time`, `int64`,
   `float64`, `bool`, `string`, `[]byte`, `Enum`, or `[]any` of these. `Sources` maps each field to the
   layer that set it.
+- **Wrapped lists.** A message field with a field contract is a setting, never a group. Its path is
+  the path of the field, and its value is the list of the one repeated field of its message. A set
+  wrapper with no items is `[]any{}`, and an absent wrapper is not in `Values`. So
+  `scan_gate.licenses.deny` with `{licenses: []}` denies nothing, and `scan_gate.licenses.allow` with
+  `{licenses: []}` turns off the allow list of a lower layer. `scan_gate.licenses.unknown` is an
+  `Enum` of `UnknownLicenseGate`. A message setting of another shape fails its capability as
+  `ExceptionUnsupported`.
+- **`ToMatchRule`** converts one `PackageRule` to a `match.Rule`. The projection uses it, and a server
+  calls it with `match.Validate` before it stores a rule, so the server owns no copy of the mapping. It
+  ignores an unknown scope, and returns `ErrUnknownEffect` for an unknown effect and `ErrNoKnownScope`
+  for a trust entry with no known scope. It returns the converted rule with the error.
+- **Package rule fields.** `TRUST_SCOPE_LICENSE` and `TRUST_SCOPE_NAMED_VULNERABILITY` map to
+  `match.ScopeLicense` and `match.ScopeNamedVulnerability`. `PackageRule.vulnerabilities` becomes
+  `Rule.Vulnerabilities`. A justification that the tool does not know becomes
+  `match.JustificationNone`, so the tool shows the reason of the rule. The contract rules drop a
+  trust entry whose ids and scope `NAMED_VULNERABILITY` do not go together.
 - **Ordered enums.** An unknown value of an enum with the option `ordered` becomes the known value with
   the highest `strictness`. An unknown value of an enum with no order fails its capability.
 - **Contract limits.** `Decode` runs protovalidate on each capability except `core`. A violation fails
@@ -174,7 +204,8 @@ each time.
   `Projection.Restore(previous)` takes a failed capability from the projection of the previous policy.
   An enum value 0 under `not_in: [0]` fails its capability the same way. The package rules of `core`
   have their own rules, one rule at a time, and never fail as a whole.
-- `Fields` lists each contract field with a field contract, such as `binding_required`, from the
+- `Fields` lists each contract field with a field contract, such as `binding_required` and
+  `item_direction`, from the
   descriptor. A tool test checks its binding table against it.
 
 The contract has no `FieldExceptionReason` for a value that fails its limits, so
@@ -203,11 +234,30 @@ func TestPolicyConformance(t *testing.T) {
 		}
 
 		// q.Package.Ecosystem is a name of pb.EcosystemName. pb.EcosystemFromName reads it.
-		d := index.Decide(match.Query{Package: pkg(q.Package), Control: q.Control, Verdict: q.Verdict, Now: q.Now})
-		return conformance.Decision{Effect: d.Effect, RuleID: d.Rule.ID}, nil
-	})
+		d := index.Decide(match.Query{
+			Package:          pkg(q.Package),
+			Control:          q.Control,
+			Verdict:          q.Verdict,
+			VulnerabilityIDs: q.VulnerabilityIDs,
+			Now:              q.Now,
+		})
+		return conformance.Decision{Effect: d.Effect, RuleID: d.Rule.ID, VulnerabilityID: d.Vulnerability.ID}, nil
+	}, match.ScopeMalware, match.ScopeCooldown, match.ScopeVulnerability, match.ScopeLicense)
 }
 ```
+
+- The last arguments of `Run` are the controls that the tool decides. The runner skips each check
+  of another control. With no controls, every check runs. `Run` fails the test on a scope that no
+  check asks with, such as `ScopeNamedVulnerability`: a check of a named vulnerability asks with
+  `ScopeVulnerability`. pmg decides `ScopeMalware` and `ScopeCooldown` only, so it names those two
+  and skips the vulnerability and license checks.
+- A tool that decides `ScopeVulnerability` must pass `Query.VulnerabilityIDs` to `match` and return
+  `Decision.VulnerabilityID`. Until its loader does, the `named-vulnerability` case fails. This is
+  intended: the case is the one shared check that a loader maps `PackageRule.vulnerabilities` and
+  `TRUST_SCOPE_NAMED_VULNERABILITY`. It fails a loader that keeps the scope and drops the ids, so the
+  entry waives nothing, and a loader that maps the entry to `ScopeVulnerability`, so it waives every
+  vulnerability. The pull request check of control-tower decides the vulnerability control, so its
+  run fails on this release of dry until it passes the ids.
 
 - `raw` is the resolved policy on the wire. The runner writes a header for the subject kind: an
   endpoint gets the machine id `conformance.MachineID`, and a project gets the subject id
@@ -250,8 +300,12 @@ A case is two files in `policy/conformance/cases` with one base name, as `exact-
 }
 ```
 
-- `control` is `malware`, `cooldown` or `vulnerability`: the scopes of `match`.
+- `control` is `malware`, `cooldown`, `vulnerability` or `license`: the controls of `match`.
 - `verdict` is `none`, `malware` or `verified-malware`: the verdicts of `match`.
+- `vulnerability_ids` are the id of the finding and its aliases. Only a check of the control
+  `vulnerability` has them.
+- `want.vulnerability_id` is the id of the waived vulnerability that the decision names, in the
+  spelling of the rule. Only a `trust` decision of a check with `vulnerability_ids` has one.
 - `want.effect` is `none`, `trust` or `block`. A `trust` or a `block` decision has the `rule_id` of
   the rule. A block entry with no id has the id `-`.
 - `now` of the case is the time of each check. A check can set its own `now`.
@@ -272,7 +326,8 @@ go command can leave `testdata` out of a vendor directory.
 | `block-wins-over-trust` | A block entry wins over a trust entry with a lower id, for each control |
 | `prefix-block` | Prefix boundaries for `/*` (npm, Go) and `.*` (Maven, PyPI, NuGet) |
 | `vers-range` | A block and a trust `vers` range, inside, outside and at each bound |
-| `trust-scopes` | A trust entry for each scope, under each control |
+| `trust-scopes` | A trust entry for each scope except `NAMED_VULNERABILITY`, under each control |
+| `named-vulnerability` | A narrowed vulnerability entry waives its own id and an alias in any case, and no other id. A query with no ids gets none. Beside a wide entry, with the lower and with the higher rule id |
 | `expired-rule` | A trust and a block entry before, at and after the expiry |
 | `no-version` | A package with no version against rules with a version or a range |
 | `unordered-versions` | GitHub Actions, with no version order: a range and one tag |
@@ -280,6 +335,64 @@ go command can leave `testdata` out of a vendor directory.
 | `case-folding` | PyPI, NuGet and GitHub fold a name. PyPI also folds a version. npm does not fold |
 | `unknown-field` | A block entry with an unknown field stays. A trust entry with one is dropped |
 | `dropped-trust` | A trust entry with only an unknown scope, no expiry or a prefix selector is dropped |
+
+## `policy/spdxlicense`
+
+The package holds the one copy of the SPDX rules of the cloud policy. The pull request check and vet
+call it, so a license gate decides the same way in each tool. The rules come from vet's
+`internal/spdxlicense`. The package has no import of the API contract, so a vet package can wrap it.
+
+```go
+gate, err := spdxlicense.NewGate(spdxlicense.GateSettings{
+	Deny:    deny,  // from scan_gate.licenses.deny
+	Allow:   allow, // from scan_gate.licenses.allow
+	Unknown: spdxlicense.UnknownAction(unknown), // the number of UnknownLicenseGate
+})
+if err != nil {
+	return err
+}
+
+r := gate.Evaluate(pkg.Licenses) // Verdict: Denied, NotAllowed, Unknown or Pass. Fails: the gate fails.
+```
+
+- An SPDX id compares in any case. A deprecated id compares as its current id: `GPL-2.0` is
+  `GPL-2.0-only`, and `GPL-2.0+` and `GPL-2.0-only+` are `GPL-2.0-or-later`. A `LicenseRef-` id
+  compares exactly.
+- An entry matches a license of the same form only: `GPL-2.0-only` does not match
+  `GPL-2.0-only WITH Classpath-exception-2.0`.
+- An or-later license fails a deny list when the list names it or each version that it allows. It
+  passes an allow list when the list names it or one of those versions.
+  A letter after the version numbers is part of the version, so `LPPL-1.3a+` allows `LPPL-1.3c`.
+- A package passes when one choice of an OR expression fails no list. Every part of an AND must pass.
+  The license values of one package join with AND. Each choice meets both lists at once, so
+  `GPL-2.0-or-later OR MIT` fails allow `[GPL-3.0-only]` with deny `[GPL-2.0-or-later]`: the first
+  choice is denied, and the second is not allowed.
+- A denied or-later term stays denied. The allow list cannot pass it through one of its later
+  versions.
+- When no choice passes, the verdict is `Denied` if each choice has a denied term, and `NotAllowed`
+  otherwise. A choice that fails both lists counts as denied. vet's `internal/spdxlicense` checked
+  the two lists one after the other over the whole expression, and passed the example above. vet
+  takes the new rule when it wraps this package.
+- An empty deny list denies nothing, and an empty allow list is off. The unknown action decides only
+  for a license that the lists do not fail.
+- A license is unknown when the package has no license data, when a value is `NOASSERTION` or is not
+  an SPDX expression, and when the value is `NONE` and no allow list is set. `NONE` fails an allow
+  list.
+- `ValidateEntry` checks one list entry of the policy contract. It refuses an expression, an id that
+  is not on the SPDX License List, and the vet set names `osi-approved`, `fsf-libre` and
+  `osi-approved-or-fsf-libre`. `NewGate` applies it to each entry. The server also refuses two entries
+  that differ only in case. It is more lenient than the pattern of the contract: it takes white space,
+  parentheses around a term and a lower case `with`. The server runs protovalidate first.
+- `NewPolicy` and `Policy.Check` are the lower layer that the vet license control uses. They accept
+  the set names.
+- `list.json` holds the ids of the SPDX License List with their OSI and FSF flags, and the active
+  license exception ids. The package reads only this embedded data. To update it, change the commit
+  of `spdx/license-list-data` in `policy/spdxlicense/internal/gen`, run
+  `go run ./policy/spdxlicense/internal/gen` from the root of the module, and read the diff. The
+  command reads the network, so it has no `go:generate` directive and CI does not run it.
+  `TestEmbeddedList` and `TestNoticeNamesTheListVersion` guard the data. The SPDX License List is under
+  CC-BY-3.0. `NOTICE` gives its version, source and author, and a test fails when `NOTICE` names
+  another version than `list.json`.
 
 ## Not in these packages
 

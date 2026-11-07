@@ -43,6 +43,19 @@
       }
     },
     {
+      "name": "malware-scope-license-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-malware",
+        "version": "1.0.0"
+      },
+      "control": "license",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
       "name": "cooldown-scope-malware-control",
       "package": {
         "ecosystem": "npm",
@@ -77,6 +90,19 @@
         "version": "1.0.0"
       },
       "control": "vulnerability",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "cooldown-scope-license-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-cooldown",
+        "version": "1.0.0"
+      },
+      "control": "license",
       "verdict": "none",
       "want": {
         "effect": "none"
@@ -120,6 +146,72 @@
       "want": {
         "effect": "trust",
         "rule_id": "r_trust_vulnerability"
+      }
+    },
+    {
+      "name": "vulnerability-scope-license-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-vulnerability",
+        "version": "1.0.0"
+      },
+      "control": "license",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "license-scope-malware-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-license",
+        "version": "1.0.0"
+      },
+      "control": "malware",
+      "verdict": "malware",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "license-scope-cooldown-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-license",
+        "version": "1.0.0"
+      },
+      "control": "cooldown",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "license-scope-vulnerability-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-license",
+        "version": "1.0.0"
+      },
+      "control": "vulnerability",
+      "verdict": "none",
+      "want": {
+        "effect": "none"
+      }
+    },
+    {
+      "name": "license-scope-license-control",
+      "package": {
+        "ecosystem": "npm",
+        "name": "scope-license",
+        "version": "1.0.0"
+      },
+      "control": "license",
+      "verdict": "none",
+      "want": {
+        "effect": "trust",
+        "rule_id": "r_trust_license"
       }
     }
   ]

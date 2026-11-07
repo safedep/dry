@@ -11,9 +11,23 @@ import (
 // scopes maps each trust scope that the tool knows. A scope that is not in
 // the map is ignored, because the scope is an open enum.
 var scopes = map[corev1.TrustScope]match.Scope{
-	corev1.TrustScope_TRUST_SCOPE_MALWARE:       match.ScopeMalware,
-	corev1.TrustScope_TRUST_SCOPE_COOLDOWN:      match.ScopeCooldown,
-	corev1.TrustScope_TRUST_SCOPE_VULNERABILITY: match.ScopeVulnerability,
+	corev1.TrustScope_TRUST_SCOPE_MALWARE:             match.ScopeMalware,
+	corev1.TrustScope_TRUST_SCOPE_COOLDOWN:            match.ScopeCooldown,
+	corev1.TrustScope_TRUST_SCOPE_VULNERABILITY:       match.ScopeVulnerability,
+	corev1.TrustScope_TRUST_SCOPE_LICENSE:             match.ScopeLicense,
+	corev1.TrustScope_TRUST_SCOPE_NAMED_VULNERABILITY: match.ScopeNamedVulnerability,
+}
+
+// justifications maps each justification that the tool knows. The contract
+// does not check the value of a resolved rule, so a later value must not
+// drop the entry. It becomes match.JustificationNone, and the tool shows the
+// reason of the rule.
+var justifications = map[corev1.VulnerabilityJustification]match.Justification{
+	corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_COMPONENT_NOT_PRESENT:                             match.JustificationComponentNotPresent,
+	corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_VULNERABLE_CODE_NOT_PRESENT:                       match.JustificationVulnerableCodeNotPresent,
+	corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_VULNERABLE_CODE_NOT_IN_EXECUTE_PATH:               match.JustificationVulnerableCodeNotInExecutePath,
+	corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_VULNERABLE_CODE_CANNOT_BE_CONTROLLED_BY_ADVERSARY: match.JustificationVulnerableCodeCannotBeControlledByAdversary,
+	corev1.VulnerabilityJustification_VULNERABILITY_JUSTIFICATION_INLINE_MITIGATIONS_ALREADY_EXIST:                  match.JustificationInlineMitigationsAlreadyExist,
 }
 
 // projectRules turns each package rule into a match.Rule.
@@ -117,6 +131,13 @@ func toMatchRule(pr *corev1.PackageRule) match.Rule {
 		if scope, ok := scopes[s]; ok {
 			r.Scopes = append(r.Scopes, scope)
 		}
+	}
+
+	for _, v := range pr.GetVulnerabilities() {
+		r.Vulnerabilities = append(r.Vulnerabilities, match.WaivedVulnerability{
+			ID:            v.GetId(),
+			Justification: justifications[v.GetJustification()],
+		})
 	}
 
 	if pr.HasExpiresAt() {

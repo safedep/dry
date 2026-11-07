@@ -105,6 +105,10 @@ func (w *settingsWalker) field(fd protoreflect.FieldDescriptor, v protoreflect.V
 		w.values[path] = items
 
 	case (fd.Kind() == protoreflect.MessageKind || fd.Kind() == protoreflect.GroupKind) && !isLeafMessage(fd.Message()):
+		if isSetting(fd) {
+			w.wrappedList(v.Message(), path)
+			return
+		}
 		w.message(v.Message(), path)
 
 	default:
@@ -112,6 +116,27 @@ func (w *settingsWalker) field(fd protoreflect.FieldDescriptor, v protoreflect.V
 			w.values[path] = value
 		}
 	}
+}
+
+// isSetting reports a field with a field contract. A message field with one
+// is a setting, never a group of settings: the walk must not go into it, or
+// it would lose a set wrapper with no items.
+func isSetting(fd protoreflect.FieldDescriptor) bool {
+	return proto.HasExtension(fd.Options(), optionsv1.E_Field)
+}
+
+// wrappedList reads a message setting. The contract allows only a wrapped
+// list: a message with one repeated field. Its value is the list of that
+// field at the path of the setting, and a set wrapper with no items is an
+// empty list.
+func (w *settingsWalker) wrappedList(m protoreflect.Message, path string) {
+	fields := m.Descriptor().Fields()
+	if fields.Len() != 1 || !fields.Get(0).IsList() {
+		w.fail(path, ExceptionUnsupported, fmt.Sprintf("the value tree cannot hold a setting of %s", m.Descriptor().FullName()))
+		return
+	}
+
+	w.field(fields.Get(0), m.Get(fields.Get(0)), path)
 }
 
 func isLeafMessage(md protoreflect.MessageDescriptor) bool {

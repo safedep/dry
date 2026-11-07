@@ -22,6 +22,13 @@ func trust(id, purl string, scopes ...Scope) Rule {
 	}
 }
 
+// named returns a trust entry with ScopeNamedVulnerability.
+func named(id, purl string, vulns ...WaivedVulnerability) Rule {
+	r := trust(id, purl, ScopeNamedVulnerability)
+	r.Vulnerabilities = vulns
+	return r
+}
+
 func withVers(r Rule, vers string) Rule {
 	r.Vers = vers
 	return r
@@ -138,6 +145,28 @@ func TestDecide(t *testing.T) {
 			control:    ScopeVulnerability,
 			wantEffect: EffectTrust,
 			wantRule:   "r_1",
+		},
+		{
+			name:       "license trust waives a license finding",
+			rules:      []Rule{trust("r_1", "pkg:npm/gpl", ScopeLicense)},
+			purl:       "pkg:npm/gpl@1.0.0",
+			control:    ScopeLicense,
+			wantEffect: EffectTrust,
+			wantRule:   "r_1",
+		},
+		{
+			name:       "license trust does not waive a vulnerability finding",
+			rules:      []Rule{trust("r_1", "pkg:npm/gpl", ScopeLicense)},
+			purl:       "pkg:npm/gpl@1.0.0",
+			control:    ScopeVulnerability,
+			wantEffect: EffectNone,
+		},
+		{
+			name:       "vulnerability trust does not waive a license finding",
+			rules:      []Rule{trust("r_1", "pkg:npm/gpl", ScopeVulnerability)},
+			purl:       "pkg:npm/gpl@1.0.0",
+			control:    ScopeLicense,
+			wantEffect: EffectNone,
 		},
 		{
 			name:       "trust applies before its expiry",
@@ -404,26 +433,35 @@ func TestVerifiedMalwareGuard(t *testing.T) {
 		{ScopeMalware},
 		{ScopeCooldown},
 		{ScopeVulnerability},
+		{ScopeLicense},
+		{ScopeNamedVulnerability},
 		{ScopeMalware, ScopeCooldown},
-		{ScopeMalware, ScopeCooldown, ScopeVulnerability},
+		{ScopeMalware, ScopeCooldown, ScopeVulnerability, ScopeLicense},
 	}
-	controls := []Scope{ScopeMalware, ScopeCooldown, ScopeVulnerability}
+	controls := []Scope{ScopeMalware, ScopeCooldown, ScopeVulnerability, ScopeLicense}
 
 	for _, scopes := range scopeSets {
 		for _, control := range controls {
 			t.Run(fmt.Sprintf("scopes %v control %v", scopes, control), func(t *testing.T) {
-				ix, dropped := NewIndex([]Rule{
+				vulns := []WaivedVulnerability{{ID: "CVE-2024-1"}}
+				rules := []Rule{
 					trust("r_1", "pkg:npm/evil", scopes...),
 					withVers(trust("r_2", "pkg:npm/evil", scopes...), "vers:npm/>=0.0.1"),
 					trust("r_3", "pkg:npm/evil@1.0.0", scopes...),
-				}, testIdentity{})
+				}
+				for i := range rules {
+					rules[i].Vulnerabilities = vulns
+				}
+
+				ix, dropped := NewIndex(rules, testIdentity{})
 				require.Empty(t, dropped)
 
 				got := ix.Decide(Query{
-					Package: mustPackage("pkg:npm/evil@1.0.0"),
-					Control: control,
-					Verdict: VerdictVerifiedMalware,
-					Now:     testNow,
+					Package:          mustPackage("pkg:npm/evil@1.0.0"),
+					Control:          control,
+					Verdict:          VerdictVerifiedMalware,
+					VulnerabilityIDs: []string{"CVE-2024-1"},
+					Now:              testNow,
 				})
 				assert.Equal(t, EffectNone, got.Effect)
 				assert.Empty(t, got.Rule.ID)
@@ -480,4 +518,154 @@ func TestDecideAndRulesCopyTheScopes(t *testing.T) {
 
 	assert.Equal(t, EffectTrust, ix.Decide(q).Effect)
 	assert.Equal(t, []Scope{ScopeMalware}, ix.Rules()[0].Scopes)
+}
+
+func TestDecideAndRulesCopyTheVulnerabilities(t *testing.T) {
+	ix, dropped := NewIndex([]Rule{named("r_1", "pkg:npm/fp", WaivedVulnerability{ID: "CVE-2024-1"})}, testIdentity{})
+	require.Empty(t, dropped)
+
+	q := Query{Package: mustPackage("pkg:npm/fp@1.0.0"), Control: ScopeVulnerability, VulnerabilityIDs: []string{"CVE-2024-1"}, Now: testNow}
+	ix.Decide(q).Rule.Vulnerabilities[0].ID = "CVE-2024-2"
+	ix.Rules()[0].Vulnerabilities[0].ID = "CVE-2024-2"
+
+	assert.Equal(t, EffectTrust, ix.Decide(q).Effect)
+	assert.Equal(t, "CVE-2024-1", ix.Rules()[0].Vulnerabilities[0].ID)
+}
+
+func TestDecideNamedVulnerability(t *testing.T) {
+	cveA := WaivedVulnerability{ID: "CVE-2024-1234", Justification: JustificationVulnerableCodeNotInExecutePath}
+	ghsa := WaivedVulnerability{ID: "GHSA-jfh8-c2jp-5v3q"}
+
+	cases := []struct {
+		name       string
+		rules      []Rule
+		control    Scope
+		ids        []string
+		wantEffect Effect
+		wantRule   string
+		wantWaived WaivedVulnerability
+	}{
+		{
+			name:       "waives the id that it names",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_1",
+			wantWaived: cveA,
+		},
+		{
+			name:       "waives a finding whose alias it names",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeVulnerability,
+			ids:        []string{"GHSA-aaaa-bbbb-cccc", "CVE-2024-1234"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_1",
+			wantWaived: cveA,
+		},
+		{
+			name:       "compares ids with no regard to case",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", ghsa)},
+			control:    ScopeVulnerability,
+			ids:        []string{"ghsa-JFH8-c2jp-5v3q"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_1",
+			wantWaived: ghsa,
+		},
+		{
+			name:       "does not waive another vulnerability",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-9999"},
+			wantEffect: EffectNone,
+		},
+		{
+			name:       "a query with no ids never matches",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeVulnerability,
+			wantEffect: EffectNone,
+		},
+		{
+			name:       "an entry with no ids never matches",
+			rules:      []Rule{named("r_1", "pkg:npm/fp")},
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectNone,
+		},
+		{
+			name:       "the wide entry decides for another id",
+			rules:      []Rule{named("r_a", "pkg:npm/fp", cveA), trust("r_b", "pkg:npm/fp", ScopeVulnerability)},
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-9999"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_b",
+		},
+		{
+			name:       "the lower id decides when both entries match",
+			rules:      []Rule{named("r_a", "pkg:npm/fp", cveA), trust("r_b", "pkg:npm/fp", ScopeVulnerability)},
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_a",
+			wantWaived: cveA,
+		},
+		{
+			name:       "shows the justification of the id that matched",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA, ghsa)},
+			control:    ScopeVulnerability,
+			ids:        []string{"GHSA-jfh8-c2jp-5v3q"},
+			wantEffect: EffectTrust,
+			wantRule:   "r_1",
+			wantWaived: ghsa,
+		},
+		{
+			name:       "waives no license finding",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeLicense,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectNone,
+		},
+		{
+			name:       "is not a control",
+			rules:      []Rule{named("r_1", "pkg:npm/fp", cveA)},
+			control:    ScopeNamedVulnerability,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectNone,
+		},
+		{
+			name: "ids of an entry with another scope waive nothing",
+			rules: func() []Rule {
+				r := trust("r_1", "pkg:npm/fp", ScopeMalware)
+				r.Vulnerabilities = []WaivedVulnerability{cveA}
+				return []Rule{r}
+			}(),
+			control:    ScopeVulnerability,
+			ids:        []string{"CVE-2024-1234"},
+			wantEffect: EffectNone,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ix, dropped := NewIndex(tc.rules, testIdentity{})
+			require.Empty(t, dropped)
+
+			got := ix.Decide(Query{
+				Package:          mustPackage("pkg:npm/fp@1.0.0"),
+				Control:          tc.control,
+				VulnerabilityIDs: tc.ids,
+				Now:              testNow,
+			})
+			assert.Equal(t, tc.wantEffect, got.Effect)
+			assert.Equal(t, tc.wantRule, got.Rule.ID)
+			assert.Equal(t, tc.wantWaived, got.Vulnerability)
+		})
+	}
+}
+
+func TestJustificationString(t *testing.T) {
+	assert.Empty(t, JustificationNone.String())
+	assert.Equal(t, "vulnerable_code_not_in_execute_path", JustificationVulnerableCodeNotInExecutePath.String())
+	assert.Equal(t, "inline_mitigations_already_exist", JustificationInlineMitigationsAlreadyExist.String())
+	assert.Equal(t, "justification(9)", Justification(9).String())
 }

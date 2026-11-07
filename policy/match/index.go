@@ -236,9 +236,14 @@ func compareRules(a, b Rule) int {
 		cmp.Compare(a.PURL, b.PURL),
 		cmp.Compare(a.Vers, b.Vers),
 		slices.Compare(a.Scopes, b.Scopes),
+		slices.CompareFunc(a.Vulnerabilities, b.Vulnerabilities, compareWaived),
 		a.ExpiresAt.Compare(b.ExpiresAt),
 		cmp.Compare(a.Reason, b.Reason),
 		cmp.Compare(a.Origin.Kind, b.Origin.Kind),
 		cmp.Compare(a.Origin.Path, b.Origin.Path),
 	)
+}
+
+func compareWaived(a, b WaivedVulnerability) int {
+	return cmp.Or(cmp.Compare(a.ID, b.ID), cmp.Compare(a.Justification, b.Justification))
 }

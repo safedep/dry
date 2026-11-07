@@ -3,8 +3,8 @@ module github.com/safedep/dry
 go 1.25.1
 
 require (
-	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261031065119-dc85a10c2beb.1
-	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261031065119-dc85a10c2beb.2
+	buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261107111754-29a1adb160aa.1
+	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261107111754-29a1adb160aa.2
 	buf.build/go/protovalidate v1.2.0
 	cloud.google.com/go/auth v0.16.1
 	cloud.google.com/go/profiler v0.4.3
@@ -27,6 +27,7 @@ require (
 	github.com/docker/docker v28.1.1+incompatible
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	github.com/getkin/kin-openapi v0.118.0
+	github.com/github/go-spdx/v2 v2.4.0
 	github.com/go-playground/validator/v10 v10.28.0
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/goark/go-cvss v1.6.7

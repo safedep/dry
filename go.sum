@@ -2,10 +2,10 @@ al.essio.dev/pkg/shellescape v1.5.1 h1:86HrALUujYS/h+GtqoB26SBEdkWfmMI6FubjXlsXy
 al.essio.dev/pkg/shellescape v1.5.1/go.mod h1:6sIqp7X2P6mThCQ7twERpZTuigpr6KbZWtls1U8I890=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 h1:y8A3AKdnK80frQccyJxFQcHJ9yZlcuoixzHhEsnpEfw=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1/go.mod h1:TCt1lluMFnctISJXvkIQ4x3ABrPuUKCWKyjKdkJNBpw=
-buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261031065119-dc85a10c2beb.1 h1:GFuHP+IKmox25L8V2EF4CR3rblReLuKjZCnuOuR7dc4=
-buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261031065119-dc85a10c2beb.1/go.mod h1:wVMcwuJdlWZbHcwPPepDJQR1zQDjh/ANlc7Zv0BDfiI=
-buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261031065119-dc85a10c2beb.2 h1:1p9CC/GyQ5POTKPtFvl+48Fk+37rQl/zbAOd1PDDabE=
-buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261031065119-dc85a10c2beb.2/go.mod h1:LfbopTmazyAppwhYT2vdRDLDH8ZTm4QNbp9yFjGRbHs=
+buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261107111754-29a1adb160aa.1 h1:4uXBhgLhLEn7IOW9avcfYIYKNOI77vOcYm9XQbvfRHo=
+buf.build/gen/go/safedep/api/grpc/go v1.6.2-20261107111754-29a1adb160aa.1/go.mod h1:4i7HWcBq17WJ1/i+2RMe/hFwUloX8o4PaviS3I9gd5I=
+buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261107111754-29a1adb160aa.2 h1:1VyJgN+9Z4T+dEVSffnJV/ETVLPsqKkYEvWHguZ/jzc=
+buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.12-20261107111754-29a1adb160aa.2/go.mod h1:LfbopTmazyAppwhYT2vdRDLDH8ZTm4QNbp9yFjGRbHs=
 buf.build/go/protovalidate v1.2.0 h1:DQVrUWkmGTBij+kOYv/x2LLxwcLaGKMdzShj1/6/3H0=
 buf.build/go/protovalidate v1.2.0/go.mod h1:7rYiQEhqvAipoazpVNBBH2S2f8bjG4huMVy1V2Yofn4=
 cel.dev/expr v0.25.1 h1:1KrZg61W6TWSxuNZ37Xy49ps13NUovb66QLprthtwi4=
@@ -269,6 +269,8 @@ github.com/gabriel-vasile/mimetype v1.4.10/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9t
 github.com/getkin/kin-openapi v0.118.0 h1:z43njxPmJ7TaPpMSCQb7PN0dEYno4tyBPQcrFdHoLuM=
 github.com/getkin/kin-openapi v0.118.0/go.mod h1:l5e9PaFUo9fyLJCPGQeXI2ML8c3P8BHOEV2VaAVf/pc=
 github.com/getsentry/raven-go v0.2.0/go.mod h1:KungGk8q33+aIAZUIVWZDr2OfAEBsO49PX4NzFV5kcQ=
+github.com/github/go-spdx/v2 v2.4.0 h1:+4IwVwJJbm3rzvrQ6P1nI9BDMcy3la4RchRy5uehV/M=
+github.com/github/go-spdx/v2 v2.4.0/go.mod h1:/5rwgS0txhGtRdUZwc02bTglzg6HK3FfuEbECKlK2Sg=
 github.com/go-check/check v0.0.0-20180628173108-788fd7840127 h1:0gkP6mzaMqkmpcJYCFOLkIBwI7xFExG03bbkOkCvUPI=
 github.com/go-check/check v0.0.0-20180628173108-788fd7840127/go.mod h1:9ES+weclKsC9YodN5RgxqK/VD9HM9JsCSh7rNhMZE98=
 github.com/go-faster/city v1.0.1 h1:4WAxSZ3V2Ws4QRDrscLEDcibJY8uf41H6AhXDrNDcGw=

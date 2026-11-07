@@ -52,10 +52,20 @@ const (
 
 	// ScopeVulnerability is the vulnerability findings of a scan gate.
 	ScopeVulnerability
+
+	// ScopeLicense is the license findings of a scan gate: a denied license,
+	// a license outside the allow list and an unknown license.
+	ScopeLicense
+
+	// ScopeNamedVulnerability waives only the vulnerabilities that
+	// Rule.Vulnerabilities lists. It is not a control: a query for a
+	// vulnerability finding asks with ScopeVulnerability, and an entry with
+	// this scope applies only when the query names one of its ids.
+	ScopeNamedVulnerability
 )
 
 func (s Scope) known() bool {
-	return s >= ScopeMalware && s <= ScopeVulnerability
+	return s >= ScopeMalware && s <= ScopeNamedVulnerability
 }
 
 func (s Scope) String() string {
@@ -66,9 +76,60 @@ func (s Scope) String() string {
 		return "cooldown"
 	case ScopeVulnerability:
 		return "vulnerability"
+	case ScopeLicense:
+		return "license"
+	case ScopeNamedVulnerability:
+		return "named-vulnerability"
 	default:
 		return fmt.Sprintf("scope(%d)", int(s))
 	}
+}
+
+// Justification says why a vulnerability does not affect a package version.
+// The values are the justifications of OpenVEX, in the order and with the
+// numbers of the policy contract.
+type Justification int
+
+const (
+	// JustificationNone means that the admin gave no justification. The
+	// reason of the rule is the only explanation.
+	JustificationNone Justification = iota
+
+	JustificationComponentNotPresent
+	JustificationVulnerableCodeNotPresent
+	JustificationVulnerableCodeNotInExecutePath
+	JustificationVulnerableCodeCannotBeControlledByAdversary
+	JustificationInlineMitigationsAlreadyExist
+)
+
+// String returns the OpenVEX name, as "vulnerable_code_not_in_execute_path",
+// or "" for JustificationNone.
+func (j Justification) String() string {
+	switch j {
+	case JustificationNone:
+		return ""
+	case JustificationComponentNotPresent:
+		return "component_not_present"
+	case JustificationVulnerableCodeNotPresent:
+		return "vulnerable_code_not_present"
+	case JustificationVulnerableCodeNotInExecutePath:
+		return "vulnerable_code_not_in_execute_path"
+	case JustificationVulnerableCodeCannotBeControlledByAdversary:
+		return "vulnerable_code_cannot_be_controlled_by_adversary"
+	case JustificationInlineMitigationsAlreadyExist:
+		return "inline_mitigations_already_exist"
+	default:
+		return fmt.Sprintf("justification(%d)", int(j))
+	}
+}
+
+// WaivedVulnerability is one vulnerability that a trust entry with
+// ScopeNamedVulnerability waives.
+type WaivedVulnerability struct {
+	// ID is the vulnerability id in its published form, as "CVE-2024-3094".
+	ID string
+
+	Justification Justification
 }
 
 // OriginKind says where a rule comes from.
@@ -109,6 +170,11 @@ type Rule struct {
 	// Scopes are the scopes that a trust entry waives. A block entry has none.
 	Scopes []Scope
 
+	// Vulnerabilities are the vulnerabilities that a trust entry with
+	// ScopeNamedVulnerability waives. Normalize clears them on every other
+	// rule.
+	Vulnerabilities []WaivedVulnerability
+
 	// Reason says why the rule exists.
 	Reason string
 
@@ -119,10 +185,12 @@ type Rule struct {
 	Origin Origin
 }
 
-// clone copies the scopes too. A caller that changes the scopes of a rule
-// from Rules or Decide must not change the later decisions of the index.
+// clone copies the scopes and the vulnerabilities too. A caller that changes
+// them in a rule from Rules or Decide must not change the later decisions of
+// the index.
 func (r Rule) clone() Rule {
 	r.Scopes = slices.Clone(r.Scopes)
+	r.Vulnerabilities = slices.Clone(r.Vulnerabilities)
 	return r
 }
 
@@ -167,6 +235,8 @@ var (
 // copy of the rule:
 //   - with the scopes that the package knows, in order and once each, for a
 //     trust entry, and no scope for a block entry;
+//   - with no vulnerabilities, unless it is a trust entry with
+//     ScopeNamedVulnerability;
 //   - with the id BlockRuleIDNone for a block entry with no id.
 //
 // It returns an error for a rule that a tool must drop: an unknown effect, or
@@ -179,6 +249,7 @@ func Normalize(r Rule) (Rule, error) {
 	switch r.Effect {
 	case EffectBlock:
 		r.Scopes = nil
+		r.Vulnerabilities = nil
 		if r.ID == "" {
 			r.ID = BlockRuleIDNone
 		}
@@ -215,6 +286,13 @@ func normalizeTrust(r Rule) (Rule, error) {
 
 	slices.Sort(scopes)
 	r.Scopes = scopes
+
+	// Ids without ScopeNamedVulnerability waive nothing, so a decision must
+	// not show them. An entry with the scope and no ids stays: it matches no
+	// query, so it waives nothing.
+	if !slices.Contains(scopes, ScopeNamedVulnerability) {
+		r.Vulnerabilities = nil
+	}
 
 	if isPrefix(r.PURL) {
 		return r, ErrTrustPrefix

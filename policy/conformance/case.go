@@ -165,6 +165,7 @@ var controls = map[string]match.Scope{
 	"malware":       match.ScopeMalware,
 	"cooldown":      match.ScopeCooldown,
 	"vulnerability": match.ScopeVulnerability,
+	"license":       match.ScopeLicense,
 }
 
 var verdicts = map[string]match.Verdict{

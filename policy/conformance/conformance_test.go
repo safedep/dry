@@ -335,10 +335,10 @@ func TestLoadCases(t *testing.T) {
 			files: fstest.MapFS{
 				"cases/a.json": {Data: []byte(caseHeader("", `{
   "name": "c", "package": {"ecosystem": "npm", "name": "evil"},
-  "control": "license", "verdict": "none", "want": {"effect": "none"}}`))},
+  "control": "secrets", "verdict": "none", "want": {"effect": "none"}}`))},
 				"cases/a.textproto": {Data: []byte(validPolicy)},
 			},
-			wantErr: `cases/a.json: check "c": unknown control "license"`,
+			wantErr: `cases/a.json: check "c": unknown control "secrets"`,
 		},
 		{
 			name: "unknown ecosystem",

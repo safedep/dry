@@ -210,3 +210,35 @@ func (p *deferredProvider) NewGaugeVec(name, desc string, labels []string) Gauge
 	})
 	return v
 }
+
+type deferredHistogramVec struct {
+	real atomic.Pointer[HistogramVec]
+}
+
+func (v *deferredHistogramVec) WithLabels(labels map[string]string) Histogram {
+	if r := v.real.Load(); r != nil {
+		return (*r).WithLabels(labels)
+	}
+	return &deferredLabelledHistogram{vec: v, labels: maps.Clone(labels)}
+}
+
+type deferredLabelledHistogram struct {
+	vec    *deferredHistogramVec
+	labels map[string]string
+}
+
+func (h *deferredLabelledHistogram) Observe(value float64) {
+	if r := h.vec.real.Load(); r != nil {
+		(*r).WithLabels(h.labels).Observe(value)
+	}
+}
+
+func (p *deferredProvider) NewHistogramVec(name, desc string, labels []string,
+	opts ...ProviderSpecificOptsEditor) HistogramVec {
+	v := &deferredHistogramVec{}
+	p.defer_(func(real Provider) {
+		m := real.NewHistogramVec(name, desc, labels, opts...)
+		v.real.Store(&m)
+	})
+	return v
+}

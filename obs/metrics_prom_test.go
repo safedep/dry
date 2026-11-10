@@ -63,3 +63,41 @@ func TestPrometheusHistogramBuckets(t *testing.T) {
 
 	assert.Equal(t, bounds, got)
 }
+
+func TestPrometheusHistogramVecBuckets(t *testing.T) {
+	p := NewPrometheusMetricsProvider("test", "test")
+	bounds := []float64{10, 100, 1000}
+
+	h := p.NewHistogramVec("test_hv_buckets_1", "test", []string{"outcome"}, withHistogramBuckets(bounds))
+	h.WithLabels(map[string]string{"outcome": "completed"}).Observe(50)
+	h.WithLabels(map[string]string{"outcome": "failed"}).Observe(500)
+
+	families, err := prometheus.DefaultGatherer.Gather()
+	require.NoError(t, err)
+
+	counts := map[string][]uint64{}
+	for _, family := range families {
+		if family.GetName() != "test_test_test_hv_buckets_1" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			var outcome string
+			for _, label := range metric.GetLabel() {
+				if label.GetName() == "outcome" {
+					outcome = label.GetValue()
+				}
+			}
+			var bucketBounds []float64
+			for _, bucket := range metric.GetHistogram().GetBucket() {
+				bucketBounds = append(bucketBounds, bucket.GetUpperBound())
+				counts[outcome] = append(counts[outcome], bucket.GetCumulativeCount())
+			}
+			assert.Equal(t, bounds, bucketBounds)
+		}
+	}
+
+	assert.Equal(t, map[string][]uint64{
+		"completed": {0, 1, 1},
+		"failed":    {0, 0, 1},
+	}, counts)
+}

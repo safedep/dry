@@ -32,6 +32,11 @@ type Histogram interface {
 	Observe(float64)
 }
 
+// HistogramVec is a histogram metric parameterized by labels.
+type HistogramVec interface {
+	WithLabels(map[string]string) Histogram
+}
+
 type ProviderSpecificOpts interface{}
 type ProviderSpecificOptsEditor func(ProviderSpecificOpts)
 
@@ -43,6 +48,7 @@ type Provider interface {
 	NewHistogram(name, desc string, opts ...ProviderSpecificOptsEditor) Histogram
 	NewCounterVec(name, desc string, labels []string) CounterVec
 	NewGaugeVec(name, desc string, labels []string) GaugeVec
+	NewHistogramVec(name, desc string, labels []string, opts ...ProviderSpecificOptsEditor) HistogramVec
 }
 
 type dummyReceiver struct{}
@@ -119,6 +125,14 @@ func NewHistogram(name, desc string) Histogram {
 // that has no bucket concept ignores the bounds.
 func NewHistogramWithBuckets(name, desc string, buckets []float64) Histogram {
 	return __provider.NewHistogram(name, desc, withHistogramBuckets(buckets))
+}
+
+// NewHistogramVecWithBuckets declares a labelled histogram with its own upper
+// bounds, in ascending order. A duration split by outcome needs one metric
+// with an outcome label, so that a query can sum or compare the outcomes; two
+// histograms with the outcome in their names cannot be aggregated.
+func NewHistogramVecWithBuckets(name, desc string, labels []string, buckets []float64) HistogramVec {
+	return __provider.NewHistogramVec(name, desc, labels, withHistogramBuckets(buckets))
 }
 
 // InitPrometheusMetricsProvider switches the default metrics provider to the

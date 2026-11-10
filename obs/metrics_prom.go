@@ -60,7 +60,7 @@ type prometheusMetricsProvider struct {
 }
 
 type promHistogramReceiver struct {
-	histogram prometheus.Histogram
+	histogram prometheus.Observer
 }
 
 func (r *promHistogramReceiver) Observe(value float64) {
@@ -184,6 +184,41 @@ func (p *prometheusMetricsProvider) NewHistogram(name, desc string,
 	prometheus.MustRegister(h)
 
 	return &promHistogramReceiver{
+		histogram: h,
+	}
+}
+
+type promHistogramVecReceiver struct {
+	histogram *prometheus.HistogramVec
+}
+
+func (r *promHistogramVecReceiver) WithLabels(labels map[string]string) Histogram {
+	return &promHistogramReceiver{
+		histogram: r.histogram.With(labels),
+	}
+}
+
+func (p *prometheusMetricsProvider) NewHistogramVec(name, desc string, labels []string,
+	opts ...ProviderSpecificOptsEditor) HistogramVec {
+	histogramOpts := prometheus.HistogramOpts{
+		Namespace: p.namespace,
+		Subsystem: p.subsystem,
+		Name:      name,
+		Help:      desc,
+		ConstLabels: prometheus.Labels{
+			"service": AppServiceName("app"),
+			"env":     AppServiceEnv("dev"),
+		},
+	}
+
+	for _, editor := range opts {
+		editor(&histogramOpts)
+	}
+
+	h := prometheus.NewHistogramVec(histogramOpts, labels)
+	prometheus.MustRegister(h)
+
+	return &promHistogramVecReceiver{
 		histogram: h,
 	}
 }

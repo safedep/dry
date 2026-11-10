@@ -49,6 +49,8 @@ func TestDeferredProviderBindsEarlyDeclarations(t *testing.T) {
 	histogram := d.NewHistogram("early_histogram", "declared before init")
 	counterVec := d.NewCounterVec("early_counter_vec", "declared before init", []string{"source"})
 	gaugeVec := d.NewGaugeVec("early_gauge_vec", "declared before init", []string{"source"})
+	histogramVec := d.NewHistogramVec("early_histogram_vec", "declared before init", []string{"source"})
+	histogramBeforeBind := histogramVec.WithLabels(map[string]string{"source": "crates"})
 	labelledBeforeBind := counterVec.WithLabels(map[string]string{"source": "crates"})
 
 	counter.Inc()
@@ -56,6 +58,7 @@ func TestDeferredProviderBindsEarlyDeclarations(t *testing.T) {
 	histogram.Observe(1)
 	labelledBeforeBind.Inc()
 	gaugeVec.WithLabels(map[string]string{"source": "crates"}).Set(3)
+	histogramBeforeBind.Observe(1)
 	assert.Equal(t, -1.0, gatherValue(t, "deferred_early_counter"), "nothing is registered before the bind")
 
 	d.bind(NewPrometheusMetricsProvider("deferred", ""))
@@ -68,12 +71,15 @@ func TestDeferredProviderBindsEarlyDeclarations(t *testing.T) {
 	counterVec.WithLabels(map[string]string{"source": "npm"}).Add(4)
 	gaugeVec.WithLabels(map[string]string{"source": "crates"}).Set(9)
 	gaugeVec.WithLabels(map[string]string{"source": "crates"}).Sub(1)
+	histogramBeforeBind.Observe(2)
+	histogramVec.WithLabels(map[string]string{"source": "npm"}).Observe(3)
 
 	assert.Equal(t, 3.0, gatherValue(t, "deferred_early_counter"))
 	assert.Equal(t, 7.0, gatherValue(t, "deferred_early_gauge"))
 	assert.Equal(t, 1.0, gatherValue(t, "deferred_early_histogram"))
 	assert.Equal(t, 5.0, gatherValue(t, "deferred_early_counter_vec"))
 	assert.Equal(t, 8.0, gatherValue(t, "deferred_early_gauge_vec"))
+	assert.Equal(t, 2.0, gatherValue(t, "deferred_early_histogram_vec"))
 }
 
 func TestDeferredProviderDeclarationAfterBindIsLive(t *testing.T) {

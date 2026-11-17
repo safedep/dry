@@ -9,8 +9,8 @@ const KeyTypeWorkload = "workload"
 // application specific information that can be
 // passed across the API Guard to the API server.
 //
-// UserID is optional. A key with no user, such as a workload credential,
-// leaves it empty, and the key meta then holds no user_id.
+// UserID is optional. A workload key with no user has no user_id in its key
+// meta. Every other key keeps user_id in its key meta, even when it is empty.
 //
 // KeyType names the kind of key, as in "workload". It is empty for a tenant
 // API key. Binding is the binding secret of a workload credential. The

@@ -65,6 +65,10 @@ credentials hold no fixed API key: `GetAPIKey` returns `ErrWorkloadCredential`, 
   right before it calls `ExchangeToken`, and keeps no token.
 - **Refresh before expiry.** `RefreshingWorkloadCredential` exchanges again 5 minutes before the
   credential expires, or at half its life when it lives less than 10 minutes.
+- **Clock skew.** The server issues a credential for at least a minute. When the server expiry is
+  less than 30 seconds after the local clock, the local clock is ahead of the server. The holder then
+  logs a warning and uses the credential for 30 seconds by the local clock. Without this, every RPC
+  would run an exchange.
 - **One exchange at a time, outside the lock.** An RPC that holds a valid credential never waits for
   an exchange. An RPC with no valid credential waits for the exchange in flight, or for its own
   context.
@@ -74,7 +78,8 @@ credentials hold no fixed API key: `GetAPIKey` returns `ErrWorkloadCredential`, 
 - **Revoke at the end.** `Revoke` revokes the current credential, and the credential then refuses to
   exchange again. Revoke waits for an exchange in flight, or for its context. A failed `Revoke` keeps
   the credential, so a second call tries again. A credential that a refresh replaced expires within
-  the refresh margin.
+  the refresh margin. A `Resolve` after `Revoke` returns new credentials, so later work in the same
+  process exchanges again.
 - **The exchange is keyless.** The exchange connection sends no API key, no JWT and no tenant header.
   The tenant is in the request body. The resolver opens the connection for one call and closes it.
 - **The ID token request stays on GitHub.** The request URL must use https, and the source follows no

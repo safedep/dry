@@ -351,6 +351,11 @@ func TestDefaultCredentialResolver_WorkloadIdentity(t *testing.T) {
 		assert.Equal(t, []string{"acme.safedep.io"}, md.Get(tenantIDHeader))
 	}
 	assert.Equal(t, []string{"id-token-1", "id-token-2"}, fake.subjectTokens())
+
+	require.NoError(t, w.Revoke(context.Background()))
+	fresh, err := r.Resolve()
+	require.NoError(t, err)
+	assert.NotSame(t, creds, fresh, "a Resolve after Revoke returns new workload credentials")
 }
 
 // setOrUnsetEnv sets key to env[key], or unsets it when env has no key.

@@ -322,6 +322,36 @@ func TestRefreshingWorkloadCredential_RefreshesBeforeExpiry(t *testing.T) {
 	assert.Equal(t, 2, tokens.servedCount())
 }
 
+func TestRefreshingWorkloadCredential_LocalClockAheadOfServer(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	// The server expiry is a minute before the local clock, as when the local
+	// clock runs more than the credential life ahead of the server.
+	clock := &fakeClock{now: time.Unix(1_900_000_000, 0)}
+	fake := &fakeWorkloadIdentityServer{clock: clock, life: -time.Minute}
+	client := NewWorkloadExchangeClient(dialFakeWorkloadIdentityServer(t, startFakeWorkloadIdentityServer(t, fake)))
+
+	w := NewRefreshingWorkloadCredential(client, source, WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+	w.now = clock.Now
+	ctx := context.Background()
+
+	for range 10 {
+		token, err := w.AccessToken(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, "wc-1", token)
+	}
+	assert.Equal(t, 1, tokens.servedCount(), "the credential serves for the skew floor without a new exchange")
+
+	clock.Advance(workloadSkewFloor)
+	token, err := w.AccessToken(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wc-2", token, "the credential refreshes after the skew floor")
+	assert.Equal(t, 2, tokens.servedCount())
+}
+
 func TestRefreshingWorkloadCredential_KeepsCredentialWhenRefreshFails(t *testing.T) {
 	tokens := newFakeGitHubTokenEndpoint(t)
 	tokens.setGitHubActionsEnv(t)

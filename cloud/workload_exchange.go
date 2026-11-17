@@ -30,6 +30,11 @@ const (
 	// next one. Without it, every RPC against a denied or hung exchange fetches
 	// an ID token and calls ExchangeToken again.
 	workloadRefreshRetryDelay = 30 * time.Second
+
+	// workloadSkewFloor is the shortest local life of a credential. The
+	// server issues a credential for at least a minute, so a shorter life by
+	// the local clock means clock skew, not a short credential.
+	workloadSkewFloor = 30 * time.Second
 )
 
 // ErrWorkloadCredentialRevoked is returned by a RefreshingWorkloadCredential
@@ -205,6 +210,7 @@ type RefreshingWorkloadCredential struct {
 	mu         sync.Mutex
 	current    WorkloadCredential
 	obtainedAt time.Time
+	expiresAt  time.Time
 	inflight   *workloadExchange
 	lastErr    error
 	retryAfter time.Time
@@ -315,7 +321,7 @@ func (r *RefreshingWorkloadCredential) startExchange() *workloadExchange {
 			r.retryAfter = now.Add(workloadRefreshRetryDelay)
 			if r.validAt(now) {
 				log.Warnf("cloud: refresh of the workload credential failed, the current one stays valid until %s: %v",
-					r.current.ExpiresAt.Format(time.RFC3339), err)
+					r.expiresAt.Format(time.RFC3339), err)
 			}
 			exchange.err = err
 			return
@@ -325,6 +331,7 @@ func (r *RefreshingWorkloadCredential) startExchange() *workloadExchange {
 		// revoke it.
 		r.current = cred
 		r.obtainedAt = now
+		r.expiresAt = localExpiry(cred.ExpiresAt, now)
 		r.lastErr = nil
 		r.retryAfter = time.Time{}
 
@@ -339,15 +346,31 @@ func (r *RefreshingWorkloadCredential) startExchange() *workloadExchange {
 }
 
 func (r *RefreshingWorkloadCredential) validAt(now time.Time) bool {
-	return r.current.AccessToken != "" && now.Before(r.current.ExpiresAt)
+	return r.current.AccessToken != "" && now.Before(r.expiresAt)
 }
 
 func (r *RefreshingWorkloadCredential) refreshAt() time.Time {
 	margin := workloadRefreshMargin
-	if life := r.current.ExpiresAt.Sub(r.obtainedAt); life < 2*margin {
+	if life := r.expiresAt.Sub(r.obtainedAt); life < 2*margin {
 		margin = life / 2
 	}
-	return r.current.ExpiresAt.Add(-margin)
+	return r.expiresAt.Add(-margin)
+}
+
+// localExpiry returns the time, by the local clock, until which the holder
+// uses a credential. The server issues a credential for at least a minute, so
+// an expiry less than workloadSkewFloor after receipt means that the local
+// clock is ahead of the server. Without the floor, the credential is never
+// valid locally and every RPC runs an exchange.
+func localExpiry(serverExpiry, receivedAt time.Time) time.Time {
+	floor := receivedAt.Add(workloadSkewFloor)
+	if serverExpiry.After(floor) {
+		return serverExpiry
+	}
+	log.Warnf("cloud: the workload credential expires at %s, which is %s from the local clock. "+
+		"The local clock is ahead of SafeDep Cloud, so the credential is used for %s",
+		serverExpiry.Format(time.RFC3339), serverExpiry.Sub(receivedAt), workloadSkewFloor)
+	return floor
 }
 
 // Revoke revokes the current credential. Later calls to AccessToken fail with
@@ -387,6 +410,13 @@ func (r *RefreshingWorkloadCredential) Revoke(ctx context.Context) error {
 	}
 	r.mu.Unlock()
 	return nil
+}
+
+// isRevoked reports whether Revoke was called.
+func (r *RefreshingWorkloadCredential) isRevoked() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.revoked
 }
 
 // GetRequestMetadata implements credentials.PerRPCCredentials.

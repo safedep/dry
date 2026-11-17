@@ -152,7 +152,9 @@ func (r *defaultCredentialResolver) workloadCredential(tenant string, apiKeySet 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.workload != nil && r.workload.tenantDomain == tenant {
+	// A caller revokes the credential at the end of its work. A later Resolve
+	// in the same process gets a new credential, not the revoked one.
+	if r.workload != nil && r.workload.tenantDomain == tenant && !r.workload.workload.isRevoked() {
 		return r.workload, nil
 	}
 

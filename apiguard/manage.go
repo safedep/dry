@@ -121,17 +121,13 @@ func (c *managementClient) CreateKey(ctx context.Context, args KeyArgs) (ApiKey,
 
 func (c *managementClient) CreateCustomKey(ctx context.Context, key string, args KeyArgs) (ApiKey, error) {
 	sessionState := swagger.SessionState{
-		Tags:          args.Tags,
-		Alias:         args.Alias,
-		ApplyPolicyId: args.PolicyId,
-		ApplyPolicies: args.Policies,
-		Expires:       args.ExpiresAt.Unix(),
-		MetaData: map[string]interface{}{
-			"org_id":  args.Info.OrganizationID,
-			"team_id": args.Info.TeamID,
-			"user_id": args.Info.UserID,
-			"key_id":  args.Info.KeyID,
-		},
+		Tags:            args.Tags,
+		Alias:           args.Alias,
+		ApplyPolicyId:   args.PolicyId,
+		ApplyPolicies:   args.Policies,
+		Expires:         args.ExpiresAt.Unix(),
+		SessionLifetime: int64(args.SessionLifetime / time.Second),
+		MetaData:        keyMetaData(args.Info),
 	}
 
 	apiRes, res, err := c.tykClient.KeysApi.CreateCustomKey(ctx, key, &swagger.KeysApiCreateCustomKeyOpts{
@@ -229,4 +225,33 @@ func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {
 	}
 
 	return result, nil
+}
+
+// keyMetaData returns the session meta of a key. The gateway copies each
+// value into a header for the API server. A workload key has no user, so its
+// meta has no user_id and the API server cannot read a user for it. Every
+// other key keeps user_id, even when it is empty, because existing sessions
+// and callers expect the field. Only a workload key has key_type and binding.
+func keyMetaData(info KeyInfo) map[string]interface{} {
+	meta := map[string]interface{}{
+		"org_id":  info.OrganizationID,
+		"team_id": info.TeamID,
+		"key_id":  info.KeyID,
+	}
+
+	if info.UserID != "" || info.KeyType != KeyTypeWorkload {
+		meta["user_id"] = info.UserID
+	}
+
+	optional := map[string]string{
+		"key_type": info.KeyType,
+		"binding":  info.Binding,
+	}
+	for k, v := range optional {
+		if v != "" {
+			meta[k] = v
+		}
+	}
+
+	return meta
 }

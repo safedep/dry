@@ -3,12 +3,17 @@ package cloud
 import (
 	"context"
 	"errors"
+	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/safedep/dry/keychain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type memKeychain struct {
@@ -78,6 +83,7 @@ func TestDefaultCredentialResolver(t *testing.T) {
 		secrets    map[string]string
 		opts       []KeychainOption
 		wantErr    error
+		wantErrMsg []string
 		wantSecret string
 		wantTenant string
 		wantSource CredentialSource
@@ -99,10 +105,78 @@ func TestDefaultCredentialResolver(t *testing.T) {
 			wantErr:  ErrIncompleteCredentials,
 		},
 		{
-			name:     "tenant in environment without API key is incomplete",
+			name:     "tenant in environment without API key or workload identity is incomplete",
 			credType: CredentialTypeAPIKey,
 			env:      map[string]string{tenantEnvVar: "env.safedep.io"},
+			secrets:  map[string]string{"default/api_key": "sk-kc", "default/tenant_domain": "kc.safedep.io"},
 			wantErr:  ErrIncompleteCredentials,
+			wantErrMsg: []string{
+				"SAFEDEP_TENANT_ID is set but SAFEDEP_API_KEY is not",
+				"permissions: id-token: write",
+				"set SAFEDEP_API_KEY",
+			},
+		},
+		{
+			name:     "only one ID token variable keeps the detail in the hint",
+			credType: CredentialTypeAPIKey,
+			env: map[string]string{
+				tenantEnvVar:                         "env.safedep.io",
+				githubActionsIDTokenRequestURLEnvVar: "https://example.test/token",
+			},
+			wantErr: ErrIncompleteCredentials,
+			wantErrMsg: []string{
+				"permissions: id-token: write",
+				"ACTIONS_ID_TOKEN_REQUEST_URL is set but ACTIONS_ID_TOKEN_REQUEST_TOKEN is not",
+			},
+		},
+		{
+			name:     "API key set to empty with workload identity does not exchange",
+			credType: CredentialTypeAPIKey,
+			env: map[string]string{
+				apiKeyEnvVar:                           "",
+				tenantEnvVar:                           "env.safedep.io",
+				githubActionsIDTokenRequestURLEnvVar:   "https://example.test/token",
+				githubActionsIDTokenRequestTokenEnvVar: "request-token",
+			},
+			wantErr:    ErrIncompleteCredentials,
+			wantErrMsg: []string{"SAFEDEP_API_KEY is set to an empty value"},
+		},
+		{
+			name:     "API key in environment wins over workload identity",
+			credType: CredentialTypeAPIKey,
+			env: map[string]string{
+				apiKeyEnvVar:                           "sk-env",
+				tenantEnvVar:                           "env.safedep.io",
+				githubActionsIDTokenRequestURLEnvVar:   "https://example.test/token",
+				githubActionsIDTokenRequestTokenEnvVar: "request-token",
+			},
+			wantSecret: "sk-env",
+			wantTenant: "env.safedep.io",
+			wantSource: CredentialSourceEnvironment,
+		},
+		{
+			name:     "tenant in environment with workload identity selects the exchange",
+			credType: CredentialTypeAPIKey,
+			env: map[string]string{
+				tenantEnvVar:                           "env.safedep.io",
+				githubActionsIDTokenRequestURLEnvVar:   "https://example.test/token",
+				githubActionsIDTokenRequestTokenEnvVar: "request-token",
+			},
+			secrets:    map[string]string{"default/api_key": "sk-kc", "default/tenant_domain": "kc.safedep.io"},
+			wantTenant: "env.safedep.io",
+			wantSource: CredentialSourceWorkloadIdentity,
+		},
+		{
+			name:     "workload identity without tenant reads the keychain",
+			credType: CredentialTypeAPIKey,
+			env: map[string]string{
+				githubActionsIDTokenRequestURLEnvVar:   "https://example.test/token",
+				githubActionsIDTokenRequestTokenEnvVar: "request-token",
+			},
+			secrets:    map[string]string{"default/api_key": "sk-kc", "default/tenant_domain": "kc.safedep.io"},
+			wantSecret: "sk-kc",
+			wantTenant: "kc.safedep.io",
+			wantSource: CredentialSourceKeychain,
 		},
 		{
 			name:       "keychain when environment is empty",
@@ -173,8 +247,12 @@ func TestDefaultCredentialResolver(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{apiKeyEnvVar, tenantEnvVar, ProfileEnvVar} {
-				t.Setenv(k, tc.env[k])
+			// A key absent from tc.env is unset. A key with "" is set to empty.
+			for _, k := range []string{
+				apiKeyEnvVar, tenantEnvVar, ProfileEnvVar,
+				githubActionsIDTokenRequestURLEnvVar, githubActionsIDTokenRequestTokenEnvVar,
+			} {
+				setOrUnsetEnv(t, k, tc.env)
 			}
 
 			opts := append([]KeychainOption{WithKeychainHandle(newMemKeychain(tc.secrets))}, tc.opts...)
@@ -188,9 +266,24 @@ func TestDefaultCredentialResolver(t *testing.T) {
 				if !errors.Is(tc.wantErr, ErrIncompleteCredentials) {
 					assert.NotErrorIs(t, err, ErrIncompleteCredentials)
 				}
+				for _, msg := range tc.wantErrMsg {
+					assert.ErrorContains(t, err, msg)
+				}
 				return
 			}
 			require.NoError(t, err)
+
+			tenant, err := creds.GetTenantDomain()
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantTenant, tenant)
+			assert.Equal(t, tc.wantSource, creds.Source())
+
+			_, isWorkload := creds.Workload()
+			assert.Equal(t, tc.wantSource == CredentialSourceWorkloadIdentity, isWorkload)
+			if isWorkload {
+				// TestDefaultCredentialResolver_WorkloadIdentity runs the exchange.
+				return
+			}
 
 			var secret string
 			if tc.credType == CredentialTypeToken {
@@ -200,12 +293,78 @@ func TestDefaultCredentialResolver(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantSecret, secret)
-
-			tenant, err := creds.GetTenantDomain()
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantTenant, tenant)
-			assert.Equal(t, tc.wantSource, creds.Source())
 		})
+	}
+}
+
+func TestDefaultCredentialResolver_WorkloadIdentity(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+
+	clock := &fakeClock{now: time.Unix(1_900_000_000, 0)}
+	fake := &fakeWorkloadIdentityServer{clock: clock, life: time.Hour}
+	t.Setenv(envDataPlaneAddr, startFakeWorkloadIdentityServer(t, fake))
+	t.Setenv(insecureTransportEnvVar, "true")
+	setOrUnsetEnv(t, apiKeyEnvVar, nil)
+	t.Setenv(tenantEnvVar, "acme.safedep.io")
+
+	r, err := NewDefaultCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(newMemKeychain(nil)))
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, r.Close()) })
+
+	creds, err := r.Resolve()
+	require.NoError(t, err)
+	assert.Equal(t, CredentialSourceWorkloadIdentity, creds.Source())
+
+	again, err := r.Resolve()
+	require.NoError(t, err)
+	assert.Same(t, creds, again, "each Resolve returns the same workload credentials")
+
+	_, err = creds.GetAPIKey()
+	require.ErrorIs(t, err, ErrWorkloadCredential)
+	assert.ErrorIs(t, err, ErrInvalidCredentialType)
+
+	w, ok := creds.Workload()
+	require.True(t, ok)
+	w.now = clock.Now
+
+	client, err := NewDataPlaneClient("test", creds)
+	require.NoError(t, err)
+	t.Cleanup(func() { assert.NoError(t, client.Close()) })
+	assert.Equal(t, 0, tokens.servedCount(), "the first exchange runs on the first RPC")
+
+	call := func() {
+		err := client.Connection().Invoke(context.Background(), "/test.v1.TestService/Call", &emptypb.Empty{}, &emptypb.Empty{})
+		require.Equal(t, codes.Unimplemented, status.Code(err))
+	}
+
+	call()
+
+	// The connection outlives the first credential.
+	clock.Advance(time.Hour)
+	call()
+
+	require.Len(t, fake.calls, 2)
+	assert.Equal(t, []string{"wc-1"}, fake.calls[0].Get("authorization"))
+	assert.Equal(t, []string{"wc-2"}, fake.calls[1].Get("authorization"))
+	for _, md := range fake.calls {
+		assert.Equal(t, []string{"acme.safedep.io"}, md.Get(tenantIDHeader))
+	}
+	assert.Equal(t, []string{"id-token-1", "id-token-2"}, fake.subjectTokens())
+
+	require.NoError(t, w.Revoke(context.Background()))
+	fresh, err := r.Resolve()
+	require.NoError(t, err)
+	assert.NotSame(t, creds, fresh, "a Resolve after Revoke returns new workload credentials")
+}
+
+// setOrUnsetEnv sets key to env[key], or unsets it when env has no key.
+// t.Setenv first, so that the test restores the variable.
+func setOrUnsetEnv(t *testing.T, key string, env map[string]string) {
+	v, ok := env[key]
+	t.Setenv(key, v)
+	if !ok {
+		require.NoError(t, os.Unsetenv(key))
 	}
 }
 

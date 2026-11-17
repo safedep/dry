@@ -1,14 +1,30 @@
 package apiguard
 
+// KeyTypeWorkload is the KeyInfo.KeyType of a workload credential, a
+// short-lived key that a workload gets from a token exchange.
+const KeyTypeWorkload = "workload"
+
 // These are metadata associated with the API key
 // at the time of creation. This is useful to set
 // application specific information that can be
 // passed across the API Guard to the API server.
+//
+// UserID is optional. A workload key with no user has no user_id in its key
+// meta. Every other key keeps user_id in its key meta, even when it is empty.
+//
+// KeyType names the kind of key, as in "workload". It is empty for a tenant
+// API key. Binding is the binding secret of a workload credential. The
+// gateway sends it to the API server only on the routes that check it. It is
+// empty for a tenant API key. JSON leaves Binding out, so that a KeyInfo
+// that a caller marshals into a log or a reply never holds the secret. The
+// key meta that CreateCustomKey sends still holds it.
 type KeyInfo struct {
 	OrganizationID string `json:"org_id"`
 	TeamID         string `json:"team_id"`
 	UserID         string `json:"user_id"`
 	KeyID          string `json:"key_id"`
+	KeyType        string `json:"key_type,omitempty"`
+	Binding        string `json:"-"`
 }
 
 type TokenInfo struct {

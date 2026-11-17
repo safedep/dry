@@ -21,6 +21,8 @@ func TestSecurelyBuildFromHeader(t *testing.T) {
 		expectedXTeamId           string
 		expectedXUserId           string
 		expectedXKeyId            string
+		expectedXKeyType          string
+		expectedXKeyBinding       string
 
 		err error
 	}{
@@ -69,6 +71,23 @@ func TestSecurelyBuildFromHeader(t *testing.T) {
 			expectedXUserId:           "user",
 			expectedXKeyId:            "key",
 		},
+		{
+			name: "workload key type and binding",
+			header: map[string][]string{
+				headerTrustToken:     {"valid"},
+				headerMetaOrgId:      {"org"},
+				headerMetaTeamId:     {"team"},
+				headerMetaKeyId:      {"key"},
+				headerMetaKeyType:    {KeyTypeWorkload},
+				headerMetaKeyBinding: {"binding"},
+			},
+			tokens:              []string{"valid"},
+			expectedXOrgId:      "org",
+			expectedXTeamId:     "team",
+			expectedXKeyId:      "key",
+			expectedXKeyType:    KeyTypeWorkload,
+			expectedXKeyBinding: "binding",
+		},
 	}
 
 	for _, test := range cases {
@@ -93,6 +112,8 @@ func TestSecurelyBuildFromHeader(t *testing.T) {
 				assert.Equal(t, test.expectedXTeamId, ctx.Key.TeamID)
 				assert.Equal(t, test.expectedXUserId, ctx.Key.UserID)
 				assert.Equal(t, test.expectedXKeyId, ctx.Key.KeyID)
+				assert.Equal(t, test.expectedXKeyType, ctx.Key.KeyType)
+				assert.Equal(t, test.expectedXKeyBinding, ctx.Key.Binding)
 			}
 		})
 	}

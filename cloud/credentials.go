@@ -18,6 +18,11 @@ const (
 	CredentialSourceUnspecified CredentialSource = iota
 	CredentialSourceEnvironment
 	CredentialSourceKeychain
+
+	// CredentialSourceWorkloadIdentity marks a workload credential that the
+	// resolver gets from an exchange of the workload identity token, such as
+	// a GitHub Actions OIDC token.
+	CredentialSourceWorkloadIdentity
 )
 
 func (s CredentialSource) String() string {
@@ -26,6 +31,8 @@ func (s CredentialSource) String() string {
 		return "environment"
 	case CredentialSourceKeychain:
 		return "keychain"
+	case CredentialSourceWorkloadIdentity:
+		return "workload identity"
 	default:
 		return "unspecified"
 	}
@@ -40,6 +47,7 @@ type Credentials struct {
 	refreshToken string
 	tenantDomain string
 	source       CredentialSource
+	workload     *RefreshingWorkloadCredential
 }
 
 // NewAPIKeyCredential creates data plane credentials.
@@ -69,6 +77,30 @@ func NewTokenCredential(token, refreshToken, tenantDomain string) (*Credentials,
 	}, nil
 }
 
+// NewWorkloadIdentityCredential creates data plane credentials from a
+// workload credential that refreshes itself. The tenant is the tenant of w.
+func NewWorkloadIdentityCredential(w *RefreshingWorkloadCredential) (*Credentials, error) {
+	if w == nil {
+		return nil, fmt.Errorf("%w: workload credential is required", ErrMissingCredentials)
+	}
+	if w.TenantDomain() == "" {
+		return nil, fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
+	}
+	return &Credentials{
+		credType:     CredentialTypeAPIKey,
+		tenantDomain: w.TenantDomain(),
+		workload:     w,
+	}, nil
+}
+
+// Workload returns the workload credential of workload identity credentials.
+// Pass it to grpc.WithPerRPCCredentials on a connection that the caller
+// dials, and call its Revoke when the job ends. ok is false for other
+// credentials.
+func (c *Credentials) Workload() (w *RefreshingWorkloadCredential, ok bool) {
+	return c.workload, c.workload != nil
+}
+
 // IsDataPlane returns true if these are data plane credentials.
 func (c *Credentials) IsDataPlane() bool {
 	return c.credType == CredentialTypeAPIKey
@@ -80,9 +112,15 @@ func (c *Credentials) IsControlPlane() bool {
 }
 
 // GetAPIKey returns the API key. Errors if not data plane credentials.
+//
+// Workload identity credentials hold no fixed API key, so GetAPIKey returns
+// ErrWorkloadCredential for them and makes no network call. Use Workload.
 func (c *Credentials) GetAPIKey() (string, error) {
 	if !c.IsDataPlane() {
 		return "", fmt.Errorf("%w: not a data plane credential", ErrInvalidCredentialType)
+	}
+	if c.workload != nil {
+		return "", ErrWorkloadCredential
 	}
 	return c.apiKey, nil
 }

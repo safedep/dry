@@ -19,6 +19,10 @@ const (
 	envControlPlaneAddr = "SAFEDEP_CLOUD_CONTROL_ADDR"
 
 	tenantIDHeader = "x-tenant-id"
+
+	// insecureTransportEnvVar is the switch of the dry gRPC adapter for a
+	// connection without TLS, for local development.
+	insecureTransportEnvVar = "INSECURE_GRPC_CLIENT_USE_INSECURE_TRANSPORT"
 )
 
 // Client is a connection to SafeDep Cloud.
@@ -30,6 +34,10 @@ type Client struct {
 func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
 	if creds == nil {
 		return nil, fmt.Errorf("%w: credentials are required", ErrMissingCredentials)
+	}
+
+	if w, ok := creds.Workload(); ok {
+		return newWorkloadDataPlaneClient(name, w)
 	}
 
 	apiKey, err := creds.GetAPIKey()
@@ -53,6 +61,37 @@ func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+// newWorkloadDataPlaneClient connects with a per-RPC credential that
+// refreshes, instead of a fixed API key, so the connection outlives one
+// workload credential. The credential sends the tenant header itself.
+func newWorkloadDataPlaneClient(name string, w *RefreshingWorkloadCredential) (*Client, error) {
+	host, port := parseAddr(envOrDefault(envDataPlaneAddr, defaultDataPlaneAddr))
+
+	perRPC := grpc.WithPerRPCCredentials(&workloadPerRPCCredentials{
+		RefreshingWorkloadCredential: w,
+		requireTransportSecurity:     !insecureTransport(),
+	})
+
+	conn, err := drygrpc.GrpcClient(name, host, port, "", http.Header{}, []grpc.DialOption{perRPC})
+	if err != nil {
+		return nil, fmt.Errorf("cloud: failed to create data plane connection: %w", err)
+	}
+
+	return &Client{conn: conn}, nil
+}
+
+// workloadPerRPCCredentials follows the transport of the dry gRPC adapter.
+// gRPC refuses a credential that requires transport security on a connection
+// without TLS, which the adapter makes when insecureTransportEnvVar is set.
+type workloadPerRPCCredentials struct {
+	*RefreshingWorkloadCredential
+	requireTransportSecurity bool
+}
+
+func (c *workloadPerRPCCredentials) RequireTransportSecurity() bool {
+	return c.requireTransportSecurity
 }
 
 // NewControlPlaneClient creates a connection to cloud.safedep.io (JWT auth).
@@ -112,4 +151,8 @@ func envOrDefault(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+func insecureTransport() bool {
+	return os.Getenv(insecureTransportEnvVar) == "true"
 }

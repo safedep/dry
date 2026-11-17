@@ -1,9 +1,6 @@
 package cloud
 
-import (
-	"context"
-	"fmt"
-)
+import "fmt"
 
 // CredentialType identifies the authentication plane.
 type CredentialType int
@@ -116,16 +113,14 @@ func (c *Credentials) IsControlPlane() bool {
 
 // GetAPIKey returns the API key. Errors if not data plane credentials.
 //
-// For workload identity credentials it returns the current access token, and
-// exchanges first when it has none or the token is close to expiry. That
-// token expires: a long-lived connection uses Workload as its per-RPC
-// credential instead.
+// Workload identity credentials hold no fixed API key, so GetAPIKey returns
+// ErrWorkloadCredential for them and makes no network call. Use Workload.
 func (c *Credentials) GetAPIKey() (string, error) {
 	if !c.IsDataPlane() {
 		return "", fmt.Errorf("%w: not a data plane credential", ErrInvalidCredentialType)
 	}
 	if c.workload != nil {
-		return c.workload.AccessToken(context.Background())
+		return "", ErrWorkloadCredential
 	}
 	return c.apiKey, nil
 }

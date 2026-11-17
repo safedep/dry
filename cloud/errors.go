@@ -17,4 +17,11 @@ var (
 	// credential pair, for example an API key with no tenant. It wraps
 	// ErrMissingCredentials, so existing errors.Is checks still match.
 	ErrIncompleteCredentials = fmt.Errorf("cloud: incomplete credentials: %w", ErrMissingCredentials)
+
+	// ErrWorkloadCredential is returned by Credentials.GetAPIKey for
+	// workload identity credentials. They hold no fixed API key: the access
+	// token comes from an exchange and expires. Use Credentials.Workload. It
+	// wraps ErrInvalidCredentialType.
+	ErrWorkloadCredential = fmt.Errorf("cloud: workload identity credentials have no fixed API key, use Workload: %w",
+		ErrInvalidCredentialType)
 )

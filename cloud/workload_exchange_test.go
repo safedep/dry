@@ -90,9 +90,12 @@ func (f *fakeGitHubTokenEndpoint) servedCount() int {
 
 // setGitHubActionsEnv makes the environment of a GitHub Actions job with
 // "id-token: write" that gets its tokens from f.
+// The fake serves http, which the source accepts only with the switch for
+// local development.
 func (f *fakeGitHubTokenEndpoint) setGitHubActionsEnv(t *testing.T) {
 	t.Setenv(githubActionsIDTokenRequestURLEnvVar, f.URL+"/token?api-version=2.0")
 	t.Setenv(githubActionsIDTokenRequestTokenEnvVar, testIDTokenRequestToken)
+	t.Setenv(insecureTransportEnvVar, "true")
 }
 
 // fakeWorkloadIdentityServer stands in for control-tower. It issues a new
@@ -104,18 +107,40 @@ type fakeWorkloadIdentityServer struct {
 	clock *fakeClock
 	life  time.Duration
 
-	mu        sync.Mutex
-	exchanges []*controltowerv1.ExchangeTokenRequest
-	revokes   []*controltowerv1.RevokeTokenRequest
-	calls     []metadata.MD
+	// gate, when set, holds each exchange until the test closes it. started
+	// gets a value when an exchange reaches the gate.
+	gate    chan struct{}
+	started chan struct{}
+
+	mu           sync.Mutex
+	deny         bool
+	revokeFails  bool
+	exchanges    []*controltowerv1.ExchangeTokenRequest
+	revokes      []*controltowerv1.RevokeTokenRequest
+	revokeErrors int
+	calls        []metadata.MD
 }
 
 func (s *fakeWorkloadIdentityServer) ExchangeToken(_ context.Context, req *controltowerv1.ExchangeTokenRequest) (*controltowerv1.ExchangeTokenResponse, error) {
+	s.mu.Lock()
+	gate, started := s.gate, s.started
+	s.mu.Unlock()
+	if gate != nil {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-gate
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.exchanges = append(s.exchanges, req)
 	n := len(s.exchanges)
+	if s.deny {
+		return nil, status.Error(codes.PermissionDenied, "no workload trust rule gives TOOL to acme/web")
+	}
 	return &controltowerv1.ExchangeTokenResponse{
 		AccessToken:     fmt.Sprintf("wc-%d", n),
 		ExpiresAt:       timestamppb.New(s.clock.Now().Add(s.life)),
@@ -130,6 +155,10 @@ func (s *fakeWorkloadIdentityServer) ExchangeToken(_ context.Context, req *contr
 func (s *fakeWorkloadIdentityServer) RevokeToken(_ context.Context, req *controltowerv1.RevokeTokenRequest) (*controltowerv1.RevokeTokenResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.revokeFails {
+		s.revokeErrors++
+		return nil, status.Error(codes.Unavailable, "try again")
+	}
 	s.revokes = append(s.revokes, req)
 	return &controltowerv1.RevokeTokenResponse{}, nil
 }
@@ -140,6 +169,27 @@ func (s *fakeWorkloadIdentityServer) recordCall(_ any, stream grpc.ServerStream)
 	defer s.mu.Unlock()
 	s.calls = append(s.calls, md)
 	return status.Error(codes.Unimplemented, "test service")
+}
+
+func (s *fakeWorkloadIdentityServer) exchangeCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.exchanges)
+}
+
+func (s *fakeWorkloadIdentityServer) set(fn func(s *fakeWorkloadIdentityServer)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	fn(s)
+}
+
+// waitForExchange waits for the exchange that w runs in the background.
+func waitForExchange(t *testing.T, w *RefreshingWorkloadCredential) {
+	w.mu.Lock()
+	exchange := w.inflight
+	w.mu.Unlock()
+	require.NotNil(t, exchange, "no exchange in flight")
+	<-exchange.done
 }
 
 func (s *fakeWorkloadIdentityServer) subjectTokens() []string {
@@ -211,8 +261,6 @@ func TestWorkloadExchangeClient_Exchange(t *testing.T) {
 		CredentialID:    "exchange-1",
 		DisplayIdentity: "github:acme/web@refs/heads/main run 987/1",
 	}, cred)
-	assert.NotContains(t, cred.String(), "wc-1")
-	assert.NotContains(t, fmt.Sprintf("%v", cred), "wc-1")
 }
 
 func TestWorkloadExchangeClient_FreshIDTokenForEachExchange(t *testing.T) {
@@ -259,7 +307,12 @@ func TestRefreshingWorkloadCredential_RefreshesBeforeExpiry(t *testing.T) {
 	clock.Advance(2 * time.Second)
 	token, err = w.AccessToken(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, "wc-2", token, "the credential is within the refresh margin")
+	assert.Equal(t, "wc-1", token, "the valid credential serves while the refresh runs")
+	waitForExchange(t, w)
+
+	token, err = w.AccessToken(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wc-2", token, "the refresh within the margin replaced the credential")
 
 	assert.Equal(t, []string{"id-token-1", "id-token-2"}, fake.subjectTokens())
 	assert.Equal(t, 2, tokens.servedCount())
@@ -290,11 +343,16 @@ func TestRefreshingWorkloadCredential_KeepsCredentialWhenRefreshFails(t *testing
 	token, err = w.AccessToken(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, "wc-1", token, "the current credential stays until it expires")
+	waitForExchange(t, w)
+
+	token, err = w.AccessToken(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wc-1", token, "the current credential stays after the refresh failed")
 
 	clock.Advance(time.Minute)
 	_, err = w.AccessToken(ctx)
 	assert.ErrorContains(t, err, "GitHub Actions ID token request returned status 403")
-	assert.Len(t, fake.exchanges, 1)
+	assert.Equal(t, 1, fake.exchangeCount())
 }
 
 func TestRefreshingWorkloadCredential_Revoke(t *testing.T) {
@@ -320,4 +378,199 @@ func TestRefreshingWorkloadCredential_Revoke(t *testing.T) {
 	_, err = w.AccessToken(ctx)
 	assert.ErrorIs(t, err, ErrWorkloadCredentialRevoked)
 	assert.Len(t, fake.exchanges, 1, "a revoked credential does not exchange again")
+}
+
+// withinTestTimeout fails the test when fn blocks. A blocked fn means a caller
+// waits behind an exchange that the test holds at the gate.
+func withinTestTimeout(t *testing.T, fn func()) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		require.FailNow(t, "the call blocked behind the exchange in flight")
+	}
+}
+
+func TestRefreshingWorkloadCredential_ConcurrentCallsDuringRefresh(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	clock := &fakeClock{now: time.Unix(1_900_000_000, 0)}
+	fake := &fakeWorkloadIdentityServer{clock: clock, life: time.Hour}
+	client := NewWorkloadExchangeClient(dialFakeWorkloadIdentityServer(t, startFakeWorkloadIdentityServer(t, fake)))
+
+	w := NewRefreshingWorkloadCredential(client, source, WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+	w.now = clock.Now
+	ctx := context.Background()
+
+	token, err := w.AccessToken(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "wc-1", token)
+
+	// The refresh hangs at the gate, as a slow exchange does.
+	gate, started := make(chan struct{}), make(chan struct{}, 1)
+	openGate := sync.OnceFunc(func() { close(gate) })
+	t.Cleanup(openGate)
+	fake.set(func(s *fakeWorkloadIdentityServer) { s.gate, s.started = gate, started })
+	clock.Advance(time.Hour - time.Minute)
+
+	const callers = 8
+	got := make(chan string, callers)
+	withinTestTimeout(t, func() {
+		var wg sync.WaitGroup
+		for range callers {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				token, err := w.AccessToken(ctx)
+				assert.NoError(t, err)
+				got <- token
+			}()
+		}
+		wg.Wait()
+	})
+	close(got)
+	for token := range got {
+		assert.Equal(t, "wc-1", token, "a valid credential does not wait for the refresh")
+	}
+
+	<-started
+	openGate()
+	waitForExchange(t, w)
+
+	token, err = w.AccessToken(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wc-2", token)
+	assert.Equal(t, 2, fake.exchangeCount(), "the callers shared one refresh")
+}
+
+func TestRefreshingWorkloadCredential_CallerWithoutCredentialHonoursContext(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	gate, started := make(chan struct{}), make(chan struct{}, 1)
+	fake := &fakeWorkloadIdentityServer{clock: &fakeClock{now: time.Now()}, life: time.Hour, gate: gate, started: started}
+	client := NewWorkloadExchangeClient(dialFakeWorkloadIdentityServer(t, startFakeWorkloadIdentityServer(t, fake)))
+
+	openGate := sync.OnceFunc(func() { close(gate) })
+	t.Cleanup(openGate)
+
+	w := NewRefreshingWorkloadCredential(client, source, WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+
+	first := make(chan string, 1)
+	go func() {
+		token, err := w.AccessToken(context.Background())
+		assert.NoError(t, err)
+		first <- token
+	}()
+	<-started
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	withinTestTimeout(t, func() {
+		_, err := w.AccessToken(cancelled)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+
+	openGate()
+	assert.Equal(t, "wc-1", <-first)
+	assert.Equal(t, 1, fake.exchangeCount())
+}
+
+func TestRefreshingWorkloadCredential_FailedExchangeHoldsForRetryDelay(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	clock := &fakeClock{now: time.Unix(1_900_000_000, 0)}
+	fake := &fakeWorkloadIdentityServer{clock: clock, life: time.Hour, deny: true}
+	client := NewWorkloadExchangeClient(dialFakeWorkloadIdentityServer(t, startFakeWorkloadIdentityServer(t, fake)))
+
+	w := NewRefreshingWorkloadCredential(client, source, WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+	w.now = clock.Now
+	ctx := context.Background()
+
+	_, first := w.AccessToken(ctx)
+	require.Error(t, first)
+	assert.Equal(t, codes.PermissionDenied, status.Code(first))
+
+	for range 3 {
+		_, err := w.AccessToken(ctx)
+		assert.Same(t, first, err, "callers within the delay share the error of the failed exchange")
+	}
+	assert.Equal(t, 1, fake.exchangeCount())
+	assert.Equal(t, 1, tokens.servedCount())
+
+	clock.Advance(workloadRefreshRetryDelay)
+	fake.set(func(s *fakeWorkloadIdentityServer) { s.deny = false })
+
+	token, err := w.AccessToken(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wc-2", token, "the exchange runs again after the delay")
+	assert.Equal(t, 2, tokens.servedCount())
+}
+
+func TestRefreshingWorkloadCredential_RevokeRetriesAfterFailure(t *testing.T) {
+	tokens := newFakeGitHubTokenEndpoint(t)
+	tokens.setGitHubActionsEnv(t)
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	fake := &fakeWorkloadIdentityServer{clock: &fakeClock{now: time.Now()}, life: time.Hour, revokeFails: true}
+	client := NewWorkloadExchangeClient(dialFakeWorkloadIdentityServer(t, startFakeWorkloadIdentityServer(t, fake)))
+
+	w := NewRefreshingWorkloadCredential(client, source, WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+	ctx := context.Background()
+
+	_, err = w.AccessToken(ctx)
+	require.NoError(t, err)
+
+	err = w.Revoke(ctx)
+	require.Equal(t, codes.Unavailable, status.Code(err))
+
+	_, err = w.AccessToken(ctx)
+	assert.ErrorIs(t, err, ErrWorkloadCredentialRevoked, "a failed revoke still stops the credential")
+
+	fake.set(func(s *fakeWorkloadIdentityServer) { s.revokeFails = false })
+	require.NoError(t, w.Revoke(ctx))
+
+	require.Len(t, fake.revokes, 1)
+	assert.Equal(t, "wc-1", fake.revokes[0].GetAccessToken(), "the retry revokes the same credential")
+	assert.Equal(t, 1, fake.exchangeCount())
+}
+
+func TestWorkloadSecretsStayOutOfFormattedOutput(t *testing.T) {
+	t.Setenv(githubActionsIDTokenRequestURLEnvVar, "https://pipelines.example.test/token")
+	t.Setenv(githubActionsIDTokenRequestTokenEnvVar, "secret-request-token")
+	source, err := NewGitHubActionsSource()
+	require.NoError(t, err)
+
+	w := NewRefreshingWorkloadCredential(NewWorkloadExchangeClient(nil), source,
+		WorkloadExchangeRequest{TenantDomain: "acme.safedep.io"})
+	w.current = WorkloadCredential{AccessToken: "secret-access-token", TenantDomain: "acme.safedep.io"}
+
+	values := map[string]any{
+		"WorkloadToken":                 WorkloadToken{Value: "secret-id-token"},
+		"WorkloadCredential":            WorkloadCredential{AccessToken: "secret-access-token"},
+		"*RefreshingWorkloadCredential": w,
+		"*githubActionsSource":          source,
+	}
+
+	for name, v := range values {
+		for _, verb := range []string{"%v", "%+v", "%#v", "%s"} {
+			out := fmt.Sprintf(verb, v)
+			for _, secret := range []string{"secret-id-token", "secret-access-token", "secret-request-token"} {
+				assert.NotContains(t, out, secret, "%s formatted with %s", name, verb)
+			}
+		}
+	}
 }

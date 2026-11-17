@@ -82,3 +82,11 @@ func TestCreateCustomKeySessionState(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyInfoJSONLeavesOutBinding(t *testing.T) {
+	out, err := json.Marshal(KeyInfo{KeyID: "exchange", KeyType: KeyTypeWorkload, Binding: "binding-secret"})
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(out), "binding-secret")
+	assert.Contains(t, string(out), `"key_type":"workload"`)
+}

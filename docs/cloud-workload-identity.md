@@ -10,16 +10,24 @@ credential. The API is `WorkloadIdentityService` in safedep/api. The design is
 `cloud.NewDefaultCredentialResolver(cloud.CredentialTypeAPIKey)` reads the environment in this order:
 
 1. `SAFEDEP_API_KEY` with `SAFEDEP_TENANT_ID`: the API key. An explicit API key always wins.
-2. `SAFEDEP_TENANT_ID` with a workload identity in the environment: the exchange. The credentials
-   have the source `CredentialSourceWorkloadIdentity`.
-3. `SAFEDEP_TENANT_ID` alone: `ErrIncompleteCredentials`. The message tells the user to give the job
-   `permissions: id-token: write`, or to set `SAFEDEP_API_KEY`.
-4. Neither variable: the keychain profile, as before.
+2. `SAFEDEP_TENANT_ID` with a workload identity in the environment, and `SAFEDEP_API_KEY` not set:
+   the exchange. The credentials have the source `CredentialSourceWorkloadIdentity`.
+3. `SAFEDEP_TENANT_ID` with a workload identity, and `SAFEDEP_API_KEY` set to an empty value:
+   `ErrIncompleteCredentials`. A workflow that maps a missing secret to `SAFEDEP_API_KEY` sets it to
+   empty, and the resolver does not hide that with an exchange.
+4. `SAFEDEP_TENANT_ID` with no workload identity: `ErrIncompleteCredentials`. The message tells the
+   user to give the job `permissions: id-token: write`, or to set `SAFEDEP_API_KEY`. When only one of
+   the two GitHub variables is set, the message names the missing one.
+5. Neither variable: the keychain profile, as before.
 
 A GitHub Actions job has a workload identity when GitHub sets `ACTIONS_ID_TOKEN_REQUEST_URL` and
 `ACTIONS_ID_TOKEN_REQUEST_TOKEN`. GitHub sets both for a job with `id-token: write`.
 
-`Resolve` makes no network call. The first exchange runs on the first RPC.
+`Resolve` makes no network call. The first exchange runs on the first RPC. Each `Resolve` of one
+resolver returns the same workload identity credentials.
+
+`NewEnvCredentialResolver` does not select a workload identity. It reads only `SAFEDEP_API_KEY` and
+`SAFEDEP_TENANT_ID`.
 
 ## Use in a tool
 
@@ -46,8 +54,9 @@ if w, ok := creds.Workload(); ok {
 ```
 
 `NewDataPlaneClient` sends the workload credential as a per-RPC credential that refreshes. A tool that
-dials its own connection passes `creds.Workload()` to `grpc.WithPerRPCCredentials`. `GetAPIKey`
-returns the current access token, which expires, so use it only for a short-lived connection.
+dials its own connection passes `creds.Workload()` to `grpc.WithPerRPCCredentials`. Workload identity
+credentials hold no fixed API key: `GetAPIKey` returns `ErrWorkloadCredential`, which wraps
+`ErrInvalidCredentialType`, and makes no network call.
 
 ## Rules
 
@@ -55,15 +64,24 @@ returns the current access token, which expires, so use it only for a short-live
   Actions ID token lives 5 minutes. `WorkloadExchangeClient.Exchange` gets the token from the source
   right before it calls `ExchangeToken`, and keeps no token.
 - **Refresh before expiry.** `RefreshingWorkloadCredential` exchanges again 5 minutes before the
-  credential expires, or at half its life when it lives less than 10 minutes. A refresh that fails
-  keeps the current credential until it expires, and tries again after 30 seconds. So a job that can
-  no longer get an ID token works to the end of the credential life.
+  credential expires, or at half its life when it lives less than 10 minutes.
+- **One exchange at a time, outside the lock.** An RPC that holds a valid credential never waits for
+  an exchange. An RPC with no valid credential waits for the exchange in flight, or for its own
+  context.
+- **A failed exchange holds for 30 seconds.** In that time an RPC with no valid credential gets the
+  same error, and no new exchange starts. An RPC with a valid credential keeps it until it expires. So
+  a job that can no longer get an ID token works to the end of the credential life.
 - **Revoke at the end.** `Revoke` revokes the current credential, and the credential then refuses to
-  exchange again. A credential that a refresh replaced expires within the refresh margin.
+  exchange again. Revoke waits for an exchange in flight, or for its context. A failed `Revoke` keeps
+  the credential, so a second call tries again. A credential that a refresh replaced expires within
+  the refresh margin.
 - **The exchange is keyless.** The exchange connection sends no API key, no JWT and no tenant header.
-  The tenant is in the request body.
-- **No secret in a log.** Do not log `WorkloadToken.Value` or `WorkloadCredential.AccessToken`.
-  `WorkloadCredential.String` leaves out the access token.
+  The tenant is in the request body. The resolver opens the connection for one call and closes it.
+- **The ID token request stays on GitHub.** The request URL must use https, and the source follows no
+  redirect, because the request carries the request token.
+- **No secret in a log.** `WorkloadToken`, `WorkloadCredential`, `RefreshingWorkloadCredential` and
+  the GitHub source leave their secrets out of `%v`, `%+v`, `%#v` and `%s`. JSON leaves out
+  `apiguard.KeyInfo.Binding`.
 
 ## Add a platform
 

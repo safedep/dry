@@ -36,10 +36,20 @@ const (
 var ErrNoWorkloadIdentity = errors.New("cloud: no workload identity in the environment")
 
 // WorkloadToken is a token that a platform signs for the running workload.
-// Do not write Value to a log.
+// Do not write Value to a log. String and GoString leave it out.
 type WorkloadToken struct {
 	Value string
 	Type  controltowerv1.SubjectTokenType
+}
+
+// String describes the token without its value.
+func (t WorkloadToken) String() string {
+	return fmt.Sprintf("workload token of type %s", t.Type)
+}
+
+// GoString keeps the token value out of %#v.
+func (t WorkloadToken) GoString() string {
+	return t.String()
 }
 
 // WorkloadIdentitySource gets a token that a platform signs for the running
@@ -52,55 +62,93 @@ type WorkloadIdentitySource interface {
 }
 
 // DetectWorkloadIdentitySource returns the workload identity source of the
-// environment. It returns ErrNoWorkloadIdentity when the environment has
-// none. It makes no network call.
+// environment. It returns an error that wraps ErrNoWorkloadIdentity when the
+// environment has none. When a platform sets only part of its variables, the
+// error names the missing one. It makes no network call.
 func DetectWorkloadIdentitySource() (WorkloadIdentitySource, error) {
 	detectors := []func() (WorkloadIdentitySource, error){
 		NewGitHubActionsSource,
 	}
 
+	none := ErrNoWorkloadIdentity
 	for _, detect := range detectors {
 		source, err := detect()
-		if errors.Is(err, ErrNoWorkloadIdentity) {
-			continue
+		if !errors.Is(err, ErrNoWorkloadIdentity) {
+			return source, err
 		}
-		return source, err
+		// A wrapped error names the missing variable. Keep it for the caller.
+		if err != ErrNoWorkloadIdentity {
+			none = err
+		}
 	}
 
-	return nil, ErrNoWorkloadIdentity
+	return nil, none
 }
 
 type githubActionsSource struct {
-	requestURL   string
+	requestURL   *url.URL
 	requestToken string
 	httpClient   *http.Client
 }
 
 // NewGitHubActionsSource returns the source of GitHub Actions OIDC ID tokens.
-// It reads ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN,
-// and returns ErrNoWorkloadIdentity when either is not set.
+// It reads ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN.
+// It returns ErrNoWorkloadIdentity when neither is set, and an error that
+// wraps ErrNoWorkloadIdentity and names the missing one when one is set.
+//
+// The request URL must use https, because the request carries the request
+// token. INSECURE_GRPC_CLIENT_USE_INSECURE_TRANSPORT, the switch for local
+// development, also allows http.
 func NewGitHubActionsSource() (WorkloadIdentitySource, error) {
 	requestURL := os.Getenv(githubActionsIDTokenRequestURLEnvVar)
 	requestToken := os.Getenv(githubActionsIDTokenRequestTokenEnvVar)
-	if requestURL == "" || requestToken == "" {
-		return nil, fmt.Errorf("%w: %s and %s are not both set", ErrNoWorkloadIdentity,
+
+	switch {
+	case requestURL == "" && requestToken == "":
+		return nil, ErrNoWorkloadIdentity
+	case requestURL == "":
+		return nil, fmt.Errorf("%w: %s is set but %s is not", ErrNoWorkloadIdentity,
+			githubActionsIDTokenRequestTokenEnvVar, githubActionsIDTokenRequestURLEnvVar)
+	case requestToken == "":
+		return nil, fmt.Errorf("%w: %s is set but %s is not", ErrNoWorkloadIdentity,
 			githubActionsIDTokenRequestURLEnvVar, githubActionsIDTokenRequestTokenEnvVar)
 	}
 
+	u, err := url.Parse(requestURL)
+	if err != nil {
+		return nil, fmt.Errorf("cloud: parse %s: %w", githubActionsIDTokenRequestURLEnvVar, err)
+	}
+	allowed := u.Scheme == "https" || (u.Scheme == "http" && insecureTransport())
+	if !allowed {
+		return nil, fmt.Errorf("cloud: %s must use https, not %q", githubActionsIDTokenRequestURLEnvVar, u.Scheme)
+	}
+
 	return &githubActionsSource{
-		requestURL:   requestURL,
+		requestURL:   u,
 		requestToken: requestToken,
-		httpClient:   &http.Client{Timeout: githubActionsIDTokenTimeout},
+		httpClient: &http.Client{
+			Timeout: githubActionsIDTokenTimeout,
+			// A redirect would send the request token to another host.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }
 
-func (s *githubActionsSource) Token(ctx context.Context, audience string) (WorkloadToken, error) {
-	u, err := url.Parse(s.requestURL)
-	if err != nil {
-		return WorkloadToken{}, fmt.Errorf("cloud: parse %s: %w", githubActionsIDTokenRequestURLEnvVar, err)
-	}
+// String describes the source without its request token.
+func (s *githubActionsSource) String() string {
+	return "GitHub Actions workload identity source"
+}
 
+// GoString keeps the request token out of %#v.
+func (s *githubActionsSource) GoString() string {
+	return s.String()
+}
+
+func (s *githubActionsSource) Token(ctx context.Context, audience string) (WorkloadToken, error) {
 	// The request URL already carries a query, such as api-version.
+	u := *s.requestURL
 	q := u.Query()
 	q.Set("audience", audience)
 	u.RawQuery = q.Encode()

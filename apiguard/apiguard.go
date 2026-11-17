@@ -15,14 +15,16 @@ const KeyTypeWorkload = "workload"
 // KeyType names the kind of key, as in "workload". It is empty for a tenant
 // API key. Binding is the binding secret of a workload credential. The
 // gateway sends it to the API server only on the routes that check it. It is
-// empty for a tenant API key.
+// empty for a tenant API key. JSON leaves Binding out, so that a KeyInfo
+// that a caller marshals into a log or a reply never holds the secret. The
+// key meta that CreateCustomKey sends still holds it.
 type KeyInfo struct {
 	OrganizationID string `json:"org_id"`
 	TeamID         string `json:"team_id"`
 	UserID         string `json:"user_id"`
 	KeyID          string `json:"key_id"`
 	KeyType        string `json:"key_type,omitempty"`
-	Binding        string `json:"binding,omitempty"`
+	Binding        string `json:"-"`
 }
 
 type TokenInfo struct {

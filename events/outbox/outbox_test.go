@@ -530,3 +530,36 @@ func indexOf(d *fakeDest, id string) int {
 	}
 	return -1
 }
+
+// The drain counts the outstanding deliveries of one record after each publish,
+// and the cleanup deletes the deliveries of expired records. Both look up
+// deliveries by outbox_id alone, so each must seek in an index that starts with
+// outbox_id. Without one they scan the whole table, once per delivered event.
+func TestDeliveryLookupsByOutboxIDUseAnIndex(t *testing.T) {
+	t.Parallel()
+	store := newStore(t)
+
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{
+			name:  "drain count of outstanding deliveries",
+			query: "SELECT count(*) FROM event_outbox_delivery WHERE outbox_id = 1 AND published_at IS NULL",
+		},
+		{
+			name:  "cleanup delete of a record's deliveries",
+			query: "DELETE FROM event_outbox_delivery WHERE outbox_id IN (1, 2)",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var plan []struct {
+				Detail string `gorm:"column:detail"`
+			}
+			require.NoError(t, store.gdb.Raw("EXPLAIN QUERY PLAN "+tc.query).Scan(&plan).Error)
+			require.NotEmpty(t, plan)
+			assert.Contains(t, plan[0].Detail, "USING INDEX idx_event_outbox_delivery_outbox_id")
+		})
+	}
+}

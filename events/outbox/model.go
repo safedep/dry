@@ -33,7 +33,11 @@ type Delivery struct {
 	ID uint64 `gorm:"primaryKey;autoIncrement"`
 
 	// (outbox_id, destination) is unique: one delivery per destination per record.
-	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:3"`
+	// Both composite indexes start with destination, so a lookup by outbox_id
+	// alone cannot seek in them. idx_event_outbox_delivery_outbox_id serves the
+	// drain's per-record count of outstanding deliveries and the cleanup's
+	// delete by record. Without it, each of them scans the whole table.
+	OutboxID    uint64 `gorm:"column:outbox_id;uniqueIndex:idx_event_outbox_delivery_unique,priority:2;index:idx_event_outbox_delivery_pending,priority:3;index:idx_event_outbox_delivery_outbox_id"`
 	Destination string `gorm:"column:destination;uniqueIndex:idx_event_outbox_delivery_unique,priority:1;index:idx_event_outbox_delivery_pending,priority:1"`
 
 	// Subject is denormalized from the Record so the drain can exclude blocked

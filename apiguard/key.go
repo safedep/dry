@@ -19,6 +19,12 @@ type KeyArgs struct {
 	PolicyId  string
 	Policies  []string
 	ExpiresAt time.Time
+
+	// SessionLifetime is how long the gateway keeps the session of the key.
+	// Zero leaves the lifetime to the API definition. Set it to the life of a
+	// short-lived key, so that the gateway removes the session when the key
+	// expires.
+	SessionLifetime time.Duration
 }
 
 type ApiKey struct {

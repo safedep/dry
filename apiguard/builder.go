@@ -22,6 +22,8 @@ const (
 	headerMetaTeamId         = "X-Team-Id"
 	headerMetaUserId         = "X-User-Id"
 	headerMetaKeyId          = "X-Key-Id"
+	headerMetaKeyType        = "X-Key-Type"
+	headerMetaKeyBinding     = "X-Key-Binding"
 )
 
 func EmailFromTokenHeaderName() string {
@@ -70,6 +72,8 @@ func buildFromHeader(header http.Header) (*Context, error) {
 			TeamID:         header.Get(headerMetaTeamId),
 			UserID:         header.Get(headerMetaUserId),
 			KeyID:          header.Get(headerMetaKeyId),
+			KeyType:        header.Get(headerMetaKeyType),
+			Binding:        header.Get(headerMetaKeyBinding),
 		},
 		Token: TokenInfo{
 			Email:         header.Get(headerTokenEmail),

@@ -183,13 +183,17 @@ func (s *fakeWorkloadIdentityServer) set(fn func(s *fakeWorkloadIdentityServer))
 	fn(s)
 }
 
-// waitForExchange waits for the exchange that w runs in the background.
+// waitForExchange waits for the exchange that the last AccessToken call
+// started in the background. AccessToken sets inflight before it returns, and
+// the exchange clears it only when it ends, so nil means the exchange is done.
 func waitForExchange(t *testing.T, w *RefreshingWorkloadCredential) {
+	t.Helper()
 	w.mu.Lock()
 	exchange := w.inflight
 	w.mu.Unlock()
-	require.NotNil(t, exchange, "no exchange in flight")
-	<-exchange.done
+	if exchange != nil {
+		<-exchange.done
+	}
 }
 
 func (s *fakeWorkloadIdentityServer) subjectTokens() []string {

@@ -228,9 +228,10 @@ func (c *managementClient) ListPolicies(ctx context.Context) ([]Policy, error) {
 }
 
 // keyMetaData returns the session meta of a key. The gateway copies each
-// value into a header for the API server. A key with no user, such as a
-// workload credential, has no user_id, so the API server cannot read a user
-// for it. A tenant API key has no key_type and no binding.
+// value into a header for the API server. A workload key has no user, so its
+// meta has no user_id and the API server cannot read a user for it. Every
+// other key keeps user_id, even when it is empty, because existing sessions
+// and callers expect the field. Only a workload key has key_type and binding.
 func keyMetaData(info KeyInfo) map[string]interface{} {
 	meta := map[string]interface{}{
 		"org_id":  info.OrganizationID,
@@ -238,8 +239,11 @@ func keyMetaData(info KeyInfo) map[string]interface{} {
 		"key_id":  info.KeyID,
 	}
 
+	if info.UserID != "" || info.KeyType != KeyTypeWorkload {
+		meta["user_id"] = info.UserID
+	}
+
 	optional := map[string]string{
-		"user_id":  info.UserID,
 		"key_type": info.KeyType,
 		"binding":  info.Binding,
 	}

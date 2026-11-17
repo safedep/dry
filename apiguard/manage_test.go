@@ -30,6 +30,14 @@ func TestCreateCustomKeySessionState(t *testing.T) {
 			wantMeta: map[string]any{"org_id": "org", "team_id": "team", "user_id": "user", "key_id": "key"},
 		},
 		{
+			name: "key without a user keeps an empty user_id",
+			args: KeyArgs{
+				Info:      KeyInfo{OrganizationID: "org", TeamID: "team", KeyID: "key"},
+				ExpiresAt: expiresAt,
+			},
+			wantMeta: map[string]any{"org_id": "org", "team_id": "team", "user_id": "", "key_id": "key"},
+		},
+		{
 			name: "workload credential",
 			args: KeyArgs{
 				Info: KeyInfo{

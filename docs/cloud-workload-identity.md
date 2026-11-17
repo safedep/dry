@@ -1,9 +1,8 @@
 # cloud: workload identity
 
-A SafeDep tool in CI can call SafeDep Cloud with no API key. The tool trades a token that the CI
+A SafeDep tool in CI can call SafeDep Cloud with no API key. The tool exchanges a token that the CI
 platform signs for the job, such as a GitHub Actions OIDC ID token, for a short-lived workload
-credential. The API is `WorkloadIdentityService` in safedep/api. The design is
-`docs/specs/2026-11-07-workload-identity-design.md` in safedep/control-tower.
+credential. The API is `WorkloadIdentityService` in safedep/api.
 
 ## Which credentials the default resolver selects
 

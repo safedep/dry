@@ -78,6 +78,17 @@ if err := outbox.Migrate(adapter); err != nil {
 }
 ```
 
+`Migrate` runs GORM `AutoMigrate`. It creates a missing index with a plain
+`CREATE INDEX`, which blocks writes to the table until the build ends. On a
+large `event_outbox_delivery` table, create a new index with
+`CREATE INDEX CONCURRENTLY` before you deploy the version that adds it.
+`AutoMigrate` then finds the index and skips it. For example:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_event_outbox_delivery_outbox_id
+    ON event_outbox_delivery (outbox_id);
+```
+
 ### Two write paths
 
 **`Emit` — transactional.** The event is written inside your business

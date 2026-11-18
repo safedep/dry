@@ -1,8 +1,7 @@
 # policy
 
 The `policy` packages apply the cloud policy of SafeDep Cloud on a client: pmg, vet and the pull
-request check. The design is the spec `docs/specs/2026-10-30-pmg-cloud-policy-design.md` in
-control-tower, Design 4 and 5, under the parent spec `2026-10-28-cloud-policy-management-design.md`.
+request check.
 
 | Package | Does | Imports the API contract |
 |---|---|---|

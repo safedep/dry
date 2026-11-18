@@ -182,8 +182,6 @@ client, err := endpointsync.NewEventEmitterClient("pmg", "1.2.3",
 - `Sync()` and `Close()` flush closed windows. Each state row records its
   own expiry, so any client that opens the WAL flushes it on time, and a
   removed rule's count delivers at that recorded expiry.
-- Design: `safedep/control-tower`
-  `docs/specs/2026-09-01-client-side-event-dedup-design.md`.
 
 ## Check-In
 

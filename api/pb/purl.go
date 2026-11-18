@@ -33,7 +33,6 @@ type purlPackageVersionHelper struct {
 //
 // The GitHub mapping is a deliberate exception to the freeze: pkg:github is a
 // repository and pkg:githubactions an action, and both names are lower case.
-// See the malysis spec docs/specs/2026-10-09-github-purl-types-design.md.
 func NewPurlPackageVersion(purl string) (*purlPackageVersionHelper, error) {
 	p, err := packageurl.FromString(purl)
 	if err != nil {

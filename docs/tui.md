@@ -170,13 +170,6 @@ not `NewConsole`.
 | 6     | `tui/prompt`                                | ✅ Done     |
 | 7     | full `examples/tui`, snapshot test, CI discipline script | ✅ Done     |
 
-## Implementation plan
-
-Source of truth for the ongoing implementation is
-`docs/superpowers/plans/2026-04-13-tui-unified-lib.md`. Review hooks: each
-phase runs a spec-compliance reviewer + a code-quality reviewer before the
-phase is marked done.
-
 ## Tests
 
 ```bash

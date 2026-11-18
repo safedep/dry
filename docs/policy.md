@@ -312,9 +312,8 @@ A case is two files in `policy/conformance/cases` with one base name, as `exact-
   format cannot hold such a field. The field number must be one that the contract does not use.
 - An unknown key in the JSON is an error, so a typo cannot skip a check.
 
-Each case must pass against `project`, `match` and `pbidentity`. When a case fails because the code
-and the spec disagree, do not change the case or the code alone. Decide the behaviour in the spec
-first.
+Each case must pass against `project`, `match` and `pbidentity`. When a case fails, do not change the
+case or the code alone. Decide the correct behaviour first, then make the case and the code agree.
 
 The directory is `cases`, not `testdata`, because a tool runs the corpus from another module, and the
 go command can leave `testdata` out of a vendor directory.

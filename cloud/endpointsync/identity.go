@@ -70,7 +70,7 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 		// MachineId from the configured ID so ephemeral environments (e.g.
 		// CI/CD runners) don't churn endpoint records on every run.
 		identifier = r.configuredID
-		machineID = hmacEndpointID(r.configuredID)
+		machineID = MachineIDForEndpointID(r.configuredID)
 	} else {
 		log.Debugf("No endpoint ID configured, using hostname %q", hostname)
 		identifier = hostname
@@ -96,9 +96,14 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 	}, nil
 }
 
-func hmacEndpointID(id string) string {
+// MachineIDForEndpointID returns the MachineId that a client sends for a
+// configured endpoint ID: the hex HMAC-SHA256 of endpointID with the key
+// "safedep". A server calls it to check that a client's MachineId matches an
+// endpoint ID that the server derived on its own. The output is frozen,
+// because the backend stores it as the identity of the endpoint.
+func MachineIDForEndpointID(endpointID string) string {
 	mac := hmac.New(sha256.New, []byte(endpointIdentityHMACKey))
-	mac.Write([]byte(id))
+	mac.Write([]byte(endpointID))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 

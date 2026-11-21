@@ -69,6 +69,17 @@ func TestEndpointIdentityResolver(t *testing.T) {
 		assert.Equal(t, expected, identity.GetMachineId())
 	})
 
+	t.Run("MachineIDForEndpointID is frozen and matches the resolver", func(t *testing.T) {
+		const endpointID = "gh:acme/web"
+		const frozen = "a9de23f27f00956189c20ff431787fba55be4c81178bf084afcd4a529fab9cdc"
+
+		assert.Equal(t, frozen, MachineIDForEndpointID(endpointID))
+
+		identity, err := NewEndpointIdentityResolver(WithEndpointID(endpointID)).Resolve()
+		require.NoError(t, err)
+		assert.Equal(t, frozen, identity.GetMachineId())
+	})
+
 	t.Run("same configured ID yields same machine_id across resolver instances", func(t *testing.T) {
 		id1, err := NewEndpointIdentityResolver(WithEndpointID("stable-ci")).Resolve()
 		require.NoError(t, err)

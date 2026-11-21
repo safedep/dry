@@ -259,6 +259,12 @@ The resolver automatically collects:
 - Hostname
 - Machine ID (HMAC-SHA256 hash of OS-provided hardware UUID, unique per machine)
 
+With `WithEndpointID`, the Machine ID is `endpointidentity.MachineID(id)`: the hex HMAC-SHA256 of
+the configured ID with the key `safedep`. The `cloud/endpointidentity` package imports only the
+standard library. A server that derives the endpoint ID on its own, for example
+from a verified workload credential, calls the same function to check the client's Machine ID. The
+output is frozen.
+
 ## Error Handling
 
 | Error | Meaning | Action |

@@ -1,19 +1,15 @@
 package endpointsync
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"runtime"
 
 	controltowerv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/controltower/v1"
 	"github.com/denisbrodbeck/machineid"
+	"github.com/safedep/dry/cloud/endpointidentity"
 	"github.com/safedep/dry/log"
 )
-
-const endpointIdentityHMACKey = "safedep"
 
 // EndpointIdentityResolver resolves the endpoint identity for sync.
 type EndpointIdentityResolver interface {
@@ -70,7 +66,7 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 		// MachineId from the configured ID so ephemeral environments (e.g.
 		// CI/CD runners) don't churn endpoint records on every run.
 		identifier = r.configuredID
-		machineID = hmacEndpointID(r.configuredID)
+		machineID = endpointidentity.MachineID(r.configuredID)
 	} else {
 		log.Debugf("No endpoint ID configured, using hostname %q", hostname)
 		identifier = hostname
@@ -78,7 +74,7 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 		// ProtectedID returns an HMAC-SHA256 hash of the raw machine ID using
 		// "safedep" as the app key. Stable per machine, does not expose the
 		// raw system UUID.
-		mid, err := machineid.ProtectedID(endpointIdentityHMACKey)
+		mid, err := machineid.ProtectedID(endpointidentity.HMACKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read machine ID: %w", err)
 		}
@@ -94,12 +90,6 @@ func (r *defaultEndpointIdentityResolver) Resolve() (*controltowerv1.EndpointIde
 			Arch:     detectArch(),
 		},
 	}, nil
-}
-
-func hmacEndpointID(id string) string {
-	mac := hmac.New(sha256.New, []byte(endpointIdentityHMACKey))
-	mac.Write([]byte(id))
-	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func detectOS() controltowerv1.EndpointOS {

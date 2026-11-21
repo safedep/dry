@@ -8,6 +8,7 @@ import (
 
 	controltowerv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/controltower/v1"
 	"github.com/denisbrodbeck/machineid"
+	"github.com/safedep/dry/cloud/endpointidentity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +68,12 @@ func TestEndpointIdentityResolver(t *testing.T) {
 		identity, err := NewEndpointIdentityResolver(WithEndpointID(configuredID)).Resolve()
 		require.NoError(t, err)
 		assert.Equal(t, expected, identity.GetMachineId())
+	})
+
+	t.Run("machine_id of a configured ID is endpointidentity.MachineID", func(t *testing.T) {
+		identity, err := NewEndpointIdentityResolver(WithEndpointID("gh:acme/web")).Resolve()
+		require.NoError(t, err)
+		assert.Equal(t, endpointidentity.MachineID("gh:acme/web"), identity.GetMachineId())
 	})
 
 	t.Run("same configured ID yields same machine_id across resolver instances", func(t *testing.T) {

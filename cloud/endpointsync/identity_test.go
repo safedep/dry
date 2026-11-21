@@ -8,6 +8,7 @@ import (
 
 	controltowerv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/messages/controltower/v1"
 	"github.com/denisbrodbeck/machineid"
+	"github.com/safedep/dry/cloud/endpointidentity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,15 +70,10 @@ func TestEndpointIdentityResolver(t *testing.T) {
 		assert.Equal(t, expected, identity.GetMachineId())
 	})
 
-	t.Run("MachineIDForEndpointID is frozen and matches the resolver", func(t *testing.T) {
-		const endpointID = "gh:acme/web"
-		const frozen = "a9de23f27f00956189c20ff431787fba55be4c81178bf084afcd4a529fab9cdc"
-
-		assert.Equal(t, frozen, MachineIDForEndpointID(endpointID))
-
-		identity, err := NewEndpointIdentityResolver(WithEndpointID(endpointID)).Resolve()
+	t.Run("machine_id of a configured ID is endpointidentity.MachineID", func(t *testing.T) {
+		identity, err := NewEndpointIdentityResolver(WithEndpointID("gh:acme/web")).Resolve()
 		require.NoError(t, err)
-		assert.Equal(t, frozen, identity.GetMachineId())
+		assert.Equal(t, endpointidentity.MachineID("gh:acme/web"), identity.GetMachineId())
 	})
 
 	t.Run("same configured ID yields same machine_id across resolver instances", func(t *testing.T) {

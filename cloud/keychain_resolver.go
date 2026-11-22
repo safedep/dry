@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/safedep/dry/keychain"
+	"github.com/safedep/dry/log"
 )
 
 // CloseableCredentialResolver combines CredentialResolver with io.Closer
@@ -64,12 +66,66 @@ func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 		return nil, err
 	}
 
-	tenantDomain, err := r.getTenantDomain(ctx, fieldAPIKey)
+	tenantDomain, err := r.getAPIKeyTenantDomain(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
+	meta, err := r.getAPIKeyMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	creds, err := r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
+	if err != nil {
+		return nil, err
+	}
+	creds.apiKeyMeta = meta
+	return creds, nil
+}
+
+// getAPIKeyTenantDomain reads the tenant of the API key. A key saved before
+// api_key_tenant_domain existed has only tenant_domain, so the resolver falls
+// back to it.
+func (r *keychainCredentialResolver) getAPIKeyTenantDomain(ctx context.Context) (string, error) {
+	tenantDomain, err := r.getField(ctx, fieldAPIKeyTenantDomain)
+	if err == nil && tenantDomain != "" {
+		return tenantDomain, nil
+	}
+	if err != nil && !errors.Is(err, ErrMissingCredentials) {
+		return "", err
+	}
+	return r.getTenantDomain(ctx, fieldAPIKey)
+}
+
+// getAPIKeyMetadata reads the id and the expiry of the API key. Both are
+// optional. An expiry that does not parse is logged and treated as unknown:
+// the key may still be valid, and only SafeDep Cloud can tell.
+func (r *keychainCredentialResolver) getAPIKeyMetadata(ctx context.Context) (APIKeyMetadata, error) {
+	var meta APIKeyMetadata
+
+	keyID, err := r.getField(ctx, fieldAPIKeyID)
+	switch {
+	case err == nil:
+		meta.KeyID = keyID
+	case !errors.Is(err, ErrMissingCredentials):
+		return APIKeyMetadata{}, err
+	}
+
+	expiresAt, err := r.getField(ctx, fieldAPIKeyExpiresAt)
+	switch {
+	case err == nil && expiresAt != "":
+		parsed, perr := time.Parse(time.RFC3339, expiresAt)
+		if perr != nil {
+			log.Warnf("cloud: ignoring the API key expiry %q in the keychain: %v", expiresAt, perr)
+			break
+		}
+		meta.ExpiresAt = parsed
+	case err != nil && !errors.Is(err, ErrMissingCredentials):
+		return APIKeyMetadata{}, err
+	}
+
+	return meta, nil
 }
 
 func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {

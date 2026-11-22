@@ -1,10 +1,14 @@
 package cloud
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/safedep/dry/keychain"
 )
 
 func newTestStoreAndResolver(t *testing.T, credType CredentialType, opts ...KeychainOption) (CredentialStore, CloseableCredentialResolver) {
@@ -243,4 +247,138 @@ func TestKeychainCredentialResolver_ChainIntegration(t *testing.T) {
 		tenant, _ := creds.GetTenantDomain()
 		assert.Equal(t, "keychain-tenant", tenant)
 	})
+}
+
+// newSharedKeychain returns one keychain for a store, a resolver and the raw
+// writes that stand in for an older dry or another tool.
+func newSharedKeychain(t *testing.T) keychain.Keychain {
+	t.Helper()
+	kc, err := keychain.New(keychain.Config{
+		AppName:              "safedep-test-" + t.Name(),
+		InsecureFileFallback: true,
+		FilePath:             t.TempDir() + "/creds.json",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, kc.Close()) })
+	return kc
+}
+
+func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
+	expiresAt := time.Date(2027, 2, 20, 10, 30, 0, 0, time.UTC)
+
+	setRaw := func(t *testing.T, kc keychain.Keychain, field, value string) {
+		t.Helper()
+		require.NoError(t, kc.Set(context.Background(), DefaultProfile+"/"+field, &keychain.Secret{Value: value}))
+	}
+
+	tests := []struct {
+		name string
+		// write stores the credentials under test.
+		write          func(t *testing.T, kc keychain.Keychain, store CredentialStore)
+		wantTenant     string
+		wantKeyID      string
+		wantExpiresAt  time.Time
+		wantNoMetadata bool
+	}{
+		{
+			name: "returns the id and the expiry saved with the key",
+			write: func(t *testing.T, _ keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+					"sk-new", "tenant-a", APIKeyMetadata{
+						KeyID:     "key-1",
+						ExpiresAt: expiresAt.In(time.FixedZone("IST", 5*3600+1800)),
+					}))
+			},
+			wantTenant:    "tenant-a",
+			wantKeyID:     "key-1",
+			wantExpiresAt: expiresAt,
+		},
+		{
+			name: "a key saved with no metadata drops the metadata of the key it replaces",
+			write: func(t *testing.T, _ keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+					"sk-old", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
+				require.NoError(t, store.SaveAPIKeyCredential("sk-pasted", "tenant-a"))
+			},
+			wantTenant:     "tenant-a",
+			wantNoMetadata: true,
+		},
+		{
+			name: "a sign-in to another tenant keeps the tenant of the API key",
+			write: func(t *testing.T, _ keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.SaveAPIKeyCredential("sk-a", "tenant-a"))
+				require.NoError(t, store.SaveTokenCredential("jwt", "refresh", "tenant-b"))
+			},
+			wantTenant:     "tenant-a",
+			wantNoMetadata: true,
+		},
+		{
+			name: "a key written before api_key_tenant_domain existed uses tenant_domain",
+			write: func(t *testing.T, kc keychain.Keychain, _ CredentialStore) {
+				t.Helper()
+				setRaw(t, kc, fieldAPIKey, "sk-legacy")
+				setRaw(t, kc, fieldTenantDomain, "tenant-legacy")
+			},
+			wantTenant:     "tenant-legacy",
+			wantNoMetadata: true,
+		},
+		{
+			name: "an expiry that does not parse is unknown",
+			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.SaveAPIKeyCredential("sk-a", "tenant-a"))
+				setRaw(t, kc, fieldAPIKeyExpiresAt, "next tuesday")
+			},
+			wantTenant:     "tenant-a",
+			wantNoMetadata: true,
+		},
+		{
+			name: "clear removes the metadata, so a key written by an older dry has none",
+			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+					"sk-new", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
+				require.NoError(t, store.Clear())
+				setRaw(t, kc, fieldAPIKey, "sk-legacy")
+				setRaw(t, kc, fieldTenantDomain, "tenant-legacy")
+			},
+			wantTenant:     "tenant-legacy",
+			wantNoMetadata: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kc := newSharedKeychain(t)
+			store, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
+			require.NoError(t, err)
+			resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
+			require.NoError(t, err)
+
+			tc.write(t, kc, store)
+
+			creds, err := resolver.Resolve()
+			require.NoError(t, err)
+
+			tenant, err := creds.GetTenantDomain()
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantTenant, tenant)
+
+			keyID, hasKeyID := creds.APIKeyID()
+			gotExpiresAt, hasExpiresAt := creds.APIKeyExpiresAt()
+			if tc.wantNoMetadata {
+				assert.False(t, hasKeyID, "unexpected key id %q", keyID)
+				assert.False(t, hasExpiresAt, "unexpected expiry %v", gotExpiresAt)
+				return
+			}
+
+			assert.True(t, hasKeyID)
+			assert.Equal(t, tc.wantKeyID, keyID)
+			require.True(t, hasExpiresAt)
+			assert.True(t, tc.wantExpiresAt.Equal(gotExpiresAt), "expiry %v, want %v", gotExpiresAt, tc.wantExpiresAt)
+		})
+	}
 }

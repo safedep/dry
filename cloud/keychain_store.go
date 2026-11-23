@@ -20,7 +20,7 @@ const (
 
 // allCredentialFields lists every field that Clear deletes.
 var allCredentialFields = []string{
-	fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain, fieldAPIKeyBindings,
+	fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain, fieldAPIKeyMetadata,
 }
 
 // CredentialStore writes SafeDep Cloud credentials to the keychain.
@@ -81,11 +81,10 @@ func (s *keychainCredentialStore) SaveAPIKeyCredential(apiKey, tenantDomain stri
 }
 
 // SaveAPIKeyCredentialWithMetadata saves an API key, its tenant and its
-// metadata. It first writes the bindings of the new key and of the key that it
-// replaces, then api_key, then tenant_domain, and last the binding of the new
-// key alone. At each step, and after a save that fails half way, the stored
-// key finds its own binding. tenant_domain stays for older readers, which
-// take the tenant of the API key from it.
+// metadata. It also writes tenant_domain, which older readers use as the
+// tenant of the API key. The keychain has no transaction, so a read during
+// the save can see the new key before its metadata. The fingerprint does not
+// match then, and the key resolves as an older dry saved it.
 func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string,
 	meta APIKeyMetadata,
 ) error {
@@ -96,64 +95,22 @@ func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenan
 		return fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
 	}
 
-	ctx := context.Background()
-	current, err := s.getOptional(ctx, fieldAPIKey)
+	value, err := json.Marshal(newStoredAPIKeyMetadata(apiKey, tenantDomain, meta))
 	if err != nil {
-		return err
-	}
-	stored, err := s.getOptional(ctx, fieldAPIKeyBindings)
-	if err != nil {
-		return err
+		return fmt.Errorf("cloud: failed to encode %s: %w", fieldAPIKeyMetadata, err)
 	}
 
-	binding := newAPIKeyBinding(apiKey, tenantDomain, meta)
-	during := []apiKeyBinding{binding}
-	if current != "" && current != apiKey {
-		if old, ok := findAPIKeyBinding(decodeAPIKeyBindings(stored), current); ok {
-			during = append(during, old)
+	ctx := context.Background()
+	for _, w := range []struct{ field, value string }{
+		{fieldAPIKey, apiKey},
+		{fieldAPIKeyMetadata, string(value)},
+		{fieldTenantDomain, tenantDomain},
+	} {
+		if err := s.kc.Set(ctx, s.config.keyForField(w.field), &keychain.Secret{Value: w.value}); err != nil {
+			return fmt.Errorf("cloud: failed to save %s: %w", w.field, err)
 		}
 	}
-
-	if err := s.setBindings(ctx, during); err != nil {
-		return err
-	}
-	if err := s.set(ctx, fieldAPIKey, apiKey); err != nil {
-		return err
-	}
-	if err := s.set(ctx, fieldTenantDomain, tenantDomain); err != nil {
-		return err
-	}
-	if len(during) > 1 {
-		return s.setBindings(ctx, []apiKeyBinding{binding})
-	}
 	return nil
-}
-
-func (s *keychainCredentialStore) setBindings(ctx context.Context, bindings []apiKeyBinding) error {
-	value, err := json.Marshal(bindings)
-	if err != nil {
-		return fmt.Errorf("cloud: failed to encode %s: %w", fieldAPIKeyBindings, err)
-	}
-	return s.set(ctx, fieldAPIKeyBindings, string(value))
-}
-
-func (s *keychainCredentialStore) set(ctx context.Context, field, value string) error {
-	if err := s.kc.Set(ctx, s.config.keyForField(field), &keychain.Secret{Value: value}); err != nil {
-		return fmt.Errorf("cloud: failed to save %s: %w", field, err)
-	}
-	return nil
-}
-
-// getOptional reads a field that may be absent. An absent field is "".
-func (s *keychainCredentialStore) getOptional(ctx context.Context, field string) (string, error) {
-	secret, err := s.kc.Get(ctx, s.config.keyForField(field))
-	if errors.Is(err, keychain.ErrNotFound) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("cloud: failed to read %s from keychain: %w", field, err)
-	}
-	return secret.Value, nil
 }
 
 func (s *keychainCredentialStore) SaveTokenCredential(token, refreshToken, tenantDomain string) error {

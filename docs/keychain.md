@@ -192,28 +192,23 @@ The keychain fields of a profile:
 | Field | Written by | Value |
 | --- | --- | --- |
 | `api_key` | API key saves | the API key |
-| `api_key_bindings` | API key saves | JSON: the tenant, the id and the expiry of a key, keyed by the SHA-256 of the key |
+| `api_key_metadata` | API key saves | JSON: the SHA-256 of `api_key`, its tenant, id and expiry |
 | `token`, `refresh_token` | `SaveTokenCredential` | the OAuth tokens |
 | `tenant_domain` | API key and token saves | the tenant of the last save |
 
-The resolver reads the tenant and the metadata of the stored key from its binding in
-`api_key_bindings`. A key with no binding resolves as an older dry saved it: the tenant from
+The resolver reads the tenant and the metadata of the API key from `api_key_metadata` while its
+SHA-256 matches `api_key`. Otherwise the key resolves as an older dry saved it: the tenant from
 `tenant_domain` and no metadata. So:
 
 - A token saved for another tenant rewrites `tenant_domain` but not the tenant of the API key.
-- An older dry that replaces `api_key` leaves the bindings of the old key. The new key has no
-  binding there, so it never takes the tenant, the id or the expiry of the old key.
+- An older dry that replaces `api_key` leaves `api_key_metadata`. The SHA-256 no longer matches, so
+  the new key never takes the tenant, the id or the expiry of the old key.
 - API key saves still write `tenant_domain`, because older readers take the tenant of the API key
   from it.
 
-A save writes the bindings of the new key and of the key that it replaces in one value, then
-`api_key`, then `tenant_domain`, and last the binding of the new key alone. At each step, and
-after a save that fails half way, the stored key finds its own binding. The resolver reads the key
-again after its binding, and reads again when a save replaced the key in between.
-
-An older dry writes `api_key` before `tenant_domain` and has no bindings. A reader between those two
-writes pairs the new key with the old tenant, as every dry before this one did. The next read
-returns the new tenant.
+The keychain has no transactions, so reads and writes are best effort. A read during a save, or two
+saves at the same moment, can see the fields of two saves. A key whose SHA-256 does not match then
+resolves as an older dry saved it, and the next read after the save sees one consistent key.
 
 ### Multi-Tenancy
 

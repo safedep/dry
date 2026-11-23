@@ -331,8 +331,8 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
 				require.NoError(t, store.SaveAPIKeyCredential("sk-a", "tenant-a"))
-				setRaw(t, kc, fieldAPIKeyBindings, fmt.Sprintf(
-					`[{"fingerprint":%q,"tenant_domain":"tenant-a","expires_at":"next tuesday"}]`,
+				setRaw(t, kc, fieldAPIKeyMetadata, fmt.Sprintf(
+					`{"fingerprint":%q,"tenant_domain":"tenant-a","expires_at":"next tuesday"}`,
 					apiKeyFingerprint("sk-a")))
 			},
 			wantTenant:     "tenant-a",
@@ -351,13 +351,15 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			wantNoMetadata: true,
 		},
 		{
+			// The same key saved again by an older dry matches the
+			// fingerprint, so only Clear keeps the old metadata off it.
 			name: "clear removes the metadata, so a key written by an older dry has none",
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
 				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
 					"sk-new", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
 				require.NoError(t, store.Clear())
-				setRaw(t, kc, fieldAPIKey, "sk-legacy")
+				setRaw(t, kc, fieldAPIKey, "sk-new")
 				setRaw(t, kc, fieldTenantDomain, "tenant-legacy")
 			},
 			wantTenant:     "tenant-legacy",
@@ -396,160 +398,4 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			assert.True(t, tc.wantExpiresAt.Equal(gotExpiresAt), "expiry %v, want %v", gotExpiresAt, tc.wantExpiresAt)
 		})
 	}
-}
-
-// replacingKeychain saves a new API key the first time the resolver reads the
-// bindings, as a save by another process would during a read.
-type replacingKeychain struct {
-	keychain.Keychain
-	replace  func()
-	replaced bool
-}
-
-func (k *replacingKeychain) Get(ctx context.Context, key string) (*keychain.Secret, error) {
-	if !k.replaced && key == DefaultProfile+"/"+fieldAPIKeyBindings {
-		k.replaced = true
-		k.replace()
-	}
-	return k.Keychain.Get(ctx, key)
-}
-
-func TestKeychainCredentialResolver_APIKeyReplacedDuringRead(t *testing.T) {
-	kc := newSharedKeychain(t)
-	store, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
-	require.NoError(t, err)
-	saver := store.(APIKeyMetadataStore)
-	require.NoError(t, saver.SaveAPIKeyCredentialWithMetadata("sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-a"}))
-
-	replacing := &replacingKeychain{Keychain: kc, replace: func() {
-		require.NoError(t, saver.SaveAPIKeyCredentialWithMetadata("sk-b", "tenant-b", APIKeyMetadata{KeyID: "key-b"}))
-	}}
-	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(replacing))
-	require.NoError(t, err)
-
-	creds, err := resolver.Resolve()
-	require.NoError(t, err)
-
-	apiKey, err := creds.GetAPIKey()
-	require.NoError(t, err)
-	tenant, err := creds.GetTenantDomain()
-	require.NoError(t, err)
-	keyID, _ := creds.APIKeyID()
-	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, []string{apiKey, tenant, keyID},
-		"the key, its tenant and its id must come from one save")
-}
-
-// resolvingKeychain resolves the API key after every write that a save makes,
-// so a test sees each state that a reader can meet during the save.
-type resolvingKeychain struct {
-	keychain.Keychain
-	afterWrite func()
-}
-
-func (k *resolvingKeychain) Set(ctx context.Context, key string, secret *keychain.Secret) error {
-	if err := k.Keychain.Set(ctx, key, secret); err != nil {
-		return err
-	}
-	k.afterWrite()
-	return nil
-}
-
-func (k *resolvingKeychain) Delete(ctx context.Context, key string) error {
-	if err := k.Keychain.Delete(ctx, key); err != nil {
-		return err
-	}
-	k.afterWrite()
-	return nil
-}
-
-// A token saved for another tenant leaves tenant_domain different from the
-// tenant of the stored API key. A read during the next key save must still
-// pair the old key with its own tenant.
-func TestKeychainCredentialResolver_ReadDuringSave(t *testing.T) {
-	kc := newSharedKeychain(t)
-	setup, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
-	require.NoError(t, err)
-	require.NoError(t, setup.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
-		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-a"}))
-	require.NoError(t, setup.SaveTokenCredential("jwt", "refresh", "tenant-z"))
-
-	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
-	require.NoError(t, err)
-
-	var seen [][]string
-	watching := &resolvingKeychain{Keychain: kc, afterWrite: func() {
-		creds, err := resolver.Resolve()
-		require.NoError(t, err)
-		apiKey, err := creds.GetAPIKey()
-		require.NoError(t, err)
-		tenant, err := creds.GetTenantDomain()
-		require.NoError(t, err)
-		keyID, _ := creds.APIKeyID()
-		seen = append(seen, []string{apiKey, tenant, keyID})
-	}}
-	store, err := NewKeychainCredentialStore(WithKeychainHandle(watching))
-	require.NoError(t, err)
-
-	require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
-		"sk-b", "tenant-b", APIKeyMetadata{KeyID: "key-b"}))
-
-	require.NotEmpty(t, seen)
-	for i, got := range seen {
-		switch got[0] {
-		case "sk-a":
-			assert.Equal(t, []string{"sk-a", "tenant-a", "key-a"}, got, "write %d", i)
-		case "sk-b":
-			assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, got, "write %d", i)
-		default:
-			t.Fatalf("write %d: unexpected key %v", i, got)
-		}
-	}
-	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, seen[len(seen)-1])
-}
-
-// A save of the same key with new metadata must not let a reader combine the
-// new id with the old expiry.
-func TestKeychainCredentialResolver_ReadDuringSameKeySave(t *testing.T) {
-	oldExpiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	newExpiry := time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)
-
-	kc := newSharedKeychain(t)
-	setup, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
-	require.NoError(t, err)
-	require.NoError(t, setup.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
-		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: oldExpiry}))
-
-	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
-	require.NoError(t, err)
-
-	type state struct {
-		keyID     string
-		expiresAt time.Time
-	}
-	var seen []state
-	watching := &resolvingKeychain{Keychain: kc, afterWrite: func() {
-		creds, err := resolver.Resolve()
-		require.NoError(t, err)
-		keyID, _ := creds.APIKeyID()
-		expiresAt, _ := creds.APIKeyExpiresAt()
-		seen = append(seen, state{keyID, expiresAt})
-	}}
-	store, err := NewKeychainCredentialStore(WithKeychainHandle(watching))
-	require.NoError(t, err)
-
-	require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
-		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-2", ExpiresAt: newExpiry}))
-
-	require.NotEmpty(t, seen)
-	for i, got := range seen {
-		switch got.keyID {
-		case "key-1":
-			assert.True(t, oldExpiry.Equal(got.expiresAt), "write %d: %+v", i, got)
-		case "key-2":
-			assert.True(t, newExpiry.Equal(got.expiresAt), "write %d: %+v", i, got)
-		default:
-			t.Fatalf("write %d: unexpected id %+v", i, got)
-		}
-	}
-	assert.Equal(t, "key-2", seen[len(seen)-1].keyID)
 }

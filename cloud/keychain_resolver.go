@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
 	"github.com/safedep/dry/keychain"
 )
 
@@ -55,53 +56,28 @@ func (r *keychainCredentialResolver) Resolve() (*Credentials, error) {
 	}
 }
 
-// resolveAttempts bounds how often resolveAPIKey reads the keychain again
-// when a save replaces the key during the read.
-const resolveAttempts = 3
-
-// resolveAPIKey reads the key again after its other fields. A save that
-// replaced the key in between would otherwise pair one key with the tenant of
-// another, so the resolver reads again, and fails after resolveAttempts.
+// resolveAPIKey reads the tenant and the metadata of the key from
+// api_key_metadata when it describes the stored key. Otherwise the key
+// resolves as an older dry saved it: the tenant from tenant_domain and no
+// metadata.
 func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 	ctx := context.Background()
 
-	for range resolveAttempts {
-		apiKey, err := r.getField(ctx, fieldAPIKey)
-		if err != nil {
-			return nil, err
-		}
-
-		creds, err := r.readAPIKeyCredential(ctx, apiKey)
-		if err != nil {
-			return nil, err
-		}
-
-		again, err := r.getField(ctx, fieldAPIKey)
-		if err != nil {
-			return nil, err
-		}
-		if again == apiKey {
-			return creds, nil
-		}
+	apiKey, err := r.getField(ctx, fieldAPIKey)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("cloud: the API key in the keychain changed while it was read: retry")
-}
-
-// readAPIKeyCredential reads the tenant and the metadata of apiKey from its
-// binding. A key with no binding resolves as an older dry saved it: the tenant
-// from tenant_domain and no metadata.
-func (r *keychainCredentialResolver) readAPIKeyCredential(ctx context.Context, apiKey string) (*Credentials, error) {
-	stored, err := r.getOptionalField(ctx, fieldAPIKeyBindings)
+	stored, err := r.getOptionalField(ctx, fieldAPIKeyMetadata)
 	if err != nil {
 		return nil, err
 	}
 
 	var meta APIKeyMetadata
 	tenantDomain := ""
-	if binding, ok := findAPIKeyBinding(decodeAPIKeyBindings(stored), apiKey); ok {
-		tenantDomain = binding.TenantDomain
-		meta = binding.metadata()
+	if s, ok := apiKeyMetadataFor(stored, apiKey); ok {
+		tenantDomain = s.TenantDomain
+		meta = s.metadata()
 	} else {
 		tenantDomain, err = r.getTenantDomain(ctx, fieldAPIKey)
 		if err != nil {

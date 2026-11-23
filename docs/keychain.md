@@ -161,12 +161,15 @@ the key, so that a tool can tell an expired key from a valid one before it calls
 can revoke the key that it replaces:
 
 ```go
+meta := cloud.APIKeyMetadata{KeyID: resp.GetKeyId()}
+// AsTime on a missing timestamp returns 1970-01-01, which would read as expired.
+if resp.GetExpiresAt() != nil {
+    meta.ExpiresAt = resp.GetExpiresAt().AsTime()
+}
+
 saver, ok := store.(cloud.APIKeyMetadataStore) // the keychain store implements it
 if ok {
-    err = saver.SaveAPIKeyCredentialWithMetadata(apiKey, tenant, cloud.APIKeyMetadata{
-        KeyID:     resp.GetKeyId(),
-        ExpiresAt: resp.GetExpiresAt().AsTime(),
-    })
+    err = saver.SaveAPIKeyCredentialWithMetadata(apiKey, tenant, meta)
 }
 
 creds, err := resolver.Resolve()
@@ -192,13 +195,22 @@ The keychain fields of a profile:
 | `api_key_tenant_domain` | API key saves | the tenant of the API key |
 | `api_key_id` | `SaveAPIKeyCredentialWithMetadata` | the id of the API key in SafeDep Cloud |
 | `api_key_expires_at` | `SaveAPIKeyCredentialWithMetadata` | the expiry, RFC 3339 in UTC |
+| `api_key_fingerprint` | API key saves | the SHA-256 of `api_key`, in hex |
 | `token`, `refresh_token` | `SaveTokenCredential` | the OAuth tokens |
 | `tenant_domain` | API key and token saves | the tenant of the last save |
 
-The resolver reads the tenant of an API key from `api_key_tenant_domain`, and falls back to
-`tenant_domain` for a key that an older dry saved. A token saved for another tenant then does not
-change the tenant of the API key. API key saves still write `tenant_domain`, because older readers
-take the tenant of the API key from it.
+The resolver reads the tenant of an API key from `api_key_tenant_domain`. A token saved for another
+tenant then does not change the tenant of the API key. API key saves still write `tenant_domain`,
+because older readers take the tenant of the API key from it.
+
+`api_key_tenant_domain`, `api_key_id` and `api_key_expires_at` count only while
+`api_key_fingerprint` matches `api_key`. An older dry replaces `api_key` and `tenant_domain` and
+leaves the other fields. The resolver then reads the tenant from `tenant_domain` and returns no
+metadata, so the new key never takes the tenant, the id or the expiry of the old one.
+
+The save deletes the fingerprint first and writes it last. The resolver reads the key again after
+its other fields, and reads again when a save replaced the key in between. A key and its tenant
+and metadata always come from one save.
 
 ### Multi-Tenancy
 

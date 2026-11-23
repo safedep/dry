@@ -2,6 +2,8 @@ package cloud
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -22,12 +24,28 @@ const (
 	fieldAPIKeyTenantDomain = "api_key_tenant_domain"
 	fieldAPIKeyID           = "api_key_id"
 	fieldAPIKeyExpiresAt    = "api_key_expires_at"
+
+	// fieldAPIKeyFingerprint binds the three fields above to the key that
+	// they describe. An older dry replaces api_key and tenant_domain but
+	// leaves the three fields, and the resolver must then not pair the new
+	// key with the tenant, the id or the expiry of the old one.
+	fieldAPIKeyFingerprint = "api_key_fingerprint"
 )
+
+// apiKeyBoundFields are the fields that describe the API key. They count only
+// while api_key_fingerprint matches api_key.
+var apiKeyBoundFields = []string{fieldAPIKeyTenantDomain, fieldAPIKeyID, fieldAPIKeyExpiresAt}
 
 // allCredentialFields lists every field that Clear deletes.
 var allCredentialFields = []string{
 	fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain,
-	fieldAPIKeyTenantDomain, fieldAPIKeyID, fieldAPIKeyExpiresAt,
+	fieldAPIKeyTenantDomain, fieldAPIKeyID, fieldAPIKeyExpiresAt, fieldAPIKeyFingerprint,
+}
+
+// apiKeyFingerprint returns the SHA-256 of the API key in hex.
+func apiKeyFingerprint(apiKey string) string {
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
 }
 
 // CredentialStore writes SafeDep Cloud credentials to the keychain.
@@ -88,10 +106,10 @@ func (s *keychainCredentialStore) SaveAPIKeyCredential(apiKey, tenantDomain stri
 }
 
 // SaveAPIKeyCredentialWithMetadata saves an API key, its tenant and its
-// metadata. It deletes the old metadata before it writes the key, so a write
-// that fails half way leaves a key with no metadata, never a key with the
-// metadata of another key. It also writes tenant_domain, which older readers
-// use as the tenant of the API key.
+// metadata. It deletes the fingerprint first and writes it last, so a reader
+// that runs during the save, or a save that fails half way, never pairs a key
+// with the tenant or the metadata of another key. It also writes
+// tenant_domain, which older readers use as the tenant of the API key.
 func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string,
 	meta APIKeyMetadata,
 ) error {
@@ -103,25 +121,25 @@ func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenan
 	}
 
 	ctx := context.Background()
-	for _, field := range []string{fieldAPIKeyID, fieldAPIKeyExpiresAt} {
+	for _, field := range append([]string{fieldAPIKeyFingerprint}, apiKeyBoundFields...) {
 		if err := s.delete(ctx, field); err != nil {
 			return err
 		}
 	}
 
-	values := []struct{ field, value string }{
+	type fieldValue struct{ field, value string }
+	values := []fieldValue{
 		{fieldAPIKey, apiKey},
-		{fieldAPIKeyTenantDomain, tenantDomain},
 		{fieldTenantDomain, tenantDomain},
+		{fieldAPIKeyTenantDomain, tenantDomain},
 	}
 	if meta.KeyID != "" {
-		values = append(values, struct{ field, value string }{fieldAPIKeyID, meta.KeyID})
+		values = append(values, fieldValue{fieldAPIKeyID, meta.KeyID})
 	}
 	if !meta.ExpiresAt.IsZero() {
-		values = append(values, struct{ field, value string }{
-			fieldAPIKeyExpiresAt, meta.ExpiresAt.UTC().Format(time.RFC3339),
-		})
+		values = append(values, fieldValue{fieldAPIKeyExpiresAt, meta.ExpiresAt.UTC().Format(time.RFC3339)})
 	}
+	values = append(values, fieldValue{fieldAPIKeyFingerprint, apiKeyFingerprint(apiKey)})
 
 	for _, v := range values {
 		if err := s.kc.Set(ctx, s.config.keyForField(v.field), &keychain.Secret{Value: v.value}); err != nil {

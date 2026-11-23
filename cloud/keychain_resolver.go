@@ -58,22 +58,70 @@ func (r *keychainCredentialResolver) Resolve() (*Credentials, error) {
 	}
 }
 
+// resolveAttempts bounds how often resolveAPIKey reads the keychain again
+// when a save replaces the key during the read.
+const resolveAttempts = 3
+
+// resolveAPIKey reads the key again after its other fields. A save that
+// replaced the key in between would otherwise pair one key with the tenant of
+// another, so the resolver reads again, and fails after resolveAttempts.
 func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 	ctx := context.Background()
 
-	apiKey, err := r.getField(ctx, fieldAPIKey)
+	for range resolveAttempts {
+		apiKey, err := r.getField(ctx, fieldAPIKey)
+		if err != nil {
+			return nil, err
+		}
+
+		creds, err := r.readAPIKeyCredential(ctx, apiKey)
+		if err != nil {
+			return nil, err
+		}
+
+		again, err := r.getField(ctx, fieldAPIKey)
+		if err != nil {
+			return nil, err
+		}
+		if again == apiKey {
+			return creds, nil
+		}
+	}
+
+	return nil, errors.New("cloud: the API key in the keychain changed while it was read: retry")
+}
+
+// readAPIKeyCredential reads the tenant and the metadata of apiKey. It reads
+// the fingerprint after the fields that it binds, and the save writes the
+// fingerprint last, so a matching fingerprint means that every field belongs
+// to apiKey. Without a match, the key resolves as an older dry saved it: the
+// tenant from tenant_domain and no metadata.
+func (r *keychainCredentialResolver) readAPIKeyCredential(ctx context.Context, apiKey string) (*Credentials, error) {
+	bound := make(map[string]string, len(apiKeyBoundFields))
+	for _, field := range apiKeyBoundFields {
+		value, err := r.getOptionalField(ctx, field)
+		if err != nil {
+			return nil, err
+		}
+		bound[field] = value
+	}
+
+	fingerprint, err := r.getOptionalField(ctx, fieldAPIKeyFingerprint)
 	if err != nil {
 		return nil, err
 	}
 
-	tenantDomain, err := r.getAPIKeyTenantDomain(ctx)
-	if err != nil {
-		return nil, err
+	var meta APIKeyMetadata
+	tenantDomain := ""
+	if fingerprint != "" && fingerprint == apiKeyFingerprint(apiKey) {
+		tenantDomain = bound[fieldAPIKeyTenantDomain]
+		meta = parseAPIKeyMetadata(bound[fieldAPIKeyID], bound[fieldAPIKeyExpiresAt])
 	}
-
-	meta, err := r.getAPIKeyMetadata(ctx)
-	if err != nil {
-		return nil, err
+	if tenantDomain == "" {
+		tenantDomain, err = r.getTenantDomain(ctx, fieldAPIKey)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	creds, err := r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
@@ -84,48 +132,31 @@ func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 	return creds, nil
 }
 
-// getAPIKeyTenantDomain reads the tenant of the API key. A key saved before
-// api_key_tenant_domain existed has only tenant_domain, so the resolver falls
-// back to it.
-func (r *keychainCredentialResolver) getAPIKeyTenantDomain(ctx context.Context) (string, error) {
-	tenantDomain, err := r.getField(ctx, fieldAPIKeyTenantDomain)
-	if err == nil && tenantDomain != "" {
-		return tenantDomain, nil
+// parseAPIKeyMetadata builds the metadata of a key. An expiry that does not
+// parse is logged and treated as unknown: the key may still be valid, and
+// only SafeDep Cloud can tell.
+func parseAPIKeyMetadata(keyID, expiresAt string) APIKeyMetadata {
+	meta := APIKeyMetadata{KeyID: keyID}
+	if expiresAt == "" {
+		return meta
 	}
-	if err != nil && !errors.Is(err, ErrMissingCredentials) {
-		return "", err
+
+	parsed, err := time.Parse(time.RFC3339, expiresAt)
+	if err != nil {
+		log.Warnf("cloud: ignoring the API key expiry %q in the keychain: %v", expiresAt, err)
+		return meta
 	}
-	return r.getTenantDomain(ctx, fieldAPIKey)
+	meta.ExpiresAt = parsed
+	return meta
 }
 
-// getAPIKeyMetadata reads the id and the expiry of the API key. Both are
-// optional. An expiry that does not parse is logged and treated as unknown:
-// the key may still be valid, and only SafeDep Cloud can tell.
-func (r *keychainCredentialResolver) getAPIKeyMetadata(ctx context.Context) (APIKeyMetadata, error) {
-	var meta APIKeyMetadata
-
-	keyID, err := r.getField(ctx, fieldAPIKeyID)
-	switch {
-	case err == nil:
-		meta.KeyID = keyID
-	case !errors.Is(err, ErrMissingCredentials):
-		return APIKeyMetadata{}, err
+// getOptionalField reads a field that may be absent. An absent field is "".
+func (r *keychainCredentialResolver) getOptionalField(ctx context.Context, field string) (string, error) {
+	value, err := r.getField(ctx, field)
+	if errors.Is(err, ErrMissingCredentials) {
+		return "", nil
 	}
-
-	expiresAt, err := r.getField(ctx, fieldAPIKeyExpiresAt)
-	switch {
-	case err == nil && expiresAt != "":
-		parsed, perr := time.Parse(time.RFC3339, expiresAt)
-		if perr != nil {
-			log.Warnf("cloud: ignoring the API key expiry %q in the keychain: %v", expiresAt, perr)
-			break
-		}
-		meta.ExpiresAt = parsed
-	case err != nil && !errors.Is(err, ErrMissingCredentials):
-		return APIKeyMetadata{}, err
-	}
-
-	return meta, nil
+	return value, err
 }
 
 func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {

@@ -336,6 +336,18 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			wantNoMetadata: true,
 		},
 		{
+			name: "a key that an older dry saves over a new key does not take its tenant or metadata",
+			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
+				t.Helper()
+				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+					"sk-old", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
+				setRaw(t, kc, fieldAPIKey, "sk-pasted")
+				setRaw(t, kc, fieldTenantDomain, "tenant-b")
+			},
+			wantTenant:     "tenant-b",
+			wantNoMetadata: true,
+		},
+		{
 			name: "clear removes the metadata, so a key written by an older dry has none",
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
@@ -381,4 +393,45 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			assert.True(t, tc.wantExpiresAt.Equal(gotExpiresAt), "expiry %v, want %v", gotExpiresAt, tc.wantExpiresAt)
 		})
 	}
+}
+
+// replacingKeychain saves a new API key the first time the resolver reads the
+// fingerprint, as a save by another process would during a read.
+type replacingKeychain struct {
+	keychain.Keychain
+	replace  func()
+	replaced bool
+}
+
+func (k *replacingKeychain) Get(ctx context.Context, key string) (*keychain.Secret, error) {
+	if !k.replaced && key == DefaultProfile+"/"+fieldAPIKeyFingerprint {
+		k.replaced = true
+		k.replace()
+	}
+	return k.Keychain.Get(ctx, key)
+}
+
+func TestKeychainCredentialResolver_APIKeyReplacedDuringRead(t *testing.T) {
+	kc := newSharedKeychain(t)
+	store, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
+	require.NoError(t, err)
+	saver := store.(APIKeyMetadataStore)
+	require.NoError(t, saver.SaveAPIKeyCredentialWithMetadata("sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-a"}))
+
+	replacing := &replacingKeychain{Keychain: kc, replace: func() {
+		require.NoError(t, saver.SaveAPIKeyCredentialWithMetadata("sk-b", "tenant-b", APIKeyMetadata{KeyID: "key-b"}))
+	}}
+	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(replacing))
+	require.NoError(t, err)
+
+	creds, err := resolver.Resolve()
+	require.NoError(t, err)
+
+	apiKey, err := creds.GetAPIKey()
+	require.NoError(t, err)
+	tenant, err := creds.GetTenantDomain()
+	require.NoError(t, err)
+	keyID, _ := creds.APIKeyID()
+	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, []string{apiKey, tenant, keyID},
+		"the key, its tenant and its id must come from one save")
 }

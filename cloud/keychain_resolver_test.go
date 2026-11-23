@@ -285,7 +285,7 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			name: "returns the id and the expiry saved with the key",
 			write: func(t *testing.T, _ keychain.Keychain, store CredentialStore) {
 				t.Helper()
-				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+				require.NoError(t, store.SaveAPIKeyCredentialWithMetadata(
 					"sk-new", "tenant-a", APIKeyMetadata{
 						KeyID:     "key-1",
 						ExpiresAt: expiresAt.In(time.FixedZone("IST", 5*3600+1800)),
@@ -299,7 +299,7 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			name: "a key saved with no metadata drops the metadata of the key it replaces",
 			write: func(t *testing.T, _ keychain.Keychain, store CredentialStore) {
 				t.Helper()
-				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+				require.NoError(t, store.SaveAPIKeyCredentialWithMetadata(
 					"sk-old", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
 				require.NoError(t, store.SaveAPIKeyCredential("sk-pasted", "tenant-a"))
 			},
@@ -342,7 +342,7 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			name: "a key that an older dry saves over a new key does not take its tenant or metadata",
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
-				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+				require.NoError(t, store.SaveAPIKeyCredentialWithMetadata(
 					"sk-old", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
 				setRaw(t, kc, fieldAPIKey, "sk-pasted")
 				setRaw(t, kc, fieldTenantDomain, "tenant-b")
@@ -356,7 +356,7 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			name: "clear removes the metadata, so a key written by an older dry has none",
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
-				require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+				require.NoError(t, store.SaveAPIKeyCredentialWithMetadata(
 					"sk-new", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: expiresAt}))
 				require.NoError(t, store.Clear())
 				setRaw(t, kc, fieldAPIKey, "sk-new")

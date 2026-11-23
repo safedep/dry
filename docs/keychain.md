@@ -167,10 +167,7 @@ if resp.GetExpiresAt() != nil {
     meta.ExpiresAt = resp.GetExpiresAt().AsTime()
 }
 
-saver, ok := store.(cloud.APIKeyMetadataStore) // the keychain store implements it
-if ok {
-    err = saver.SaveAPIKeyCredentialWithMetadata(apiKey, tenant, meta)
-}
+err = store.SaveAPIKeyCredentialWithMetadata(apiKey, tenant, meta)
 
 creds, err := resolver.Resolve()
 if expiresAt, ok := creds.APIKeyExpiresAt(); ok && !expiresAt.After(time.Now()) {
@@ -184,8 +181,6 @@ id, ok := creds.APIKeyID() // ok is false when the id is not known
 - An expiry that is not known (`ok` is false) does not mean that the key is valid or expired. Only
   SafeDep Cloud can tell. Keys from the environment, keys saved by `SaveAPIKeyCredential`, and keys
   saved by an older dry have no metadata.
-- `APIKeyMetadataStore` is a separate interface, so other implementations of `CredentialStore`
-  keep compiling.
 
 The keychain fields of a profile:
 

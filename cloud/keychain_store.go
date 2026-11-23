@@ -26,6 +26,10 @@ var allCredentialFields = []string{
 // CredentialStore writes SafeDep Cloud credentials to the keychain.
 type CredentialStore interface {
 	SaveAPIKeyCredential(apiKey, tenantDomain string) error
+	// SaveAPIKeyCredentialWithMetadata saves an API key together with its
+	// metadata, so that a tool can tell an expired key from a valid one
+	// before it calls SafeDep Cloud.
+	SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string, meta APIKeyMetadata) error
 	SaveTokenCredential(token, refreshToken, tenantDomain string) error
 	Clear() error
 	io.Closer
@@ -40,15 +44,6 @@ type APIKeyMetadata struct {
 
 	// ExpiresAt is when SafeDep Cloud stops accepting the key.
 	ExpiresAt time.Time
-}
-
-// APIKeyMetadataStore saves an API key together with its metadata, so that a
-// tool can tell an expired key from a valid one before it calls SafeDep
-// Cloud. The store that NewKeychainCredentialStore returns implements it.
-// CredentialStore does not include it, so other implementations of
-// CredentialStore keep compiling.
-type APIKeyMetadataStore interface {
-	SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string, meta APIKeyMetadata) error
 }
 
 type keychainCredentialStore struct {

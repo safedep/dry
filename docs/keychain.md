@@ -212,7 +212,7 @@ resolves as an older dry saved it, and the next read after the save sees one con
 
 ### Multi-Tenancy
 
-Use named profiles to work with multiple tenants. Each profile is an isolated credential context. The API key and the token of a profile each keep their own tenant (see [API key metadata](#api-key-metadata)).
+Use named profiles to work with multiple tenants. Each profile is an isolated credential context. Inside a profile, only the API key keeps its own tenant (see [API key metadata](#api-key-metadata)). The token takes the tenant of the last save, and an API key save also writes that tenant.
 
 ```go
 // Store credentials for different tenants

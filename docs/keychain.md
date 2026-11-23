@@ -154,9 +154,60 @@ credentials.
 
 Options: `WithProfile("staging")`, `WithAppName("custom")`, `WithInsecureFileFallback()`, `WithInsecureFileFallbackPath("/path")`, `WithKeychainHandle(kc)`.
 
+### API key metadata
+
+SafeDep Cloud returns the id and the expiry of an API key when it creates the key. Save them with
+the key, so that a tool can tell an expired key from a valid one before it calls SafeDep Cloud, and
+can revoke the key that it replaces:
+
+```go
+meta := cloud.APIKeyMetadata{KeyID: resp.GetKeyId()}
+// AsTime on a missing timestamp returns 1970-01-01, which would read as expired.
+if resp.GetExpiresAt() != nil {
+    meta.ExpiresAt = resp.GetExpiresAt().AsTime()
+}
+
+err = store.SaveAPIKeyCredentialWithMetadata(apiKey, tenant, meta)
+
+creds, err := resolver.Resolve()
+if expiresAt, ok := creds.APIKeyExpiresAt(); ok && !expiresAt.After(time.Now()) {
+    // The key has expired. Create a new one.
+}
+id, ok := creds.APIKeyID() // ok is false when the id is not known
+```
+
+- `SaveAPIKeyCredential` saves a key with no metadata. A key that a user pastes never carries the
+  id or the expiry of an older key.
+- An expiry that is not known (`ok` is false) does not mean that the key is valid or expired. Only
+  SafeDep Cloud can tell. Keys from the environment, keys saved by `SaveAPIKeyCredential`, and keys
+  saved by an older dry have no metadata.
+
+The keychain fields of a profile:
+
+| Field | Written by | Value |
+| --- | --- | --- |
+| `api_key` | API key saves | the API key |
+| `api_key_metadata` | API key saves | JSON: the SHA-256 of `api_key`, its tenant, id and expiry |
+| `token`, `refresh_token` | `SaveTokenCredential` | the OAuth tokens |
+| `tenant_domain` | API key and token saves | the tenant of the last save |
+
+The resolver reads the tenant and the metadata of the API key from `api_key_metadata` while its
+SHA-256 matches `api_key`. Otherwise the key resolves as an older dry saved it: the tenant from
+`tenant_domain` and no metadata. So:
+
+- A token saved for another tenant rewrites `tenant_domain` but not the tenant of the API key.
+- An older dry that replaces `api_key` leaves `api_key_metadata`. The SHA-256 no longer matches, so
+  the new key never takes the tenant, the id or the expiry of the old key.
+- API key saves still write `tenant_domain`, because older readers take the tenant of the API key
+  from it.
+
+The keychain has no transactions, so reads and writes are best effort. A read during a save, or two
+saves at the same moment, can see the fields of two saves. A key whose SHA-256 does not match then
+resolves as an older dry saved it, and the next read after the save sees one consistent key.
+
 ### Multi-Tenancy
 
-Use named profiles to work with multiple tenants. Each profile is an isolated credential context — both API key and token credentials within a profile share the same tenant.
+Use named profiles to work with multiple tenants. Each profile is an isolated credential context. Inside a profile, only the API key keeps its own tenant (see [API key metadata](#api-key-metadata)). The token takes the tenant of the last save, and an API key save also writes that tenant.
 
 ```go
 // Store credentials for different tenants

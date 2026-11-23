@@ -56,6 +56,10 @@ func (r *keychainCredentialResolver) Resolve() (*Credentials, error) {
 	}
 }
 
+// resolveAPIKey reads the tenant and the metadata of the key from
+// api_key_metadata when it describes the stored key. Otherwise the key
+// resolves as an older dry saved it: the tenant from tenant_domain and no
+// metadata.
 func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 	ctx := context.Background()
 
@@ -64,12 +68,38 @@ func (r *keychainCredentialResolver) resolveAPIKey() (*Credentials, error) {
 		return nil, err
 	}
 
-	tenantDomain, err := r.getTenantDomain(ctx, fieldAPIKey)
+	stored, err := r.getOptionalField(ctx, fieldAPIKeyMetadata)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
+	var meta APIKeyMetadata
+	tenantDomain := ""
+	if s, ok := apiKeyMetadataFor(stored, apiKey); ok {
+		tenantDomain = s.TenantDomain
+		meta = s.metadata()
+	} else {
+		tenantDomain, err = r.getTenantDomain(ctx, fieldAPIKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	creds, err := r.withSource(NewAPIKeyCredential(apiKey, tenantDomain))
+	if err != nil {
+		return nil, err
+	}
+	creds.apiKeyMeta = meta
+	return creds, nil
+}
+
+// getOptionalField reads a field that may be absent. An absent field is "".
+func (r *keychainCredentialResolver) getOptionalField(ctx context.Context, field string) (string, error) {
+	value, err := r.getField(ctx, field)
+	if errors.Is(err, ErrMissingCredentials) {
+		return "", nil
+	}
+	return value, err
 }
 
 func (r *keychainCredentialResolver) resolveToken() (*Credentials, error) {

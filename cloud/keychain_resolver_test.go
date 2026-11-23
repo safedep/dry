@@ -435,3 +435,70 @@ func TestKeychainCredentialResolver_APIKeyReplacedDuringRead(t *testing.T) {
 	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, []string{apiKey, tenant, keyID},
 		"the key, its tenant and its id must come from one save")
 }
+
+// resolvingKeychain resolves the API key after every write that a save makes,
+// so a test sees each state that a reader can meet during the save.
+type resolvingKeychain struct {
+	keychain.Keychain
+	afterWrite func()
+}
+
+func (k *resolvingKeychain) Set(ctx context.Context, key string, secret *keychain.Secret) error {
+	if err := k.Keychain.Set(ctx, key, secret); err != nil {
+		return err
+	}
+	k.afterWrite()
+	return nil
+}
+
+func (k *resolvingKeychain) Delete(ctx context.Context, key string) error {
+	if err := k.Keychain.Delete(ctx, key); err != nil {
+		return err
+	}
+	k.afterWrite()
+	return nil
+}
+
+func TestKeychainCredentialResolver_ReadDuringSave(t *testing.T) {
+	kc := newSharedKeychain(t)
+	setup, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
+	require.NoError(t, err)
+	require.NoError(t, setup.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-a"}))
+
+	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
+	require.NoError(t, err)
+
+	var seen [][]string
+	watching := &resolvingKeychain{Keychain: kc, afterWrite: func() {
+		creds, err := resolver.Resolve()
+		require.NoError(t, err)
+		apiKey, err := creds.GetAPIKey()
+		require.NoError(t, err)
+		tenant, err := creds.GetTenantDomain()
+		require.NoError(t, err)
+		keyID, _ := creds.APIKeyID()
+		seen = append(seen, []string{apiKey, tenant, keyID})
+	}}
+	store, err := NewKeychainCredentialStore(WithKeychainHandle(watching))
+	require.NoError(t, err)
+
+	require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+		"sk-b", "tenant-b", APIKeyMetadata{KeyID: "key-b"}))
+
+	require.NotEmpty(t, seen)
+	for i, got := range seen {
+		switch got[0] {
+		case "sk-a":
+			// The old key keeps its tenant. Its metadata may be unknown
+			// while the fingerprint names the new key.
+			assert.Equal(t, "tenant-a", got[1], "write %d: %v", i, got)
+			assert.NotEqual(t, "key-b", got[2], "write %d: %v", i, got)
+		case "sk-b":
+			assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, got, "write %d", i)
+		default:
+			t.Fatalf("write %d: unexpected key %v", i, got)
+		}
+	}
+	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, seen[len(seen)-1])
+}

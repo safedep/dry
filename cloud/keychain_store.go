@@ -106,10 +106,12 @@ func (s *keychainCredentialStore) SaveAPIKeyCredential(apiKey, tenantDomain stri
 }
 
 // SaveAPIKeyCredentialWithMetadata saves an API key, its tenant and its
-// metadata. It deletes the fingerprint first and writes it last, so a reader
-// that runs during the save, or a save that fails half way, never pairs a key
-// with the tenant or the metadata of another key. It also writes
-// tenant_domain, which older readers use as the tenant of the API key.
+// metadata. It writes the fingerprint of the new key first, then the fields
+// that the fingerprint binds, then the key, and tenant_domain last. A reader
+// that runs during the save, or a save that fails half way, then sees either
+// the old key with the old tenant_domain (the fingerprint does not match it)
+// or the new key with the fields that the fingerprint binds. tenant_domain
+// stays for older readers, which take the tenant of the API key from it.
 func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string,
 	meta APIKeyMetadata,
 ) error {
@@ -120,30 +122,31 @@ func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenan
 		return fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
 	}
 
-	ctx := context.Background()
-	for _, field := range append([]string{fieldAPIKeyFingerprint}, apiKeyBoundFields...) {
-		if err := s.delete(ctx, field); err != nil {
-			return err
-		}
+	expiresAt := ""
+	if !meta.ExpiresAt.IsZero() {
+		expiresAt = meta.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 
-	type fieldValue struct{ field, value string }
-	values := []fieldValue{
+	// An empty value deletes the field, so the new key never keeps the id or
+	// the expiry of the old one.
+	ctx := context.Background()
+	writes := []struct{ field, value string }{
+		{fieldAPIKeyFingerprint, apiKeyFingerprint(apiKey)},
+		{fieldAPIKeyTenantDomain, tenantDomain},
+		{fieldAPIKeyID, meta.KeyID},
+		{fieldAPIKeyExpiresAt, expiresAt},
 		{fieldAPIKey, apiKey},
 		{fieldTenantDomain, tenantDomain},
-		{fieldAPIKeyTenantDomain, tenantDomain},
 	}
-	if meta.KeyID != "" {
-		values = append(values, fieldValue{fieldAPIKeyID, meta.KeyID})
-	}
-	if !meta.ExpiresAt.IsZero() {
-		values = append(values, fieldValue{fieldAPIKeyExpiresAt, meta.ExpiresAt.UTC().Format(time.RFC3339)})
-	}
-	values = append(values, fieldValue{fieldAPIKeyFingerprint, apiKeyFingerprint(apiKey)})
-
-	for _, v := range values {
-		if err := s.kc.Set(ctx, s.config.keyForField(v.field), &keychain.Secret{Value: v.value}); err != nil {
-			return fmt.Errorf("cloud: failed to save %s: %w", v.field, err)
+	for _, w := range writes {
+		if w.value == "" {
+			if err := s.delete(ctx, w.field); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := s.kc.Set(ctx, s.config.keyForField(w.field), &keychain.Secret{Value: w.value}); err != nil {
+			return fmt.Errorf("cloud: failed to save %s: %w", w.field, err)
 		}
 	}
 	return nil

@@ -208,9 +208,14 @@ because older readers take the tenant of the API key from it.
 leaves the other fields. The resolver then reads the tenant from `tenant_domain` and returns no
 metadata, so the new key never takes the tenant, the id or the expiry of the old one.
 
-The save deletes the fingerprint first and writes it last. The resolver reads the key again after
-its other fields, and reads again when a save replaced the key in between. A key and its tenant
-and metadata always come from one save.
+The save writes the fingerprint of the new key first, then the fields that it binds, then
+`api_key`, and `tenant_domain` last. A reader during the save sees the old key with the old
+`tenant_domain`, or the new key with its own fields. The resolver reads the key again after its
+other fields, and reads again when a save replaced the key in between.
+
+An older dry writes `api_key` before `tenant_domain` and has no fingerprint. A reader between those
+two writes pairs the new key with the old tenant, as every dry before this one did. The next read
+returns the new tenant.
 
 ### Multi-Tenancy
 

@@ -506,3 +506,50 @@ func TestKeychainCredentialResolver_ReadDuringSave(t *testing.T) {
 	}
 	assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, seen[len(seen)-1])
 }
+
+// A save of the same key with new metadata must not let a reader combine the
+// new id with the old expiry.
+func TestKeychainCredentialResolver_ReadDuringSameKeySave(t *testing.T) {
+	oldExpiry := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
+	newExpiry := time.Date(2027, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	kc := newSharedKeychain(t)
+	setup, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
+	require.NoError(t, err)
+	require.NoError(t, setup.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-1", ExpiresAt: oldExpiry}))
+
+	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
+	require.NoError(t, err)
+
+	type state struct {
+		keyID     string
+		expiresAt time.Time
+	}
+	var seen []state
+	watching := &resolvingKeychain{Keychain: kc, afterWrite: func() {
+		creds, err := resolver.Resolve()
+		require.NoError(t, err)
+		keyID, _ := creds.APIKeyID()
+		expiresAt, _ := creds.APIKeyExpiresAt()
+		seen = append(seen, state{keyID, expiresAt})
+	}}
+	store, err := NewKeychainCredentialStore(WithKeychainHandle(watching))
+	require.NoError(t, err)
+
+	require.NoError(t, store.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
+		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-2", ExpiresAt: newExpiry}))
+
+	require.NotEmpty(t, seen)
+	for i, got := range seen {
+		switch got.keyID {
+		case "key-1":
+			assert.True(t, oldExpiry.Equal(got.expiresAt), "write %d: %+v", i, got)
+		case "key-2":
+			assert.True(t, newExpiry.Equal(got.expiresAt), "write %d: %+v", i, got)
+		default:
+			t.Fatalf("write %d: unexpected id %+v", i, got)
+		}
+	}
+	assert.Equal(t, "key-2", seen[len(seen)-1].keyID)
+}

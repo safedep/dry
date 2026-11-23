@@ -179,8 +179,8 @@ if expiresAt, ok := creds.APIKeyExpiresAt(); ok && !expiresAt.After(time.Now()) 
 id, ok := creds.APIKeyID() // ok is false when the id is not known
 ```
 
-- `SaveAPIKeyCredential` saves a key with no metadata and deletes the metadata of the key that it
-  replaces. A key that a user pastes never carries the id or the expiry of an older key.
+- `SaveAPIKeyCredential` saves a key with no metadata. A key that a user pastes never carries the
+  id or the expiry of an older key.
 - An expiry that is not known (`ok` is false) does not mean that the key is valid or expired. Only
   SafeDep Cloud can tell. Keys from the environment, keys saved by `SaveAPIKeyCredential`, and keys
   saved by an older dry have no metadata.
@@ -192,29 +192,27 @@ The keychain fields of a profile:
 | Field | Written by | Value |
 | --- | --- | --- |
 | `api_key` | API key saves | the API key |
-| `api_key_tenant_domain` | API key saves | the tenant of the API key |
-| `api_key_id` | `SaveAPIKeyCredentialWithMetadata` | the id of the API key in SafeDep Cloud |
-| `api_key_expires_at` | `SaveAPIKeyCredentialWithMetadata` | the expiry, RFC 3339 in UTC |
-| `api_key_fingerprint` | API key saves | the SHA-256 of `api_key`, in hex |
+| `api_key_bindings` | API key saves | JSON: the tenant, the id and the expiry of a key, keyed by the SHA-256 of the key |
 | `token`, `refresh_token` | `SaveTokenCredential` | the OAuth tokens |
 | `tenant_domain` | API key and token saves | the tenant of the last save |
 
-The resolver reads the tenant of an API key from `api_key_tenant_domain`. A token saved for another
-tenant then does not change the tenant of the API key. API key saves still write `tenant_domain`,
-because older readers take the tenant of the API key from it.
+The resolver reads the tenant and the metadata of the stored key from its binding in
+`api_key_bindings`. A key with no binding resolves as an older dry saved it: the tenant from
+`tenant_domain` and no metadata. So:
 
-`api_key_tenant_domain`, `api_key_id` and `api_key_expires_at` count only while
-`api_key_fingerprint` matches `api_key`. An older dry replaces `api_key` and `tenant_domain` and
-leaves the other fields. The resolver then reads the tenant from `tenant_domain` and returns no
-metadata, so the new key never takes the tenant, the id or the expiry of the old one.
+- A token saved for another tenant rewrites `tenant_domain` but not the tenant of the API key.
+- An older dry that replaces `api_key` leaves the bindings of the old key. The new key has no
+  binding there, so it never takes the tenant, the id or the expiry of the old key.
+- API key saves still write `tenant_domain`, because older readers take the tenant of the API key
+  from it.
 
-The save writes the fingerprint of the new key first, then the fields that it binds, then
-`api_key`, and `tenant_domain` last. A reader during the save sees the old key with the old
-`tenant_domain`, or the new key with its own fields. The resolver reads the key again after its
-other fields, and reads again when a save replaced the key in between.
+A save writes the bindings of the new key and of the key that it replaces in one value, then
+`api_key`, then `tenant_domain`, and last the binding of the new key alone. At each step, and
+after a save that fails half way, the stored key finds its own binding. The resolver reads the key
+again after its binding, and reads again when a save replaced the key in between.
 
-An older dry writes `api_key` before `tenant_domain` and has no fingerprint. A reader between those
-two writes pairs the new key with the old tenant, as every dry before this one did. The next read
+An older dry writes `api_key` before `tenant_domain` and has no bindings. A reader between those two
+writes pairs the new key with the old tenant, as every dry before this one did. The next read
 returns the new tenant.
 
 ### Multi-Tenancy

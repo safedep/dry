@@ -2,6 +2,7 @@ package cloud
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -330,7 +331,9 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 			write: func(t *testing.T, kc keychain.Keychain, store CredentialStore) {
 				t.Helper()
 				require.NoError(t, store.SaveAPIKeyCredential("sk-a", "tenant-a"))
-				setRaw(t, kc, fieldAPIKeyExpiresAt, "next tuesday")
+				setRaw(t, kc, fieldAPIKeyBindings, fmt.Sprintf(
+					`[{"fingerprint":%q,"tenant_domain":"tenant-a","expires_at":"next tuesday"}]`,
+					apiKeyFingerprint("sk-a")))
 			},
 			wantTenant:     "tenant-a",
 			wantNoMetadata: true,
@@ -396,7 +399,7 @@ func TestKeychainCredentialResolver_APIKeyMetadata(t *testing.T) {
 }
 
 // replacingKeychain saves a new API key the first time the resolver reads the
-// fingerprint, as a save by another process would during a read.
+// bindings, as a save by another process would during a read.
 type replacingKeychain struct {
 	keychain.Keychain
 	replace  func()
@@ -404,7 +407,7 @@ type replacingKeychain struct {
 }
 
 func (k *replacingKeychain) Get(ctx context.Context, key string) (*keychain.Secret, error) {
-	if !k.replaced && key == DefaultProfile+"/"+fieldAPIKeyFingerprint {
+	if !k.replaced && key == DefaultProfile+"/"+fieldAPIKeyBindings {
 		k.replaced = true
 		k.replace()
 	}
@@ -459,12 +462,16 @@ func (k *resolvingKeychain) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
+// A token saved for another tenant leaves tenant_domain different from the
+// tenant of the stored API key. A read during the next key save must still
+// pair the old key with its own tenant.
 func TestKeychainCredentialResolver_ReadDuringSave(t *testing.T) {
 	kc := newSharedKeychain(t)
 	setup, err := NewKeychainCredentialStore(WithKeychainHandle(kc))
 	require.NoError(t, err)
 	require.NoError(t, setup.(APIKeyMetadataStore).SaveAPIKeyCredentialWithMetadata(
 		"sk-a", "tenant-a", APIKeyMetadata{KeyID: "key-a"}))
+	require.NoError(t, setup.SaveTokenCredential("jwt", "refresh", "tenant-z"))
 
 	resolver, err := NewKeychainCredentialResolver(CredentialTypeAPIKey, WithKeychainHandle(kc))
 	require.NoError(t, err)
@@ -490,10 +497,7 @@ func TestKeychainCredentialResolver_ReadDuringSave(t *testing.T) {
 	for i, got := range seen {
 		switch got[0] {
 		case "sk-a":
-			// The old key keeps its tenant. Its metadata may be unknown
-			// while the fingerprint names the new key.
-			assert.Equal(t, "tenant-a", got[1], "write %d: %v", i, got)
-			assert.NotEqual(t, "key-b", got[2], "write %d: %v", i, got)
+			assert.Equal(t, []string{"sk-a", "tenant-a", "key-a"}, got, "write %d", i)
 		case "sk-b":
 			assert.Equal(t, []string{"sk-b", "tenant-b", "key-b"}, got, "write %d", i)
 		default:

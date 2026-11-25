@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
@@ -27,6 +28,21 @@ var (
 	NoGrpcDialOptions = []grpc.DialOption{}
 	NoGrpcConfigurer  = func(conn *grpc.ClientConn) {}
 )
+
+// KeepaliveDialOption pings an idle connection every 30 seconds, so the client
+// finds a connection that a NAT dropped before an RPC waits on it. A grpc-go
+// server with the default policy closes it with GOAWAY "too_many_pings".
+func KeepaliveDialOption() grpc.DialOption {
+	return grpc.WithKeepaliveParams(keepaliveParams())
+}
+
+func keepaliveParams() keepalive.ClientParameters {
+	return keepalive.ClientParameters{
+		Time:                30 * time.Second,
+		Timeout:             10 * time.Second,
+		PermitWithoutStream: true,
+	}
+}
 
 func StartGrpcMtlsServer(name, serverName, host, port string,
 	sopts []grpc.ServerOption, configure GrpcAdapterConfigurer) {

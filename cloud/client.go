@@ -30,14 +30,37 @@ type Client struct {
 	conn *grpc.ClientConn
 }
 
+// ClientOption configures the connection of a Client.
+type ClientOption func(*clientConfig)
+
+type clientConfig struct {
+	dialOptions []grpc.DialOption
+}
+
+// WithDialOptions adds gRPC dial options, for example drygrpc.KeepaliveDialOption().
+// The client adds its TLS and auth options after them, so those options win.
+func WithDialOptions(opts ...grpc.DialOption) ClientOption {
+	return func(c *clientConfig) {
+		c.dialOptions = append(c.dialOptions, opts...)
+	}
+}
+
+func buildClientConfig(opts []ClientOption) clientConfig {
+	var cfg clientConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+	return cfg
+}
+
 // NewDataPlaneClient creates a connection to api.safedep.io (API key auth).
-func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
+func NewDataPlaneClient(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
 	if creds == nil {
 		return nil, fmt.Errorf("%w: credentials are required", ErrMissingCredentials)
 	}
 
 	if w, ok := creds.Workload(); ok {
-		return newWorkloadDataPlaneClient(name, w)
+		return newWorkloadDataPlaneClient(name, w, opts)
 	}
 
 	apiKey, err := creds.GetAPIKey()
@@ -55,7 +78,7 @@ func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
 	headers := http.Header{}
 	headers.Set(tenantIDHeader, tenantDomain)
 
-	conn, err := drygrpc.GrpcClient(name, host, port, apiKey, headers, []grpc.DialOption{})
+	conn, err := drygrpc.GrpcClient(name, host, port, apiKey, headers, buildClientConfig(opts).dialOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cloud: failed to create data plane connection: %w", err)
 	}
@@ -66,7 +89,7 @@ func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
 // newWorkloadDataPlaneClient connects with a per-RPC credential that
 // refreshes, instead of a fixed API key, so the connection outlives one
 // workload credential. The credential sends the tenant header itself.
-func newWorkloadDataPlaneClient(name string, w *RefreshingWorkloadCredential) (*Client, error) {
+func newWorkloadDataPlaneClient(name string, w *RefreshingWorkloadCredential, opts []ClientOption) (*Client, error) {
 	host, port := parseAddr(envOrDefault(envDataPlaneAddr, defaultDataPlaneAddr))
 
 	perRPC := grpc.WithPerRPCCredentials(&workloadPerRPCCredentials{
@@ -74,7 +97,8 @@ func newWorkloadDataPlaneClient(name string, w *RefreshingWorkloadCredential) (*
 		requireTransportSecurity:     !insecureTransport(),
 	})
 
-	conn, err := drygrpc.GrpcClient(name, host, port, "", http.Header{}, []grpc.DialOption{perRPC})
+	dopts := append(buildClientConfig(opts).dialOptions, perRPC)
+	conn, err := drygrpc.GrpcClient(name, host, port, "", http.Header{}, dopts)
 	if err != nil {
 		return nil, fmt.Errorf("cloud: failed to create data plane connection: %w", err)
 	}
@@ -95,7 +119,7 @@ func (c *workloadPerRPCCredentials) RequireTransportSecurity() bool {
 }
 
 // NewControlPlaneClient creates a connection to cloud.safedep.io (JWT auth).
-func NewControlPlaneClient(name string, creds *Credentials) (*Client, error) {
+func NewControlPlaneClient(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
 	if creds == nil {
 		return nil, fmt.Errorf("%w: credentials are required", ErrMissingCredentials)
 	}
@@ -115,7 +139,7 @@ func NewControlPlaneClient(name string, creds *Credentials) (*Client, error) {
 	headers := http.Header{}
 	headers.Set(tenantIDHeader, tenantDomain)
 
-	conn, err := drygrpc.GrpcClient(name, host, port, token, headers, []grpc.DialOption{})
+	conn, err := drygrpc.GrpcClient(name, host, port, token, headers, buildClientConfig(opts).dialOptions)
 	if err != nil {
 		return nil, fmt.Errorf("cloud: failed to create control plane connection: %w", err)
 	}

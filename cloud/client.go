@@ -37,12 +37,17 @@ type clientConfig struct {
 	dialOptions []grpc.DialOption
 }
 
-// WithDialOptions adds gRPC dial options, for example drygrpc.KeepaliveDialOption().
-// The client adds its TLS and auth options after them, so those options win.
+// WithDialOptions adds gRPC dial options. They are trusted code: an option such
+// as WithAuthority or WithContextDialer can send the credentials to another host.
 func WithDialOptions(opts ...grpc.DialOption) ClientOption {
 	return func(c *clientConfig) {
 		c.dialOptions = append(c.dialOptions, opts...)
 	}
+}
+
+// WithKeepalive turns on drygrpc.KeepaliveDialOption for a long-lived connection.
+func WithKeepalive() ClientOption {
+	return WithDialOptions(drygrpc.KeepaliveDialOption())
 }
 
 func buildClientConfig(opts []ClientOption) clientConfig {

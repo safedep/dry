@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	drygrpc "github.com/safedep/dry/adapters/grpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -135,8 +134,8 @@ func TestClientDialOptions(t *testing.T) {
 			wantUserAgentPrefix: "pmg-test grpc-go/",
 		},
 		{
-			name:                "keepalive",
-			opts:                []ClientOption{WithDialOptions(drygrpc.KeepaliveDialOption())},
+			name:                "keepalive option keeps the dial working",
+			opts:                []ClientOption{WithKeepalive()},
 			wantUserAgentPrefix: "grpc-go/",
 		},
 		{

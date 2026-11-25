@@ -59,7 +59,12 @@ func buildClientConfig(opts []ClientOption) clientConfig {
 }
 
 // NewDataPlaneClient creates a connection to api.safedep.io (API key auth).
-func NewDataPlaneClient(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
+func NewDataPlaneClient(name string, creds *Credentials) (*Client, error) {
+	return NewDataPlaneClientWithOptions(name, creds)
+}
+
+// NewDataPlaneClientWithOptions is NewDataPlaneClient with client options.
+func NewDataPlaneClientWithOptions(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
 	if creds == nil {
 		return nil, fmt.Errorf("%w: credentials are required", ErrMissingCredentials)
 	}
@@ -124,7 +129,12 @@ func (c *workloadPerRPCCredentials) RequireTransportSecurity() bool {
 }
 
 // NewControlPlaneClient creates a connection to cloud.safedep.io (JWT auth).
-func NewControlPlaneClient(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
+func NewControlPlaneClient(name string, creds *Credentials) (*Client, error) {
+	return NewControlPlaneClientWithOptions(name, creds)
+}
+
+// NewControlPlaneClientWithOptions is NewControlPlaneClient with client options.
+func NewControlPlaneClientWithOptions(name string, creds *Credentials, opts ...ClientOption) (*Client, error) {
 	if creds == nil {
 		return nil, fmt.Errorf("%w: credentials are required", ErrMissingCredentials)
 	}

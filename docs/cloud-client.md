@@ -7,15 +7,16 @@ tenant in the `x-tenant-id` header.
 ## Use in a tool
 
 ```go
-client, err := cloud.NewDataPlaneClient("pmg", creds, cloud.WithKeepalive())
+client, err := cloud.NewDataPlaneClientWithOptions("pmg", creds, cloud.WithKeepalive())
 if err != nil {
 	return err
 }
 defer client.Close()
 ```
 
-A call without options makes the same connection as before. `cloud.WithDialOptions` passes other
-gRPC dial options.
+`NewDataPlaneClientWithOptions` and `NewControlPlaneClientWithOptions` take client options.
+`NewDataPlaneClient` and `NewControlPlaneClient` keep their signatures and make the same connection
+as before. `cloud.WithDialOptions` passes other gRPC dial options.
 
 ## Rules
 

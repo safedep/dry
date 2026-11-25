@@ -70,14 +70,14 @@ func testPlanes() []testPlane {
 				require.NoError(t, err)
 				return creds
 			},
-			connect: NewDataPlaneClient,
+			connect: NewDataPlaneClientWithOptions,
 		},
 		{
 			name:     "data plane with workload identity",
 			addrEnv:  envDataPlaneAddr,
 			wantAuth: "wc-1",
 			creds:    newTestWorkloadCredentials,
-			connect:  NewDataPlaneClient,
+			connect:  NewDataPlaneClientWithOptions,
 		},
 		{
 			name:     "control plane with token",
@@ -88,7 +88,7 @@ func testPlanes() []testPlane {
 				require.NoError(t, err)
 				return creds
 			},
-			connect: NewControlPlaneClient,
+			connect: NewControlPlaneClientWithOptions,
 		},
 	}
 }

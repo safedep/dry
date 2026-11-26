@@ -670,53 +670,69 @@ func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
 }
 
 func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
-	adapter := newTestAdapter(t)
-	dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
-	require.NoError(t, err)
-	reader := newDeadLetterReader(t, adapter, "writer")
-
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	wrong := &handle{}
-	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
-		wrong.record(natstest.ObservationFeed, natstest.Bytes(t, natstest.Observation("other", "tenant-b")), 1),
-	}}}}
-	writer, err := inbox.NewBatchRouter(src, dlq)
-	require.NoError(t, err)
-	var handled []string
-	handler := func(_ context.Context, b observationBatch) error {
-		handled = append(handled, eventIDs(b)...)
-		return nil
+	cases := []struct {
+		name       string
+		consumeRow bool
+	}{
+		{name: "new dead letter"},
+		{name: "dead letter of Consume with the same payload", consumeRow: true},
 	}
-	require.NoError(t, inbox.Route(writer, natstest.NewObservation, handler))
-	assert.ErrorIs(t, writer.Run(ctx), context.Canceled)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := newTestAdapter(t)
+			dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
+			require.NoError(t, err)
+			reader := newDeadLetterReader(t, adapter, "writer")
 
-	rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
-	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
-	assert.Equal(t, natstest.Tenant, rows[0].Tenant)
+			payload := natstest.Bytes(t, natstest.Observation("other", "tenant-b"))
+			if tc.consumeRow {
+				require.NoError(t, dlq.Store(t.Context(), inbox.DeadLetterRecord{Payload: payload, Error: "consume"}))
+			}
 
-	res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.Failed)
-	assert.Empty(t, handled, "the handler never sees an event of another tenant")
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			wrong := &handle{}
+			src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+				wrong.record(natstest.ObservationFeed, payload, 1),
+			}}}}
+			writer, err := inbox.NewBatchRouter(src, dlq)
+			require.NoError(t, err)
+			var handled []string
+			handler := func(_ context.Context, b observationBatch) error {
+				handled = append(handled, eventIDs(b)...)
+				return nil
+			}
+			require.NoError(t, inbox.Route(writer, natstest.NewObservation, handler))
+			assert.ErrorIs(t, writer.Run(ctx), context.Canceled)
 
-	row, err := reader.Get(t.Context(), rows[0].ID)
-	require.NoError(t, err)
-	assert.Equal(t, 2, row.Attempts)
-	assert.Contains(t, row.Error, "tenant")
+			rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
+			assert.Equal(t, natstest.Tenant, rows[0].Tenant)
 
-	generic := func(_ context.Context, ev *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
-		handled = append(handled, ev.GetMeta().GetEventId())
-		return nil
+			res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.Failed)
+			assert.Empty(t, handled, "the handler never sees an event of another tenant")
+
+			row, err := reader.Get(t.Context(), rows[0].ID)
+			require.NoError(t, err)
+			assert.Equal(t, 2, row.Attempts)
+			assert.Contains(t, row.Error, "tenant")
+
+			generic := func(_ context.Context, ev *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+				handled = append(handled, ev.GetMeta().GetEventId())
+				return nil
+			}
+			res, err = inbox.Replay(t.Context(), reader, natstest.NewObservation, generic, inbox.DeadLetterFilter{})
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.Failed)
+			assert.Empty(t, handled, "the generic replay refuses a dead letter of the batch router")
+			_, err = reader.Get(t.Context(), rows[0].ID)
+			require.NoError(t, err, "the dead letter stays")
+		})
 	}
-	res, err = inbox.Replay(t.Context(), reader, natstest.NewObservation, generic, inbox.DeadLetterFilter{})
-	require.NoError(t, err)
-	assert.Equal(t, 1, res.Failed)
-	assert.Empty(t, handled, "the generic replay refuses a dead letter of the batch router")
-	_, err = reader.Get(t.Context(), rows[0].ID)
-	require.NoError(t, err, "the dead letter stays")
 }
 
 func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {

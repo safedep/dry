@@ -143,9 +143,20 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		Tenant:   sanitizeForText(rec.Tenant),
 	}
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
-	// dead-letter is a no-op rather than a duplicate row or an error.
+	// dead-letter keeps one row rather than a duplicate row or an error.
+	onConflict := clause.OnConflict{DoNothing: true}
+	if fromBatchRouter(row) {
+		// A row of Consume with the same payload has no source tenant. Without the
+		// update, Replay would run it past the tenant check of the batch router.
+		onConflict = clause.OnConflict{
+			Columns: []clause.Column{{Name: "consumer_name"}, {Name: "payload_hash"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"feed", "event_id", "error", "attempts", "failed_at", "reason", "subject", "tenant",
+			}),
+		}
+	}
 	err := q.db.WithContext(ctx).
-		Clauses(clause.OnConflict{DoNothing: true}).
+		Clauses(onConflict).
 		Create(&row).Error
 	if err != nil {
 		return fmt.Errorf("inbox: dead-letter store: %w", err)

@@ -442,6 +442,29 @@ func TestBatchRouter_HeartbeatTouchesEveryOpenRecordWhileAHandlerRuns(t *testing
 	}
 }
 
+func TestBatchRouter_HeartbeatTouchesRecordsBeforeTheFirstHandler(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, observationBytes(t, "e"), 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchHeartbeat(time.Hour))
+	require.NoError(t, err)
+
+	touchedBefore := 0
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		touchedBefore = h.inProgress
+		return nil
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	assert.Equal(t, 1, touchedBefore, "the record waited in the fetch, so its AckWait restarts before the handler")
+}
+
 func TestBatchRouter_ShutdownLeavesRecordsForAckWait(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -531,7 +554,7 @@ func TestBatchRouter_FetchErrorRetries(t *testing.T) {
 	assert.Equal(t, 1, acks)
 }
 
-func TestBatchRouter_RefusesADeliveryLimitWithinTheBudget(t *testing.T) {
+func TestBatchRouter_RefusesADeliveryLimit(t *testing.T) {
 	cases := []struct {
 		name    string
 		limit   int
@@ -539,8 +562,8 @@ func TestBatchRouter_RefusesADeliveryLimitWithinTheBudget(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "no limit", limit: -1},
-		{name: "limit above the budget", limit: 5},
-		{name: "limit equal to the budget", limit: 4, wantErr: true},
+		{name: "zero is no limit", limit: 0},
+		{name: "limit above the budget", limit: 50, wantErr: true},
 		{name: "limit below the budget", limit: 1, wantErr: true},
 		{name: "limit lookup fails", err: errors.New("no info"), wantErr: true},
 	}

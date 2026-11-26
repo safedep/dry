@@ -17,16 +17,16 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-func ensureStream(t *testing.T) (jetstream.JetStream, jetstream.Stream) {
+func ensureStream(t *testing.T) (natstest.Server, jetstream.Stream) {
 	t.Helper()
-	js := natstest.JetStream(t)
-	stream, err := natsjs.EnsureStream(t.Context(), js, natstest.StreamConfig())
+	srv := natstest.Connect(t)
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig())
 	require.NoError(t, err)
-	return js, stream
+	return srv, stream
 }
 
 func TestEnsureStream_Validation(t *testing.T) {
-	js := natstest.JetStream(t)
+	srv := natstest.Connect(t)
 
 	cases := []struct {
 		name   string
@@ -44,18 +44,19 @@ func TestEnsureStream_Validation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := natstest.StreamConfig()
+			cfg := srv.StreamConfig()
 			tc.mutate(&cfg)
-			_, err := natsjs.EnsureStream(t.Context(), js, cfg)
+			_, err := natsjs.EnsureStream(t.Context(), srv.JS, cfg)
 			assert.Error(t, err)
 		})
 	}
 }
 
 func TestEnsureStream_CreatesAndDetectsDrift(t *testing.T) {
-	js := natstest.JetStream(t)
+	srv := natstest.Connect(t)
+	js := srv.JS
 
-	cfg := natstest.StreamConfig()
+	cfg := srv.StreamConfig()
 	stream, err := natsjs.EnsureStream(t.Context(), js, cfg)
 	require.NoError(t, err)
 	info := stream.CachedInfo().Config
@@ -89,7 +90,9 @@ func TestEnsureStream_CreatesAndDetectsDrift(t *testing.T) {
 }
 
 func TestEnsureConsumer(t *testing.T) {
-	_, stream := ensureStream(t)
+	srv, stream := ensureStream(t)
+	observations := natstest.ObservationFeed + "." + srv.Tenant
+	maintainers := natstest.MaintainerFeed + "." + srv.Tenant
 
 	cases := []struct {
 		name    string
@@ -104,17 +107,17 @@ func TestEnsureConsumer(t *testing.T) {
 				assert.Equal(t, -1, c.MaxDeliver)
 				assert.Equal(t, 30*time.Second, c.AckWait)
 			}},
-		{name: "one filter", cfg: natsjs.ConsumerConfig{Durable: "one", FilterSubjects: []string{natstest.ObservationFeed + ".*"}},
+		{name: "one filter", cfg: natsjs.ConsumerConfig{Durable: "one", FilterSubjects: []string{observations}},
 			check: func(t *testing.T, c jetstream.ConsumerConfig) {
-				assert.Equal(t, natstest.ObservationFeed+".*", c.FilterSubject)
+				assert.Equal(t, observations, c.FilterSubject)
 			}},
 		{name: "two filters", cfg: natsjs.ConsumerConfig{
 			Durable:        "two",
-			FilterSubjects: []string{natstest.ObservationFeed + ".*", natstest.MaintainerFeed + ".*"},
+			FilterSubjects: []string{observations, maintainers},
 			AckWait:        5 * time.Second,
 			MaxAckPending:  50,
 		}, check: func(t *testing.T, c jetstream.ConsumerConfig) {
-			assert.Equal(t, []string{natstest.ObservationFeed + ".*", natstest.MaintainerFeed + ".*"}, c.FilterSubjects)
+			assert.Equal(t, []string{observations, maintainers}, c.FilterSubjects)
 			assert.Equal(t, jetstream.AckExplicitPolicy, c.AckPolicy)
 			assert.Equal(t, jetstream.DeliverAllPolicy, c.DeliverPolicy)
 			assert.Equal(t, 5*time.Second, c.AckWait)
@@ -123,7 +126,6 @@ func TestEnsureConsumer(t *testing.T) {
 		{name: "no durable", cfg: natsjs.ConsumerConfig{}, wantErr: true},
 		{name: "empty filter", cfg: natsjs.ConsumerConfig{Durable: "x", FilterSubjects: []string{""}}, wantErr: true},
 		{name: "negative ack wait", cfg: natsjs.ConsumerConfig{Durable: "x", AckWait: -time.Second}, wantErr: true},
-		{name: "max deliver below -1", cfg: natsjs.ConsumerConfig{Durable: "x", MaxDeliver: -2}, wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -144,7 +146,7 @@ func TestEnsureConsumer(t *testing.T) {
 }
 
 func TestEnsureConsumer_DetectsDrift(t *testing.T) {
-	_, stream := ensureStream(t)
+	srv, stream := ensureStream(t)
 
 	cfg := natsjs.ConsumerConfig{Durable: "writer", AckWait: 10 * time.Second}
 	_, err := natsjs.EnsureConsumer(t.Context(), stream, cfg)
@@ -152,7 +154,7 @@ func TestEnsureConsumer_DetectsDrift(t *testing.T) {
 
 	changed := cfg
 	changed.AckWait = 20 * time.Second
-	changed.FilterSubjects = []string{natstest.ObservationFeed + ".*"}
+	changed.FilterSubjects = []string{natstest.ObservationFeed + "." + srv.Tenant}
 	_, err = natsjs.EnsureConsumer(t.Context(), stream, changed)
 	require.ErrorIs(t, err, natsjs.ErrDrift)
 	assert.Contains(t, err.Error(), "ack wait")
@@ -170,6 +172,23 @@ func TestEnsureConsumer_DetectsDrift(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestEnsureConsumer_ADeliveryLimitIsDrift(t *testing.T) {
+	_, stream := ensureStream(t)
+
+	_, err := stream.CreateConsumer(t.Context(), jetstream.ConsumerConfig{
+		Durable:       "writer",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       30 * time.Second,
+		MaxAckPending: 1000,
+		MaxDeliver:    10,
+	})
+	require.NoError(t, err)
+
+	_, err = natsjs.EnsureConsumer(t.Context(), stream, natsjs.ConsumerConfig{Durable: "writer"})
+	require.ErrorIs(t, err, natsjs.ErrDrift)
+	assert.Contains(t, err.Error(), "max deliver is 10")
+}
+
 func TestPublisher_DedupsOnMessageID(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -185,16 +204,16 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			js, stream := ensureStream(t)
-			pub, err := natsjs.NewPublisher(js)
+			srv, stream := ensureStream(t)
+			pub, err := natsjs.NewPublisher(srv.JS)
 			require.NoError(t, err)
 
-			first, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[0], natstest.Tenant), tc.first...)
+			first, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[0], srv.Tenant), tc.first...)
 			require.NoError(t, err)
 			assert.False(t, first.Duplicate)
-			assert.Equal(t, natstest.StreamName, first.Stream)
+			assert.Equal(t, srv.Stream, first.Stream)
 
-			second, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[1], natstest.Tenant), tc.second...)
+			second, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[1], srv.Tenant), tc.second...)
 			require.NoError(t, err, "a duplicate is a success")
 			assert.True(t, second.Duplicate)
 			assert.Equal(t, first.Sequence, second.Sequence)
@@ -205,7 +224,7 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 
 			msg, err := stream.GetMsg(t.Context(), first.Sequence)
 			require.NoError(t, err)
-			assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, msg.Subject, "the tenant comes from the envelope")
+			assert.Equal(t, natstest.ObservationFeed+"."+srv.Tenant, msg.Subject, "the tenant comes from the envelope")
 			got := &pkgregv1.PackageVersionObservationEvent{}
 			require.NoError(t, proto.Unmarshal(msg.Data, got))
 			assert.Equal(t, tc.ids[0], got.GetMeta().GetEventId())
@@ -214,12 +233,12 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 }
 
 func TestPublisher_DistinctIDsAreStored(t *testing.T) {
-	js, stream := ensureStream(t)
-	pub, err := natsjs.NewPublisher(js)
+	srv, stream := ensureStream(t)
+	pub, err := natsjs.NewPublisher(srv.JS)
 	require.NoError(t, err)
 
 	for _, id := range []string{"evt-1", "evt-2"} {
-		res, err := pub.Publish(t.Context(), natstest.Observation(id, natstest.Tenant))
+		res, err := pub.Publish(t.Context(), natstest.Observation(id, srv.Tenant))
 		require.NoError(t, err)
 		assert.False(t, res.Duplicate)
 	}
@@ -242,8 +261,8 @@ func publicEvent(t *testing.T) proto.Message {
 }
 
 func TestPublisher_Refuses(t *testing.T) {
-	js, _ := ensureStream(t)
-	pub, err := natsjs.NewPublisher(js)
+	srv, _ := ensureStream(t)
+	pub, err := natsjs.NewPublisher(srv.JS)
 	require.NoError(t, err)
 
 	cases := []struct {
@@ -257,7 +276,7 @@ func TestPublisher_Refuses(t *testing.T) {
 		{name: "tenant domain", event: natstest.Observation("e", "ab.cd.safedep.io")},
 		{name: "wildcard tenant", event: natstest.Observation("e", "*")},
 		{name: "no event id", event: pkgregv1.PackageVersionObservationEvent_builder{
-			Meta: events.NewMeta(events.WithEventID(""), events.WithTenant(natstest.Tenant)),
+			Meta: events.NewMeta(events.WithEventID(""), events.WithTenant(srv.Tenant)),
 		}.Build()},
 	}
 	for _, tc := range cases {
@@ -272,14 +291,17 @@ func TestPublisher_Refuses(t *testing.T) {
 }
 
 func TestPurgeTenant_RemovesOnlyThatTenant(t *testing.T) {
-	js, stream := ensureStream(t)
-	pub, err := natsjs.NewPublisher(js)
+	srv := natstest.Connect(t)
+	other := srv.Tenant + "-b"
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Tenant, other))
+	require.NoError(t, err)
+	pub, err := natsjs.NewPublisher(srv.JS)
 	require.NoError(t, err)
 
 	for _, ev := range []proto.Message{
-		natstest.Observation("a-1", "tenant-a"),
-		natstest.Observation("b-1", "tenant-b"),
-		natstest.Observation("a-2", "tenant-a"),
+		natstest.Observation("a-1", srv.Tenant),
+		natstest.Observation("b-1", other),
+		natstest.Observation("a-2", srv.Tenant),
 	} {
 		_, err := pub.Publish(t.Context(), ev)
 		require.NoError(t, err)
@@ -287,11 +309,15 @@ func TestPurgeTenant_RemovesOnlyThatTenant(t *testing.T) {
 
 	routing, err := events.RoutingFor(natstest.NewObservation())
 	require.NoError(t, err)
-	require.NoError(t, natsjs.PurgeTenant(t.Context(), stream, routing, "tenant-a"))
+	require.NoError(t, natsjs.PurgeTenant(t.Context(), stream, routing, srv.Tenant))
 
-	info, err := stream.Info(t.Context(), jetstream.WithSubjectFilter(natstest.ObservationFeed+".*"))
+	info, err := stream.Info(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, map[string]uint64{natstest.ObservationFeed + ".tenant-b": 1}, info.State.Subjects)
+	assert.Equal(t, uint64(1), info.State.Msgs)
+	_, err = stream.GetLastMsgForSubject(t.Context(), natstest.ObservationFeed+"."+other)
+	require.NoError(t, err, "the other tenant keeps its record")
+	_, err = stream.GetLastMsgForSubject(t.Context(), natstest.ObservationFeed+"."+srv.Tenant)
+	assert.ErrorIs(t, err, jetstream.ErrMsgNotFound)
 
 	assert.Error(t, natsjs.PurgeTenant(t.Context(), stream, routing, "*"), "a wildcard would purge every tenant")
 }

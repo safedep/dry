@@ -29,7 +29,8 @@ var (
 type JetStreamOption func(*jetStreamSource)
 
 // WithFetchMaxWait sets how long one fetch waits for a full batch (default 2s).
-// It must be below the AckWait of the consumer.
+// It must be below the AckWait of the consumer. A cancelled context stops the
+// router only after the current fetch ends.
 func WithFetchMaxWait(d time.Duration) JetStreamOption {
 	return func(s *jetStreamSource) {
 		if d > 0 {
@@ -80,10 +81,8 @@ func (s *jetStreamSource) Fetch(ctx context.Context, max int) ([]inbox.BatchReco
 		return nil, err
 	}
 
-	fetchCtx, cancel := context.WithTimeout(ctx, s.maxWait)
-	defer cancel()
-
-	batch, err := s.consumer.Fetch(max, jetstream.FetchContext(fetchCtx))
+	// Fetch cannot stop on ctx. A cancel takes up to maxWait to stop the router.
+	batch, err := s.consumer.Fetch(max, jetstream.FetchMaxWait(s.maxWait))
 	if err != nil {
 		return nil, err
 	}
@@ -97,14 +96,9 @@ func (s *jetStreamSource) Fetch(ctx context.Context, max int) ([]inbox.BatchReco
 	// not wait for their AckWait to end.
 	err = batch.Error()
 	switch {
+	case len(recs) == 0 && ctx.Err() != nil:
+		return nil, ctx.Err()
 	case err == nil:
-		return recs, nil
-	case ctx.Err() != nil:
-		if len(recs) == 0 {
-			return nil, ctx.Err()
-		}
-		return recs, nil
-	case errors.Is(err, context.DeadlineExceeded):
 		return recs, nil
 	case len(recs) == 0:
 		return nil, err

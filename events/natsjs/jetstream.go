@@ -161,6 +161,11 @@ func UpdateStream(ctx context.Context, js jetstream.JetStream, cfg StreamConfig)
 }
 
 // ConsumerConfig is a durable pull consumer. Writer replicas share it.
+//
+// The consumer has no delivery limit. The BatchRouter owns the delivery budget.
+// It redelivers a record without a limit during an outage, or while the
+// dead-letter store fails, so a server limit would drop such a record. An
+// existing consumer with a limit is a drift.
 type ConsumerConfig struct {
 	Durable string
 	// FilterSubjects selects the subjects of the stream. None selects the whole
@@ -168,11 +173,6 @@ type ConsumerConfig struct {
 	FilterSubjects []string
 	// AckWait is 30s when zero.
 	AckWait time.Duration
-	// MaxDeliver is no limit when zero or -1. Leave it zero: the BatchRouter owns
-	// the delivery budget and dead-letters a record on its last attempt. With a
-	// limit at or below that budget the server drops a record that the router
-	// could not store, and BatchRouter.Run refuses to start.
-	MaxDeliver int
 	// MaxAckPending is 1000 when zero.
 	MaxAckPending int
 }
@@ -190,9 +190,6 @@ func (c ConsumerConfig) validate() error {
 	if c.AckWait < 0 {
 		errs = append(errs, errors.New("ack wait must not be negative"))
 	}
-	if c.MaxDeliver < -1 {
-		errs = append(errs, errors.New("max deliver must be -1 or more"))
-	}
 	if c.MaxAckPending < -1 {
 		errs = append(errs, errors.New("max ack pending must be -1 or more"))
 	}
@@ -206,14 +203,11 @@ func (c ConsumerConfig) native() jetstream.ConsumerConfig {
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		DeliverPolicy: jetstream.DeliverAllPolicy,
 		AckWait:       c.AckWait,
-		MaxDeliver:    c.MaxDeliver,
+		MaxDeliver:    -1,
 		MaxAckPending: c.MaxAckPending,
 	}
 	if cfg.AckWait == 0 {
 		cfg.AckWait = defaultAckWait
-	}
-	if cfg.MaxDeliver == 0 {
-		cfg.MaxDeliver = -1
 	}
 	if cfg.MaxAckPending == 0 {
 		cfg.MaxAckPending = defaultMaxAckPending

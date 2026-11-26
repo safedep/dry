@@ -27,26 +27,29 @@ type (
 )
 
 type feedEnv struct {
-	js       jetstream.JetStream
+	natstest.Server
 	consumer jetstream.Consumer
 	pub      *natsjs.Publisher
 }
 
+// otherTenant is a second tenant on the stream of a test.
+func (e feedEnv) otherTenant() string { return e.Tenant + "-b" }
+
 func newFeedEnv(t *testing.T, cfg natsjs.ConsumerConfig) feedEnv {
 	t.Helper()
-	js := natstest.JetStream(t)
+	srv := natstest.Connect(t)
 
-	stream, err := natsjs.EnsureStream(t.Context(), js, natstest.StreamConfig())
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Tenant, srv.Tenant+"-b"))
 	require.NoError(t, err)
 
 	cfg.Durable = "writer"
 	consumer, err := natsjs.EnsureConsumer(t.Context(), stream, cfg)
 	require.NoError(t, err)
 
-	pub, err := natsjs.NewPublisher(js)
+	pub, err := natsjs.NewPublisher(srv.JS)
 	require.NoError(t, err)
 
-	return feedEnv{js: js, consumer: consumer, pub: pub}
+	return feedEnv{Server: srv, consumer: consumer, pub: pub}
 }
 
 func (e feedEnv) publish(t *testing.T, events ...proto.Message) {
@@ -68,7 +71,7 @@ func (e feedEnv) source(t *testing.T) inbox.BatchSource {
 // rewrites the cached info that the source reads.
 func (e feedEnv) settled(t *testing.T) bool {
 	t.Helper()
-	consumer, err := e.js.Consumer(t.Context(), natstest.StreamName, "writer")
+	consumer, err := e.JS.Consumer(t.Context(), e.Stream, "writer")
 	require.NoError(t, err)
 	info, err := consumer.Info(t.Context())
 	require.NoError(t, err)
@@ -163,15 +166,15 @@ func TestNewJetStream_Validation(t *testing.T) {
 
 func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	env.publish(t, natstest.Observation("evt-1", natstest.Tenant))
+	env.publish(t, natstest.Observation("evt-1", env.Tenant))
 	src := env.source(t)
 
 	recs, err := src.Fetch(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, recs, 1)
-	assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, recs[0].Subject)
+	assert.Equal(t, natstest.ObservationFeed+"."+env.Tenant, recs[0].Subject)
 	assert.Equal(t, natstest.ObservationFeed, recs[0].Feed)
-	assert.Equal(t, natstest.Tenant, recs[0].Tenant)
+	assert.Equal(t, env.Tenant, recs[0].Tenant)
 	assert.Equal(t, 1, recs[0].Attempt)
 	assert.NotEmpty(t, recs[0].Payload)
 	require.NoError(t, recs[0].Nack(0))
@@ -189,7 +192,7 @@ func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
 
 func TestJetStreamSource_FetchStopsOnCancel(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: time.Hour})
-	src, err := sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(time.Minute))
+	src, err := sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(500*time.Millisecond))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -198,7 +201,7 @@ func TestJetStreamSource_FetchStopsOnCancel(t *testing.T) {
 	start := time.Now()
 	_, err = src.Fetch(ctx, 10)
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(start), 5*time.Second)
+	assert.Less(t, time.Since(start), 5*time.Second, "a cancel stops the source after one fetch wait")
 }
 
 func TestJetStreamRouter_DeliveryLimit(t *testing.T) {
@@ -207,15 +210,27 @@ func TestJetStreamRouter_DeliveryLimit(t *testing.T) {
 		maxDeliver int
 		wantErr    bool
 	}{
-		{name: "no limit", maxDeliver: 0},
-		{name: "limit above the budget", maxDeliver: 5},
-		{name: "limit at the budget", maxDeliver: 4, wantErr: true},
+		{name: "no limit", maxDeliver: -1},
+		{name: "a limit above the budget", maxDeliver: 50, wantErr: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			env := newFeedEnv(t, natsjs.ConsumerConfig{MaxDeliver: tc.maxDeliver})
-			r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{}, inbox.WithBatchRetry(inbox.WithMaxAttempts(4)))
+			// natsjs makes only consumers without a limit. The test makes one with
+			// the raw API, as an operator could.
+			srv := natstest.Connect(t)
+			stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig())
+			require.NoError(t, err)
+			consumer, err := stream.CreateConsumer(t.Context(), jetstream.ConsumerConfig{
+				Durable:    "writer",
+				AckPolicy:  jetstream.AckExplicitPolicy,
+				MaxDeliver: tc.maxDeliver,
+			})
+			require.NoError(t, err)
+			src, err := sources.NewJetStream(consumer, sources.WithFetchMaxWait(fetchWait))
+			require.NoError(t, err)
+
+			r, err := inbox.NewBatchRouter(src, &memDLQ{}, inbox.WithBatchRetry(inbox.WithMaxAttempts(4)))
 			require.NoError(t, err)
 			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
 
@@ -234,7 +249,7 @@ func TestJetStreamRouter_DeliveryLimit(t *testing.T) {
 func TestJetStreamRouter_AcksABatch(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	for i := range 3 {
-		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%d", i), natstest.Tenant))
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%d", i), env.Tenant))
 	}
 
 	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{})
@@ -253,9 +268,9 @@ func TestJetStreamRouter_AcksABatch(t *testing.T) {
 func TestJetStreamRouter_RedeliversOnlyTheFailedGroup(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	env.publish(t,
-		natstest.Observation("obs-1", natstest.Tenant),
-		natstest.Maintainer("mnt-1", natstest.Tenant),
-		natstest.Observation("obs-2", natstest.Tenant))
+		natstest.Observation("obs-1", env.Tenant),
+		natstest.Maintainer("mnt-1", env.Tenant),
+		natstest.Observation("obs-2", env.Tenant))
 
 	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{},
 		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
@@ -280,9 +295,9 @@ func TestJetStreamRouter_RedeliversOnlyTheFailedGroup(t *testing.T) {
 func TestJetStreamRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	env.publish(t,
-		natstest.Observation("good-1", natstest.Tenant),
-		natstest.Observation("bad", natstest.Tenant),
-		natstest.Observation("good-2", natstest.Tenant))
+		natstest.Observation("good-1", env.Tenant),
+		natstest.Observation("bad", env.Tenant),
+		natstest.Observation("good-2", env.Tenant))
 
 	dlq := &memDLQ{}
 	r, err := inbox.NewBatchRouter(env.source(t), dlq,
@@ -312,14 +327,14 @@ func TestJetStreamRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 
 func TestJetStreamRouter_DeadLettersDecodeFailuresAndUnroutedFeeds(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	_, err := env.js.Publish(t.Context(), natstest.ObservationFeed+"."+natstest.Tenant, []byte{0xff, 0xff, 0xff})
+	_, err := env.JS.Publish(t.Context(), natstest.ObservationFeed+"."+env.Tenant, []byte{0xff, 0xff, 0xff})
 	require.NoError(t, err)
-	_, err = env.js.Publish(t.Context(), natstest.ObservationFeed+".tenant-b",
-		natstest.Bytes(t, natstest.Observation("wrong-tenant", natstest.Tenant)))
+	_, err = env.JS.Publish(t.Context(), natstest.ObservationFeed+"."+env.otherTenant(),
+		natstest.Bytes(t, natstest.Observation("wrong-tenant", env.Tenant)))
 	require.NoError(t, err)
 	env.publish(t,
-		natstest.Maintainer("mnt-1", natstest.Tenant),
-		natstest.Observation("obs-1", natstest.Tenant))
+		natstest.Maintainer("mnt-1", env.Tenant),
+		natstest.Observation("obs-1", env.Tenant))
 
 	dlq := &memDLQ{}
 	r, err := inbox.NewBatchRouter(env.source(t), dlq,
@@ -346,7 +361,7 @@ func TestJetStreamRouter_DeadLettersDecodeFailuresAndUnroutedFeeds(t *testing.T)
 
 func TestJetStreamRouter_StoreFailureKeepsTheRecordPastTheBudget(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	env.publish(t, natstest.Observation("bad", natstest.Tenant))
+	env.publish(t, natstest.Observation("bad", env.Tenant))
 
 	dlq := &memDLQ{failures: 2}
 	permanent := errors.New("bad row")
@@ -368,7 +383,7 @@ func TestJetStreamRouter_StoreFailureKeepsTheRecordPastTheBudget(t *testing.T) {
 func TestJetStreamRouter_HeartbeatKeepsASlowBatchFromRedelivery(t *testing.T) {
 	const ackWait = 500 * time.Millisecond
 	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
-	env.publish(t, natstest.Observation("slow", natstest.Tenant))
+	env.publish(t, natstest.Observation("slow", env.Tenant))
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -409,11 +424,49 @@ func TestJetStreamRouter_HeartbeatKeepsASlowBatchFromRedelivery(t *testing.T) {
 	assert.Empty(t, calls)
 }
 
+func TestJetStreamRouter_RecordThatWaitedInTheFetchIsNotRedelivered(t *testing.T) {
+	const (
+		ackWait  = time.Second
+		longWait = 800 * time.Millisecond
+		handling = 600 * time.Millisecond
+	)
+	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
+	env.publish(t, natstest.Observation("waited", env.Tenant))
+
+	// The record arrives at the start of a fetch that waits for a full batch. The
+	// handler then runs past AckWait, before the first heartbeat tick.
+	calls := make(chan struct{}, 2)
+	for range 2 {
+		src, err := sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(longWait))
+		require.NoError(t, err)
+		r, err := inbox.NewBatchRouter(src, &memDLQ{}, inbox.WithBatchHeartbeat(time.Hour))
+		require.NoError(t, err)
+		require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+			calls <- struct{}{}
+			<-time.After(handling)
+			return nil
+		}))
+		run(t, r)
+	}
+
+	select {
+	case <-calls:
+	case <-time.After(10 * time.Second):
+		require.Fail(t, "the handler did not run")
+	}
+	select {
+	case <-calls:
+		assert.Fail(t, "the server redelivered the record to the other replica")
+	case <-time.After(longWait + 2*ackWait):
+	}
+	require.Eventually(t, func() bool { return env.settled(t) }, 10*time.Second, 20*time.Millisecond)
+}
+
 func TestJetStreamRouter_ReplicasShareOneDurableConsumer(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	const n = 60
 	for i := range n {
-		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%02d", i), natstest.Tenant))
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%02d", i), env.Tenant))
 	}
 
 	all := newSeen()

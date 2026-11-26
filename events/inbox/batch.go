@@ -223,9 +223,9 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 }
 
 // Run fetches and routes batches until ctx is done, and then returns the context
-// error. It refuses to start when the transport stops a record at or before the
-// last attempt of the router, because such a record is lost and not
-// dead-lettered.
+// error. It refuses to start when the transport has a delivery limit. The router
+// redelivers a record without a limit during an outage or while the dead-letter
+// store fails, so a transport limit loses such a record.
 func (r *BatchRouter) Run(ctx context.Context) error {
 	if r.source == nil {
 		return errors.New("inbox: batch router: source is required")
@@ -270,9 +270,9 @@ func (r *BatchRouter) checkDeliveryLimit(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("inbox: batch router: delivery limit: %w", err)
 	}
-	if limit > 0 && limit <= r.cfg.retry.maxAttempts {
-		return fmt.Errorf("inbox: batch router: the transport stops a record after %d deliveries, "+
-			"which is not above the delivery budget %d: remove the limit of the consumer", limit, r.cfg.retry.maxAttempts)
+	if limit > 0 {
+		return fmt.Errorf("inbox: batch router: the transport stops a record after %d deliveries: "+
+			"remove the limit of the consumer", limit)
 	}
 
 	return nil
@@ -529,7 +529,14 @@ func (r *BatchRouter) nackDelay(attempt int) time.Duration {
 // startHeartbeat marks every open record as in progress at each interval, until
 // stop. Without it, a slow handler passes the AckWait of the transport, and the
 // transport redelivers the batch to another replica while the handler runs.
+//
+// The first touch comes before any handler runs. A record can wait in the fetch
+// for most of AckWait before the router gets it.
 func (r *BatchRouter) startHeartbeat(items []*inflight) (stop func()) {
+	for _, it := range items {
+		it.touch()
+	}
+
 	done := make(chan struct{})
 	var wg sync.WaitGroup
 	wg.Add(1)

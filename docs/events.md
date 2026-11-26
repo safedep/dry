@@ -230,10 +230,12 @@ return an error that wraps `natsjs.ErrDrift` and names each field. Change a
 stream or a consumer on purpose with `natsjs.UpdateStream` or
 `natsjs.UpdateConsumer`.
 
-Leave `MaxDeliver` unset. The router owns the delivery budget and dead-letters
-a record on its last attempt. With a server limit at or below that budget, the
-server drops a record that the router could not store. `BatchRouter.Run` refuses
-to start with such a limit.
+The consumer has no delivery limit, and `ConsumerConfig` has no field for one.
+The router owns the delivery budget and dead-letters a record on its last
+attempt. During an outage, or while the dead-letter store fails, it redelivers a
+record without a limit. A server limit would drop that record with no dead
+letter. So `EnsureConsumer` reports a limit on an existing consumer as drift,
+and `BatchRouter.Run` refuses to start when the consumer has a limit.
 
 ### Writer
 
@@ -301,7 +303,6 @@ func runWriter(ctx context.Context) error {
 		return err
 	}
 
-	// No MaxDeliver: the router owns the delivery budget.
 	consumer, err := natsjs.EnsureConsumer(ctx, stream, natsjs.ConsumerConfig{
 		Durable: "clickhouse-writer",
 		AckWait: time.Minute,
@@ -377,7 +378,8 @@ Run `inbox.Migrate` from your migration pipeline before a new version consumes.
 It adds the `reason` column to the dead-letter table.
 
 `sources.NewJetStream` waits up to 2s for a full batch (`WithFetchMaxWait`). The
-wait must be below the consumer `AckWait`.
+wait must be below the consumer `AckWait`. A cancel stops the router after the
+current fetch wait ends.
 
 ### What the router does with a record
 
@@ -404,8 +406,10 @@ own, so a failing feed never redelivers the records of a feed that succeeded.
 - A handler can thus run again with single records, and delivery is at least
   once. A handler must be idempotent.
 - A handler panic is a handler error.
-- While the handlers run, a heartbeat marks every open record of the batch as in
-  progress (`WithBatchHeartbeat`), so a slow insert does not pass `AckWait`.
+- Before the first handler runs, and then at each heartbeat interval
+  (`WithBatchHeartbeat`), the router marks every open record of the batch as in
+  progress. A record can wait in the fetch for most of `AckWait`, and a slow
+  insert must not pass `AckWait`.
 - If the dead-letter store fails, the router redelivers the record.
 - At shutdown the router does not nack, because a nack spends a delivery. The
   open records come back after `AckWait`.
@@ -434,3 +438,8 @@ err := natsjs.PurgeTenant(ctx, stream, routing, tenant)
 ```
 
 `PurgeTenant` removes the records of one tenant of one feed from the stream.
+
+### Tests
+
+The JetStream tests need a NATS server with JetStream. They skip when
+`DRY_NATS_TEST_URL` is not set. See [nats_test.md](nats_test.md).

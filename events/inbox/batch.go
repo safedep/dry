@@ -9,7 +9,6 @@ import (
 	"time"
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
-	"github.com/safedep/dry/async"
 	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/log"
 	"google.golang.org/protobuf/proto"
@@ -210,8 +209,8 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 		},
 		replay: func(ctx context.Context, row DeadLetter) (DeadLetterReason, error) {
 			ev, err := decodeBatchEvent(row.Payload, newEvent)
-			if err == nil && row.Subject != "" {
-				err = checkSubjectTenant(row.Subject, ev.Meta)
+			if err == nil {
+				err = checkStoredTenant(row.Tenant, ev.Meta)
 			}
 			if err != nil {
 				return DeadLetterReasonDecode, err
@@ -283,8 +282,9 @@ func (r *BatchRouter) checkDeliveryLimit(ctx context.Context) error {
 }
 
 // Replay runs each dead letter that matches f through the handler of its feed,
-// as a batch of one event. A dead letter with a subject must still carry the
-// tenant of its subject in its envelope, as in Run. It deletes a dead letter that its handler accepts. A
+// as a batch of one event. The envelope tenant must be the source tenant that the
+// router stored on the dead letter, as in Run. A row without a stored tenant
+// stays. It deletes a dead letter that its handler accepts. A
 // dead letter that fails again stays, and the store of NewGormDeadLetterReader
 // keeps the new reason and error and counts the attempt. A dead letter whose
 // feed has no route stays as it is. Replay returns a List error. The failure of
@@ -463,10 +463,11 @@ func checkTenant(subjectTenant string, meta *commonv1.EventMeta) error {
 	return nil
 }
 
-func checkSubjectTenant(subject string, meta *commonv1.EventMeta) error {
-	_, tenant, err := async.ParseTenantEventSubject(subject)
-	if err != nil {
-		return err
+// checkStoredTenant makes Replay as strict as Run. A row without the tenant of
+// its source cannot prove which tenant its event belongs to.
+func checkStoredTenant(tenant string, meta *commonv1.EventMeta) error {
+	if tenant == "" {
+		return errors.New("the dead letter has no source tenant, so replay cannot check the envelope tenant")
 	}
 	return checkTenant(tenant, meta)
 }
@@ -508,6 +509,7 @@ func (r *BatchRouter) deadLetter(ctx context.Context, it *inflight, feed, eventI
 		EventID:  eventID,
 		Feed:     feed,
 		Subject:  it.Subject,
+		Tenant:   it.Tenant,
 		Reason:   reason,
 	})
 	if err != nil {

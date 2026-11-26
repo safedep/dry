@@ -695,6 +695,7 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
+	assert.Equal(t, natstest.Tenant, rows[0].Tenant)
 
 	res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
 	require.NoError(t, err)
@@ -705,6 +706,50 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, row.Attempts)
 	assert.Contains(t, row.Error, "tenant")
+}
+
+func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
+	cases := []struct {
+		name   string
+		tenant string
+		want   string
+	}{
+		{name: "a tenant without a subject and another envelope tenant", tenant: "tenant-b", want: "tenant"},
+		{name: "no stored tenant", tenant: "", want: "no source tenant"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := newTestAdapter(t)
+			seedDeadLetter(t, adapter, "writer", inbox.DeadLetterRecord{
+				Payload:  observationBytes(t, "e"),
+				Feed:     natstest.ObservationFeed,
+				Tenant:   tc.tenant,
+				Reason:   inbox.DeadLetterReasonHandler,
+				Attempts: 4,
+			})
+			reader := newDeadLetterReader(t, adapter, "writer")
+
+			r, err := inbox.NewBatchRouter(nil, &fakeDLQ{})
+			require.NoError(t, err)
+			var handled []string
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+				handled = append(handled, eventIDs(b)...)
+				return nil
+			}))
+
+			res, err := r.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.Failed)
+			assert.Empty(t, handled)
+
+			row, err := reader.Get(t.Context(), res.Outcomes[0].ID)
+			require.NoError(t, err)
+			assert.Equal(t, 5, row.Attempts)
+			assert.Equal(t, inbox.DeadLetterReasonDecode, row.Reason)
+			assert.Contains(t, row.Error, tc.want)
+		})
+	}
 }
 
 func TestBatchRouter_SplitPairsEachRecordWithItsOwnEvent(t *testing.T) {

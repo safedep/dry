@@ -39,6 +39,9 @@ type DeadLetter struct {
 	// Subject is the transport subject of a BatchRouter record. It is empty on
 	// rows from before the column and on rows of Consume.
 	Subject string `gorm:"column:subject;not null;default:''"`
+	// Tenant is the tenant that the source of a BatchRouter record gave. It is
+	// empty on rows from before the column and on rows of Consume.
+	Tenant string `gorm:"column:tenant;not null;default:''"`
 }
 
 func (DeadLetter) TableName() string { return "event_inbox_dead_letter" }
@@ -75,6 +78,8 @@ type DeadLetterRecord struct {
 	Reason DeadLetterReason
 	// Subject is the transport subject of the record, when it has one.
 	Subject string
+	// Tenant is the tenant that the source of the record gave, when it has one.
+	Tenant string
 }
 
 // DeadLetterQueue persists records a consumer has given up on. It is the sink an
@@ -135,6 +140,7 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		FailedAt: time.Now(),
 		Reason:   reasonOrUnspecified(rec.Reason),
 		Subject:  sanitizeForText(rec.Subject),
+		Tenant:   sanitizeForText(rec.Tenant),
 	}
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
 	// dead-letter is a no-op rather than a duplicate row or an error.

@@ -63,6 +63,14 @@ func Replay[T proto.Message](
 		return ReplayResult{}, errors.New("inbox: replay: newEvent must return a non-nil message")
 	}
 
+	return replayRows(ctx, reader, f, func(ctx context.Context, row DeadLetter) error {
+		return replayOne(ctx, reader, row, newEvent, handler)
+	})
+}
+
+// replayRows pages over the records that match f and calls replay for each.
+func replayRows(ctx context.Context, reader DeadLetterReader, f DeadLetterFilter,
+	replay func(ctx context.Context, row DeadLetter) error) (ReplayResult, error) {
 	var res ReplayResult
 	afterID := f.AfterID
 	for {
@@ -93,7 +101,7 @@ func Replay[T proto.Message](
 				afterID = row.ID
 			}
 			out := ReplayOutcome{ID: row.ID, EventID: row.EventID}
-			if err := replayOne(ctx, reader, row, newEvent, handler); err != nil {
+			if err := replay(ctx, row); err != nil {
 				out.Err = err
 				res.Failed++
 			} else {

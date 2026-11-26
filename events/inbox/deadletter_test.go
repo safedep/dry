@@ -1,12 +1,15 @@
 package inbox_test
 
 import (
+	"path/filepath"
 	"testing"
 	"unicode/utf8"
 
 	"github.com/safedep/dry/events/inbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 func TestNewGormDeadLetter_Validation(t *testing.T) {
@@ -134,4 +137,63 @@ func TestMigrate_Idempotent(t *testing.T) {
 	gdb, err := adapter.GetDB()
 	require.NoError(t, err)
 	assert.True(t, gdb.Migrator().HasTable(&inbox.DeadLetter{}))
+}
+
+// deadLetterBeforeReason is the dead-letter model before the reason column.
+type deadLetterBeforeReason struct {
+	ID           uint64 `gorm:"primaryKey;autoIncrement"`
+	ConsumerName string `gorm:"column:consumer_name;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:1"`
+	PayloadHash  string `gorm:"column:payload_hash;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:2"`
+	Feed         string `gorm:"column:feed"`
+	EventID      string `gorm:"column:event_id"`
+	Payload      []byte `gorm:"column:payload"`
+	Error        string `gorm:"column:error"`
+	Attempts     int    `gorm:"column:attempts"`
+}
+
+func (deadLetterBeforeReason) TableName() string { return "event_inbox_dead_letter" }
+
+func TestMigrate_GivesOldDeadLettersTheUnspecifiedReason(t *testing.T) {
+	gdb, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "old.db")), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, gdb.AutoMigrate(&deadLetterBeforeReason{}))
+	require.NoError(t, gdb.Create(&deadLetterBeforeReason{ConsumerName: "consumer-a", PayloadHash: "h", Payload: []byte("p")}).Error)
+
+	adapter := testAdapter{gdb: gdb}
+	require.NoError(t, inbox.Migrate(adapter))
+
+	reader := newDeadLetterReader(t, adapter, "consumer-a")
+	rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonUnspecified})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, inbox.DeadLetterReasonUnspecified, rows[0].Reason)
+}
+
+func TestGormDeadLetter_StoreKeepsTheReason(t *testing.T) {
+	cases := []struct {
+		name   string
+		reason inbox.DeadLetterReason
+		want   inbox.DeadLetterReason
+	}{
+		{name: "empty reason", reason: "", want: inbox.DeadLetterReasonUnspecified},
+		{name: "no route", reason: inbox.DeadLetterReasonNoRoute, want: inbox.DeadLetterReasonNoRoute},
+		{name: "decode", reason: inbox.DeadLetterReasonDecode, want: inbox.DeadLetterReasonDecode},
+		{name: "handler", reason: inbox.DeadLetterReasonHandler, want: inbox.DeadLetterReasonHandler},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := newTestAdapter(t)
+			seedDeadLetter(t, adapter, "consumer-a",
+				inbox.DeadLetterRecord{Payload: []byte("target"), Reason: tc.reason},
+				inbox.DeadLetterRecord{Payload: []byte("other"), Reason: "other"},
+			)
+			reader := newDeadLetterReader(t, adapter, "consumer-a")
+
+			rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: tc.want})
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, []byte("target"), rows[0].Payload)
+		})
+	}
 }

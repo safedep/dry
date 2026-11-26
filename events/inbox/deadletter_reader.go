@@ -20,12 +20,13 @@ const defaultDeadLetterPageSize = 100
 var ErrDeadLetterNotFound = errors.New("inbox: dead-letter record not found")
 
 // DeadLetterFilter narrows a List / Count. All fields are optional; a zero filter
-// matches every record for the consumer. Feed / EventID / Before select records;
-// AfterID / Limit page over them (id-ordered, ascending). Count ignores AfterID
-// and Limit — it answers "how many match the selection", not "how many on a page".
+// matches every record for the consumer. Feed / EventID / Reason / Before select
+// records; AfterID / Limit page over them (id-ordered, ascending). Count ignores
+// AfterID and Limit — it answers "how many match the selection", not "how many on a page".
 type DeadLetterFilter struct {
 	Feed    string
 	EventID string
+	Reason  DeadLetterReason
 	Before  time.Time // failed_at strictly before this instant
 	AfterID uint64    // cursor: records with id greater than this
 	Limit   int       // page size; <= 0 uses defaultDeadLetterPageSize
@@ -59,7 +60,7 @@ func NewGormDeadLetterReader(adapter db.SqlDataAdapter, consumerName string) (De
 }
 
 // selection applies the consumer scope and content filters (Feed / EventID /
-// Before), the predicates shared by List and Count. Pagination (AfterID / Limit)
+// Reason / Before), the predicates shared by List and Count. Pagination (AfterID / Limit)
 // is layered on by List only.
 func (q *gormDeadLetter) selection(tx *gorm.DB, f DeadLetterFilter) *gorm.DB {
 	tx = tx.Where("consumer_name = ?", q.consumerName)
@@ -68,6 +69,9 @@ func (q *gormDeadLetter) selection(tx *gorm.DB, f DeadLetterFilter) *gorm.DB {
 	}
 	if f.EventID != "" {
 		tx = tx.Where("event_id = ?", f.EventID)
+	}
+	if f.Reason != "" {
+		tx = tx.Where("reason = ?", f.Reason)
 	}
 	if !f.Before.IsZero() {
 		tx = tx.Where("failed_at < ?", f.Before)
@@ -119,6 +123,29 @@ func (q *gormDeadLetter) Delete(ctx context.Context, id uint64) error {
 		Delete(&DeadLetter{}).Error
 	if err != nil {
 		return fmt.Errorf("inbox: dead-letter delete: %w", err)
+	}
+	return nil
+}
+
+// deadLetterFailureRecorder is the optional capability of a DeadLetterReader
+// that BatchRouter.Replay uses to keep the error of the last replay on a record.
+type deadLetterFailureRecorder interface {
+	recordFailure(ctx context.Context, id uint64, reason DeadLetterReason, cause string) error
+}
+
+var _ deadLetterFailureRecorder = &gormDeadLetter{}
+
+func (q *gormDeadLetter) recordFailure(ctx context.Context, id uint64, reason DeadLetterReason, cause string) error {
+	err := q.db.WithContext(ctx).Model(&DeadLetter{}).
+		Where("consumer_name = ? AND id = ?", q.consumerName, id).
+		Updates(map[string]any{
+			"reason":    reasonOrUnspecified(reason),
+			"error":     sanitizeForText(cause),
+			"attempts":  gorm.Expr("attempts + 1"),
+			"failed_at": time.Now(),
+		}).Error
+	if err != nil {
+		return fmt.Errorf("inbox: dead-letter record failure: %w", err)
 	}
 	return nil
 }

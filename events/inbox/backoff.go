@@ -50,3 +50,16 @@ func (b *redeliveryBackoff) reset() {
 	b.key = ""
 	b.delay = 0
 }
+
+// attemptBackoff returns the redelivery delay of a record on its attempt-th
+// delivery: base for the first, doubled for each next attempt, capped at max.
+func attemptBackoff(attempt int, base, max time.Duration) time.Duration {
+	delay := base
+	for i := 1; i < attempt; i++ {
+		if delay > max/2 {
+			return max
+		}
+		delay *= 2
+	}
+	return min(delay, max)
+}

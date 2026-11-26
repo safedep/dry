@@ -34,9 +34,27 @@ type DeadLetter struct {
 	Error        string    `gorm:"column:error"`
 	Attempts     int       `gorm:"column:attempts"`
 	FailedAt     time.Time `gorm:"column:failed_at;index:idx_event_inbox_dead_letter_failed_at"`
+	// Reason is DeadLetterReasonUnspecified on rows from before the column.
+	Reason DeadLetterReason `gorm:"column:reason;not null;default:'unspecified'"`
 }
 
 func (DeadLetter) TableName() string { return "event_inbox_dead_letter" }
+
+// DeadLetterReason says why a consumer dead-lettered a record. Callers filter
+// on it, so the values are stored and must not change.
+type DeadLetterReason string
+
+const (
+	// DeadLetterReasonUnspecified marks a record without a known reason: a row
+	// from before the reason column, or a record of NewRetryPolicy.
+	DeadLetterReasonUnspecified DeadLetterReason = "unspecified"
+	// DeadLetterReasonNoRoute marks a record whose subject has no route.
+	DeadLetterReasonNoRoute DeadLetterReason = "no_route"
+	// DeadLetterReasonDecode marks a record that does not decode to its event.
+	DeadLetterReasonDecode DeadLetterReason = "decode"
+	// DeadLetterReasonHandler marks a record that its handler failed for good.
+	DeadLetterReasonHandler DeadLetterReason = "handler"
+)
 
 // DeadLetterRecord is the input to DeadLetterQueue.Store. Payload is the raw
 // record and the source of truth; EventID and Feed are optional context populated
@@ -50,6 +68,8 @@ type DeadLetterRecord struct {
 	Attempts int
 	EventID  string
 	Feed     string
+	// Reason is DeadLetterReasonUnspecified when empty.
+	Reason DeadLetterReason
 }
 
 // DeadLetterQueue persists records a consumer has given up on. It is the sink an
@@ -108,6 +128,7 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		Error:    sanitizeForText(rec.Error),
 		Attempts: rec.Attempts,
 		FailedAt: time.Now(),
+		Reason:   reasonOrUnspecified(rec.Reason),
 	}
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
 	// dead-letter is a no-op rather than a duplicate row or an error.
@@ -148,4 +169,11 @@ func sanitizeForText(s string) string {
 		return s
 	}
 	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "")
+}
+
+func reasonOrUnspecified(r DeadLetterReason) DeadLetterReason {
+	if r == "" {
+		return DeadLetterReasonUnspecified
+	}
+	return r
 }

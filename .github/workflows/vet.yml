@@ -1,0 +1,39 @@
+name: vet
+on:
+  pull_request:
+permissions: {}
+concurrency:
+  group: vet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  vet:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up PMG
+        uses: ./.github/actions/setup-pmg
+        with:
+          api-key: ${{ secrets.SAFEDEP_CLOUD_API_KEY }}
+          tenant-id: ${{ secrets.SAFEDEP_CLOUD_TENANT_DOMAIN }}
+          network-profile: .github/pmg/network/vet.yml
+
+      # vet reads the source of each module that go.mod requires, to tell
+      # which modules the code reaches. It downloads no module.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go mod download
+
+      # A pull request from a fork or from Dependabot gets no secrets. vet
+      # then uses the community endpoints of SafeDep.
+      - uses: safedep/vet@2bbc25a7f3f9645df9589fc035496f7ad955da60 # v2.0.0-alpha.20261126165315
+        with:
+          config: .github/vet/config.yml
+          tenant-id: ${{ secrets.SAFEDEP_CLOUD_TENANT_DOMAIN }}
+          api-key: ${{ secrets.SAFEDEP_CLOUD_API_KEY }}

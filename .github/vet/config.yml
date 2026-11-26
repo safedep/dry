@@ -1,0 +1,15 @@
+# vet config for the vet workflow. The action reads this file at the base
+# commit of each pull request. vet config schema get prints the keys.
+plugins:
+  license:
+    options:
+      # Each SafeDep tool imports dry, so a copyleft license here reaches all
+      # of them.
+      deny: [GPL-2.0-only, GPL-3.0-only]
+      # A package with no license data is not a denied license.
+      unknown: ignore
+  dependency-cooldown:
+    options:
+      skip:
+        - purl: pkg:golang/buf.build/gen/go/safedep/*
+          reason: SafeDep publishes these API SDKs. A new SDK version is not a cooldown risk.

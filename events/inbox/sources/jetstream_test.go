@@ -9,108 +9,83 @@ import (
 	"time"
 
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
-	natsjs "github.com/nats-io/nats.go/jetstream"
-	"github.com/safedep/dry/events"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/safedep/dry/events/inbox"
 	"github.com/safedep/dry/events/inbox/sources"
 	"github.com/safedep/dry/events/internal/natstest"
-	"github.com/safedep/dry/events/jetstream"
+	"github.com/safedep/dry/events/natsjs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
-const (
-	observationFeed = "safedep.events.private.packageregistry.v1.PackageVersionObservationEvent"
-	maintainerFeed  = "safedep.events.private.packageregistry.v1.MaintainerObservationEvent"
-)
+const fetchWait = 100 * time.Millisecond
 
 type (
 	observationBatch = []inbox.BatchEvent[*pkgregv1.PackageVersionObservationEvent]
 	maintainerBatch  = []inbox.BatchEvent[*pkgregv1.MaintainerObservationEvent]
 )
 
-func newObservation() *pkgregv1.PackageVersionObservationEvent {
-	return &pkgregv1.PackageVersionObservationEvent{}
-}
-
-func newMaintainer() *pkgregv1.MaintainerObservationEvent {
-	return &pkgregv1.MaintainerObservationEvent{}
-}
-
 type feedEnv struct {
-	js       natsjs.JetStream
-	stream   natsjs.Stream
-	consumer natsjs.Consumer
-	pub      *jetstream.Publisher
+	js       jetstream.JetStream
+	consumer jetstream.Consumer
+	pub      *natsjs.Publisher
 }
 
-func newFeedEnv(t *testing.T, cfg jetstream.ConsumerConfig) feedEnv {
+func newFeedEnv(t *testing.T, cfg natsjs.ConsumerConfig) feedEnv {
 	t.Helper()
 	js := natstest.JetStream(t)
 
-	stream, err := jetstream.EnsureStream(t.Context(), js, jetstream.StreamConfig{
-		Name:     "PACKAGEREGISTRY",
-		Subjects: []string{"safedep.events.private.packageregistry.v1.>"},
-		MaxAge:   time.Hour,
-		MaxBytes: 1 << 24,
-	})
+	stream, err := natsjs.EnsureStream(t.Context(), js, natstest.StreamConfig())
 	require.NoError(t, err)
 
-	if cfg.Durable == "" {
-		cfg.Durable = "writer"
+	cfg.Durable = "writer"
+	consumer, err := natsjs.EnsureConsumer(t.Context(), stream, cfg)
+	require.NoError(t, err)
+
+	pub, err := natsjs.NewPublisher(js)
+	require.NoError(t, err)
+
+	return feedEnv{js: js, consumer: consumer, pub: pub}
+}
+
+func (e feedEnv) publish(t *testing.T, events ...proto.Message) {
+	t.Helper()
+	for _, ev := range events {
+		_, err := e.pub.Publish(t.Context(), ev)
+		require.NoError(t, err)
 	}
-	consumer, err := jetstream.EnsureConsumer(t.Context(), stream, cfg)
-	require.NoError(t, err)
-
-	pub, err := jetstream.NewPublisher(js)
-	require.NoError(t, err)
-
-	return feedEnv{js: js, stream: stream, consumer: consumer, pub: pub}
 }
 
-func (e feedEnv) publishObservation(t *testing.T, id string) {
+func (e feedEnv) source(t *testing.T) inbox.BatchSource {
 	t.Helper()
-	ev := pkgregv1.PackageVersionObservationEvent_builder{Meta: events.NewMeta(events.WithEventID(id))}.Build()
-	_, err := e.pub.Publish(t.Context(), ev, "tenant-a")
+	src, err := sources.NewJetStream(e.consumer, sources.WithFetchMaxWait(fetchWait))
 	require.NoError(t, err)
+	return src
 }
 
-func (e feedEnv) publishMaintainer(t *testing.T, id string) {
-	t.Helper()
-	ev := pkgregv1.MaintainerObservationEvent_builder{Meta: events.NewMeta(events.WithEventID(id))}.Build()
-	_, err := e.pub.Publish(t.Context(), ev, "tenant-a")
-	require.NoError(t, err)
-}
-
+// settled reads the consumer through its own handle, because Consumer.Info
+// rewrites the cached info that the source reads.
 func (e feedEnv) settled(t *testing.T) bool {
 	t.Helper()
-	info, err := e.consumer.Info(t.Context())
+	consumer, err := e.js.Consumer(t.Context(), natstest.StreamName, "writer")
+	require.NoError(t, err)
+	info, err := consumer.Info(t.Context())
 	require.NoError(t, err)
 	return info.NumPending == 0 && info.NumAckPending == 0
 }
 
-// startRouter runs a router over the consumer until the test ends or stop.
-func (e feedEnv) startRouter(t *testing.T, register func(r *inbox.BatchRouter), opts ...inbox.BatchOption) (stop func()) {
+// run runs the router until the test ends. It fails the test when Run returns an
+// error other than the cancel.
+func run(t *testing.T, r *inbox.BatchRouter) {
 	t.Helper()
-	src, err := sources.NewJetStream(e.consumer, sources.WithFetchMaxWait(200*time.Millisecond))
-	require.NoError(t, err)
-
-	r := inbox.NewBatchRouter(src, opts...)
-	register(r)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
-
-	var once sync.Once
-	stop = func() {
-		once.Do(func() {
-			cancel()
-			assert.ErrorIs(t, <-done, context.Canceled)
-		})
-	}
-	t.Cleanup(stop)
-	return stop
+	t.Cleanup(func() {
+		cancel()
+		assert.ErrorIs(t, <-done, context.Canceled)
+	})
 }
 
 // seen counts handler calls per event id.
@@ -121,12 +96,16 @@ type seen struct {
 
 func newSeen() *seen { return &seen{calls: map[string]int{}} }
 
-func (s *seen) add(ids ...string) {
+func (s *seen) add(ids ...string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, id := range ids {
 		s.calls[id]++
 	}
+	if len(ids) == 0 {
+		return 0
+	}
+	return s.calls[ids[0]]
 }
 
 func (s *seen) snapshot() map[string]int {
@@ -139,30 +118,28 @@ func (s *seen) snapshot() map[string]int {
 	return out
 }
 
-func observationIDs(b observationBatch) []string {
-	out := make([]string, len(b))
-	for i, ev := range b {
+func ids[T proto.Message](batch []inbox.BatchEvent[T]) []string {
+	out := make([]string, len(batch))
+	for i, ev := range batch {
 		out[i] = ev.Meta.GetEventId()
 	}
 	return out
 }
 
-func maintainerIDs(b maintainerBatch) []string {
-	out := make([]string, len(b))
-	for i, ev := range b {
-		out[i] = ev.Meta.GetEventId()
-	}
-	return out
-}
-
+// memDLQ fails the first failures stores, then keeps the records.
 type memDLQ struct {
-	mu     sync.Mutex
-	stored []inbox.DeadLetterRecord
+	mu       sync.Mutex
+	failures int
+	stored   []inbox.DeadLetterRecord
 }
 
 func (m *memDLQ) Store(_ context.Context, rec inbox.DeadLetterRecord) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.failures > 0 {
+		m.failures--
+		return errors.New("db down")
+	}
 	m.stored = append(m.stored, rec)
 	return nil
 }
@@ -173,25 +150,31 @@ func (m *memDLQ) records() []inbox.DeadLetterRecord {
 	return append([]inbox.DeadLetterRecord(nil), m.stored...)
 }
 
-func TestNewJetStream_RequiresConsumer(t *testing.T) {
+func TestNewJetStream_Validation(t *testing.T) {
 	_, err := sources.NewJetStream(nil)
 	assert.Error(t, err)
+
+	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: time.Second})
+	_, err = sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(time.Second))
+	assert.Error(t, err, "a fetch wait at AckWait")
+	_, err = sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(500*time.Millisecond))
+	assert.NoError(t, err)
 }
 
 func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
-	env.publishObservation(t, "evt-1")
-
-	src, err := sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(time.Second))
-	require.NoError(t, err)
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	env.publish(t, natstest.Observation("evt-1", natstest.Tenant))
+	src := env.source(t)
 
 	recs, err := src.Fetch(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, recs, 1)
-	assert.Equal(t, observationFeed+".tenant-a", recs[0].Subject)
+	assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, recs[0].Subject)
+	assert.Equal(t, natstest.ObservationFeed, recs[0].Feed)
+	assert.Equal(t, natstest.Tenant, recs[0].Tenant)
 	assert.Equal(t, 1, recs[0].Attempt)
 	assert.NotEmpty(t, recs[0].Payload)
-	require.NoError(t, recs[0].Nak(0))
+	require.NoError(t, recs[0].Nack(0))
 
 	recs, err = src.Fetch(t.Context(), 10)
 	require.NoError(t, err)
@@ -205,7 +188,7 @@ func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
 }
 
 func TestJetStreamSource_FetchStopsOnCancel(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
+	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: time.Hour})
 	src, err := sources.NewJetStream(env.consumer, sources.WithFetchMaxWait(time.Minute))
 	require.NoError(t, err)
 
@@ -218,150 +201,233 @@ func TestJetStreamSource_FetchStopsOnCancel(t *testing.T) {
 	assert.Less(t, time.Since(start), 5*time.Second)
 }
 
-func TestJetStreamRouter_AcksABatch(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
-	for i := range 3 {
-		env.publishObservation(t, fmt.Sprintf("evt-%d", i))
+func TestJetStreamRouter_DeliveryLimit(t *testing.T) {
+	cases := []struct {
+		name       string
+		maxDeliver int
+		wantErr    bool
+	}{
+		{name: "no limit", maxDeliver: 0},
+		{name: "limit above the budget", maxDeliver: 5},
+		{name: "limit at the budget", maxDeliver: 4, wantErr: true},
 	}
 
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newFeedEnv(t, natsjs.ConsumerConfig{MaxDeliver: tc.maxDeliver})
+			r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{}, inbox.WithBatchRetry(inbox.WithMaxAttempts(4)))
+			require.NoError(t, err)
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+			ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+			defer cancel()
+			err = r.Run(ctx)
+			if tc.wantErr {
+				assert.ErrorContains(t, err, "remove the limit")
+				return
+			}
+			assert.ErrorIs(t, err, context.DeadlineExceeded)
+		})
+	}
+}
+
+func TestJetStreamRouter_AcksABatch(t *testing.T) {
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	for i := range 3 {
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%d", i), natstest.Tenant))
+	}
+
+	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{})
+	require.NoError(t, err)
 	got := newSeen()
-	env.startRouter(t, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			got.add(observationIDs(b)...)
-			return nil
-		}))
-	})
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		got.add(ids(b)...)
+		return nil
+	}))
+	run(t, r)
 
 	require.Eventually(t, func() bool { return env.settled(t) && len(got.snapshot()) == 3 }, 10*time.Second, 20*time.Millisecond)
 	assert.Equal(t, map[string]int{"evt-0": 1, "evt-1": 1, "evt-2": 1}, got.snapshot())
 }
 
 func TestJetStreamRouter_RedeliversOnlyTheFailedGroup(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
-	env.publishObservation(t, "obs-1")
-	env.publishMaintainer(t, "mnt-1")
-	env.publishObservation(t, "obs-2")
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	env.publish(t,
+		natstest.Observation("obs-1", natstest.Tenant),
+		natstest.Maintainer("mnt-1", natstest.Tenant),
+		natstest.Observation("obs-2", natstest.Tenant))
 
+	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{},
+		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
+	require.NoError(t, err)
 	obs, mnt := newSeen(), newSeen()
-	env.startRouter(t, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			obs.add(observationIDs(b)...)
-			return nil
-		}))
-		require.NoError(t, inbox.Route(r, newMaintainer, func(_ context.Context, b maintainerBatch) error {
-			mnt.add(maintainerIDs(b)...)
-			if mnt.snapshot()["mnt-1"] == 1 {
-				return errors.New("insert failed")
-			}
-			return nil
-		}))
-	}, inbox.WithBatchBackoff(50*time.Millisecond, 50*time.Millisecond))
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		obs.add(ids(b)...)
+		return nil
+	}))
+	require.NoError(t, inbox.Route(r, natstest.NewMaintainer, func(_ context.Context, b maintainerBatch) error {
+		if mnt.add(ids(b)...) == 1 {
+			return errors.New("insert failed")
+		}
+		return nil
+	}))
+	run(t, r)
 
 	require.Eventually(t, func() bool { return env.settled(t) && mnt.snapshot()["mnt-1"] == 2 }, 10*time.Second, 20*time.Millisecond)
 	assert.Equal(t, map[string]int{"obs-1": 1, "obs-2": 1}, obs.snapshot(), "the feed that succeeded is not redelivered")
-	assert.Equal(t, map[string]int{"mnt-1": 2}, mnt.snapshot())
 }
 
-func TestJetStreamRouter_SplitOnFinalAttemptDeadLettersOnlyTheBadRecord(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{MaxDeliver: 3})
-	for _, id := range []string{"good-1", "bad", "good-2"} {
-		env.publishObservation(t, id)
-	}
+func TestJetStreamRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	env.publish(t,
+		natstest.Observation("good-1", natstest.Tenant),
+		natstest.Observation("bad", natstest.Tenant),
+		natstest.Observation("good-2", natstest.Tenant))
 
-	got := newSeen()
 	dlq := &memDLQ{}
-	env.startRouter(t, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			batchIDs := observationIDs(b)
-			for _, id := range batchIDs {
-				if id == "bad" {
-					return errors.New("bad row")
-				}
-			}
-			got.add(batchIDs...)
-			return nil
-		}))
-	},
-		inbox.WithBatchDeadLetter(dlq),
+	r, err := inbox.NewBatchRouter(env.source(t), dlq,
 		inbox.WithBatchRetry(inbox.WithMaxAttempts(3)),
-		inbox.WithBatchBackoff(20*time.Millisecond, 20*time.Millisecond))
+		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
+	require.NoError(t, err)
+	got := newSeen()
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		batchIDs := ids(b)
+		for _, id := range batchIDs {
+			if id == "bad" {
+				return errors.New("bad row")
+			}
+		}
+		got.add(batchIDs...)
+		return nil
+	}))
+	run(t, r)
 
 	require.Eventually(t, func() bool { return env.settled(t) && len(dlq.records()) == 1 }, 10*time.Second, 20*time.Millisecond)
 	assert.Equal(t, map[string]int{"good-1": 1, "good-2": 1}, got.snapshot())
-
 	rec := dlq.records()[0]
 	assert.Equal(t, "bad", rec.EventID)
 	assert.Equal(t, inbox.DeadLetterReasonHandler, rec.Reason)
 	assert.Equal(t, 3, rec.Attempts)
 }
 
-func TestJetStreamRouter_DeadLettersADecodeFailureAndAnUnroutedSubject(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
-	_, err := env.js.Publish(t.Context(), observationFeed+".tenant-a", []byte{0xff, 0xff, 0xff})
+func TestJetStreamRouter_DeadLettersDecodeFailuresAndUnroutedFeeds(t *testing.T) {
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	_, err := env.js.Publish(t.Context(), natstest.ObservationFeed+"."+natstest.Tenant, []byte{0xff, 0xff, 0xff})
 	require.NoError(t, err)
-	env.publishMaintainer(t, "mnt-1")
-	env.publishObservation(t, "obs-1")
+	_, err = env.js.Publish(t.Context(), natstest.ObservationFeed+".tenant-b",
+		natstest.Bytes(t, natstest.Observation("wrong-tenant", natstest.Tenant)))
+	require.NoError(t, err)
+	env.publish(t,
+		natstest.Maintainer("mnt-1", natstest.Tenant),
+		natstest.Observation("obs-1", natstest.Tenant))
 
-	got := newSeen()
 	dlq := &memDLQ{}
-	env.startRouter(t, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			got.add(observationIDs(b)...)
-			return nil
-		}))
-	}, inbox.WithBatchDeadLetter(dlq))
+	r, err := inbox.NewBatchRouter(env.source(t), dlq,
+		inbox.WithBatchRetry(inbox.WithMaxAttempts(2)),
+		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
+	require.NoError(t, err)
+	got := newSeen()
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		got.add(ids(b)...)
+		return nil
+	}))
+	run(t, r)
 
-	require.Eventually(t, func() bool { return env.settled(t) && len(dlq.records()) == 2 }, 10*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return env.settled(t) && len(dlq.records()) == 3 }, 10*time.Second, 20*time.Millisecond)
 	assert.Equal(t, map[string]int{"obs-1": 1}, got.snapshot())
 
-	reasons := map[inbox.DeadLetterReason]string{}
+	byReason := map[inbox.DeadLetterReason][]int{}
 	for _, rec := range dlq.records() {
-		reasons[rec.Reason] = rec.Feed
+		byReason[rec.Reason] = append(byReason[rec.Reason], rec.Attempts)
 	}
-	assert.Equal(t, map[inbox.DeadLetterReason]string{
-		inbox.DeadLetterReasonDecode:  observationFeed,
-		inbox.DeadLetterReasonNoRoute: maintainerFeed,
-	}, reasons)
+	assert.ElementsMatch(t, []int{1, 1}, byReason[inbox.DeadLetterReasonDecode], "decode failures go at once")
+	assert.Equal(t, []int{2}, byReason[inbox.DeadLetterReasonNoRoute], "an unrouted record waits for its last attempt")
+}
+
+func TestJetStreamRouter_StoreFailureKeepsTheRecordPastTheBudget(t *testing.T) {
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
+	env.publish(t, natstest.Observation("bad", natstest.Tenant))
+
+	dlq := &memDLQ{failures: 2}
+	permanent := errors.New("bad row")
+	r, err := inbox.NewBatchRouter(env.source(t), dlq,
+		inbox.WithBatchRetry(inbox.WithMaxAttempts(2), inbox.WithPermanentClassifier(func(err error) bool {
+			return errors.Is(err, permanent)
+		})),
+		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		return permanent
+	}))
+	run(t, r)
+
+	require.Eventually(t, func() bool { return env.settled(t) && len(dlq.records()) == 1 }, 10*time.Second, 20*time.Millisecond)
+	assert.Equal(t, 3, dlq.records()[0].Attempts, "the record outlives two failed stores")
 }
 
 func TestJetStreamRouter_HeartbeatKeepsASlowBatchFromRedelivery(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{AckWait: time.Second})
-	env.publishObservation(t, "slow")
+	const ackWait = 500 * time.Millisecond
+	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
+	env.publish(t, natstest.Observation("slow", natstest.Tenant))
 
-	got := newSeen()
-	register := func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			got.add(observationIDs(b)...)
-			time.Sleep(2500 * time.Millisecond)
-			return nil
-		}))
+	started := make(chan struct{})
+	release := make(chan struct{})
+	calls := make(chan struct{}, 2)
+	handler := func(context.Context, observationBatch) error {
+		calls <- struct{}{}
+		select {
+		case started <- struct{}{}:
+			<-release
+		default:
+		}
+		return nil
 	}
-	// The second replica takes the record if the server redelivers it.
-	env.startRouter(t, register, inbox.WithBatchHeartbeat(200*time.Millisecond))
-	env.startRouter(t, register, inbox.WithBatchHeartbeat(200*time.Millisecond))
 
-	require.Eventually(t, func() bool { return env.settled(t) && len(got.snapshot()) == 1 }, 10*time.Second, 20*time.Millisecond)
-	assert.Equal(t, map[string]int{"slow": 1}, got.snapshot())
+	// The second replica takes the record if the server redelivers it.
+	for range 2 {
+		r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{}, inbox.WithBatchHeartbeat(ackWait/5))
+		require.NoError(t, err)
+		require.NoError(t, inbox.Route(r, natstest.NewObservation, handler))
+		run(t, r)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(10 * time.Second):
+		require.Fail(t, "the handler did not start")
+	}
+	<-calls
+
+	select {
+	case <-calls:
+		assert.Fail(t, "the server redelivered a record while its handler ran")
+	case <-time.After(3 * ackWait):
+	}
+	close(release)
+
+	require.Eventually(t, func() bool { return env.settled(t) }, 10*time.Second, 20*time.Millisecond)
+	assert.Empty(t, calls)
 }
 
 func TestJetStreamRouter_ReplicasShareOneDurableConsumer(t *testing.T) {
-	env := newFeedEnv(t, jetstream.ConsumerConfig{})
+	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	const n = 60
 	for i := range n {
-		env.publishObservation(t, fmt.Sprintf("evt-%02d", i))
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%02d", i), natstest.Tenant))
 	}
 
 	all := newSeen()
 	perReplica := []*seen{newSeen(), newSeen()}
 	for _, mine := range perReplica {
-		env.startRouter(t, func(r *inbox.BatchRouter) {
-			require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-				all.add(observationIDs(b)...)
-				mine.add(observationIDs(b)...)
-				time.Sleep(20 * time.Millisecond)
-				return nil
-			}))
-		}, inbox.WithBatchSize(5))
+		r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{}, inbox.WithBatchSize(5))
+		require.NoError(t, err)
+		require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+			all.add(ids(b)...)
+			mine.add(ids(b)...)
+			time.Sleep(20 * time.Millisecond)
+			return nil
+		}))
+		run(t, r)
 	}
 
 	require.Eventually(t, func() bool { return env.settled(t) && len(all.snapshot()) == n }, 20*time.Second, 20*time.Millisecond)

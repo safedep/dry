@@ -9,33 +9,17 @@ import (
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
-	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/inbox"
+	"github.com/safedep/dry/events/internal/natstest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	observationFeed = "safedep.events.private.packageregistry.v1.PackageVersionObservationEvent"
-	maintainerFeed  = "safedep.events.private.packageregistry.v1.MaintainerObservationEvent"
+type (
+	observationBatch = []inbox.BatchEvent[*pkgregv1.PackageVersionObservationEvent]
+	maintainerBatch  = []inbox.BatchEvent[*pkgregv1.MaintainerObservationEvent]
 )
-
-type observationBatch = []inbox.BatchEvent[*pkgregv1.PackageVersionObservationEvent]
-type maintainerBatch = []inbox.BatchEvent[*pkgregv1.MaintainerObservationEvent]
-
-func newMaintainer() *pkgregv1.MaintainerObservationEvent {
-	return &pkgregv1.MaintainerObservationEvent{}
-}
-
-func maintainerBytes(t *testing.T, eventID string) []byte {
-	t.Helper()
-	b, err := proto.Marshal(pkgregv1.MaintainerObservationEvent_builder{
-		Meta: events.NewMeta(events.WithEventID(eventID)),
-	}.Build())
-	require.NoError(t, err)
-	return b
-}
 
 // handle records what the router did with one fake record.
 type handle struct {
@@ -43,30 +27,45 @@ type handle struct {
 	acks       int
 	terms      int
 	inProgress int
-	naks       []time.Duration
+	nacks      []time.Duration
+	touched    chan struct{}
 }
 
-func (h *handle) record(subject string, payload []byte, attempt int) inbox.BatchRecord {
+func (h *handle) record(feed string, payload []byte, attempt int) inbox.BatchRecord {
 	return inbox.BatchRecord{
-		Subject: subject,
+		Subject: feed + "." + natstest.Tenant,
+		Feed:    feed,
+		Tenant:  natstest.Tenant,
 		Payload: payload,
 		Attempt: attempt,
 		Ack:     func() error { h.mu.Lock(); defer h.mu.Unlock(); h.acks++; return nil },
-		Nak: func(d time.Duration) error {
+		Nack: func(d time.Duration) error {
 			h.mu.Lock()
 			defer h.mu.Unlock()
-			h.naks = append(h.naks, d)
+			h.nacks = append(h.nacks, d)
 			return nil
 		},
-		Term:       func() error { h.mu.Lock(); defer h.mu.Unlock(); h.terms++; return nil },
-		InProgress: func() error { h.mu.Lock(); defer h.mu.Unlock(); h.inProgress++; return nil },
+		Term: func() error { h.mu.Lock(); defer h.mu.Unlock(); h.terms++; return nil },
+		InProgress: func() error {
+			h.mu.Lock()
+			h.inProgress++
+			h.mu.Unlock()
+			if h.touched != nil {
+				select {
+				case h.touched <- struct{}{}:
+				default:
+				}
+			}
+			return nil
+		},
 	}
 }
 
-func (h *handle) state() (acks, terms, naks int) {
+// state returns the acks, terms and nack delays of the record.
+func (h *handle) state() (int, int, []time.Duration) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.acks, h.terms, len(h.naks)
+	return h.acks, h.terms, append([]time.Duration(nil), h.nacks...)
 }
 
 type fetchStep struct {
@@ -92,14 +91,20 @@ func (f *fakeBatchSource) Fetch(ctx context.Context, _ int) ([]inbox.BatchRecord
 	return s.recs, s.err
 }
 
-func runRouter(t *testing.T, steps []fetchStep, register func(r *inbox.BatchRouter), opts ...inbox.BatchOption) {
-	t.Helper()
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+type limitedSource struct {
+	fakeBatchSource
+	limit int
+	err   error
+}
 
-	r := inbox.NewBatchRouter(&fakeBatchSource{steps: steps, cancel: cancel}, opts...)
-	register(r)
-	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+func (l *limitedSource) MaxDeliveries(context.Context) (int, error) { return l.limit, l.err }
+
+func observationBytes(t *testing.T, id string) []byte {
+	return natstest.Bytes(t, natstest.Observation(id, natstest.Tenant))
+}
+
+func maintainerBytes(t *testing.T, id string) []byte {
+	return natstest.Bytes(t, natstest.Maintainer(id, natstest.Tenant))
 }
 
 func eventIDs[T proto.Message](batch []inbox.BatchEvent[T]) []string {
@@ -110,39 +115,56 @@ func eventIDs[T proto.Message](batch []inbox.BatchEvent[T]) []string {
 	return ids
 }
 
-func TestBatchRouter_AcksOnlyTheGroupThatSucceeds(t *testing.T) {
-	obs1, obs2, mnt := &handle{}, &handle{}, &handle{}
-	steps := []fetchStep{{recs: []inbox.BatchRecord{
-		obs1.record(observationFeed+".t1", eventBytes(t, "obs-1"), 1),
-		mnt.record(maintainerFeed+".t1", maintainerBytes(t, "mnt-1"), 1),
-		obs2.record(observationFeed+".t2", eventBytes(t, "obs-2"), 1),
-	}}}
-
-	var gotObs, gotMnt []string
-	runRouter(t, steps, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-			gotObs = append(gotObs, eventIDs(b)...)
-			return nil
-		}))
-		require.NoError(t, inbox.Route(r, newMaintainer, func(_ context.Context, b maintainerBatch) error {
-			gotMnt = append(gotMnt, eventIDs(b)...)
-			return errors.New("insert failed")
-		}))
-	}, inbox.WithBatchBackoff(time.Second, time.Minute))
-
-	assert.Equal(t, []string{"obs-1", "obs-2"}, gotObs, "one handler call with both records of the feed")
-	assert.Equal(t, []string{"mnt-1"}, gotMnt)
-
-	for _, h := range []*handle{obs1, obs2} {
-		acks, terms, naks := h.state()
-		assert.Equal(t, []int{1, 0, 0}, []int{acks, terms, naks}, "the feed that succeeded is acked")
+func failOn(bad string, err error) func(context.Context, observationBatch) error {
+	return func(_ context.Context, b observationBatch) error {
+		for _, id := range eventIDs(b) {
+			if id == bad {
+				return err
+			}
+		}
+		return nil
 	}
-	acks, terms, _ := mnt.state()
-	assert.Equal(t, []int{0, 0}, []int{acks, terms})
-	assert.Equal(t, []time.Duration{time.Second}, mnt.naks, "the failed feed is redelivered with the first backoff")
 }
 
-func TestBatchRouter_NakDelayGrowsWithAttempt(t *testing.T) {
+func TestBatchRouter_AcksOnlyTheGroupThatSucceeds(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	obs1, obs2, mnt := &handle{}, &handle{}, &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		obs1.record(natstest.ObservationFeed, observationBytes(t, "obs-1"), 1),
+		mnt.record(natstest.MaintainerFeed, maintainerBytes(t, "mnt-1"), 1),
+		obs2.record(natstest.ObservationFeed, observationBytes(t, "obs-2"), 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchRedeliveryBackoff(time.Second, time.Minute))
+	require.NoError(t, err)
+
+	var gotObs, gotMnt [][]string
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		gotObs = append(gotObs, eventIDs(b))
+		return nil
+	}))
+	require.NoError(t, inbox.Route(r, natstest.NewMaintainer, func(_ context.Context, b maintainerBatch) error {
+		gotMnt = append(gotMnt, eventIDs(b))
+		return errors.New("insert failed")
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	assert.Equal(t, [][]string{{"obs-1", "obs-2"}}, gotObs, "one call with both records of the feed")
+	assert.Equal(t, [][]string{{"mnt-1"}}, gotMnt)
+	for _, h := range []*handle{obs1, obs2} {
+		acks, terms, nacks := h.state()
+		assert.Equal(t, 1, acks)
+		assert.Zero(t, terms)
+		assert.Empty(t, nacks, "the feed that succeeded is not redelivered")
+	}
+	acks, terms, nacks := mnt.state()
+	assert.Zero(t, acks)
+	assert.Zero(t, terms)
+	assert.Equal(t, []time.Duration{time.Second}, nacks)
+}
+
+func TestBatchRouter_NackDelayGrowsWithAttempt(t *testing.T) {
 	cases := []struct {
 		attempt int
 		want    time.Duration
@@ -153,20 +175,25 @@ func TestBatchRouter_NakDelayGrowsWithAttempt(t *testing.T) {
 		{attempt: 9, want: 10 * time.Second},
 	}
 	for _, tc := range cases {
+		ctx, cancel := context.WithCancel(t.Context())
 		h := &handle{}
-		runRouter(t, []fetchStep{{recs: []inbox.BatchRecord{h.record(observationFeed+".t1", eventBytes(t, "e"), tc.attempt)}}},
-			func(r *inbox.BatchRouter) {
-				require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error {
-					return errors.New("down")
-				}))
-			},
-			inbox.WithBatchBackoff(time.Second, 10*time.Second),
+		src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+			h.record(natstest.ObservationFeed, observationBytes(t, "e"), tc.attempt),
+		}}}}
+		r, err := inbox.NewBatchRouter(src, &fakeDLQ{},
+			inbox.WithBatchRedeliveryBackoff(time.Second, 10*time.Second),
 			inbox.WithBatchRetry(inbox.WithMaxAttempts(100)))
-		assert.Equal(t, []time.Duration{tc.want}, h.naks, "attempt %d", tc.attempt)
+		require.NoError(t, err)
+		require.NoError(t, inbox.Route(r, natstest.NewObservation, failOn("e", errors.New("down"))))
+
+		assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+		_, _, nacks := h.state()
+		assert.Equal(t, []time.Duration{tc.want}, nacks, "attempt %d", tc.attempt)
+		cancel()
 	}
 }
 
-func TestBatchRouter_SplitsAndDeadLettersOnlyTheBadRecord(t *testing.T) {
+func TestBatchRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 	cases := []struct {
 		name    string
 		attempt int
@@ -179,39 +206,42 @@ func TestBatchRouter_SplitsAndDeadLettersOnlyTheBadRecord(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
 			good1, bad, good2 := &handle{}, &handle{}, &handle{}
-			steps := []fetchStep{{recs: []inbox.BatchRecord{
-				good1.record(observationFeed+".t1", eventBytes(t, "good-1"), tc.attempt),
-				bad.record(observationFeed+".t1", eventBytes(t, "bad"), tc.attempt),
-				good2.record(observationFeed+".t1", eventBytes(t, "good-2"), tc.attempt),
-			}}}
+			src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+				good1.record(natstest.ObservationFeed, observationBytes(t, "good-1"), tc.attempt),
+				bad.record(natstest.ObservationFeed, observationBytes(t, "bad"), tc.attempt),
+				good2.record(natstest.ObservationFeed, observationBytes(t, "good-2"), tc.attempt),
+			}}}}
+			dlq := &fakeDLQ{}
+			r, err := inbox.NewBatchRouter(src, dlq, tc.opts...)
+			require.NoError(t, err)
 
 			var calls [][]string
-			dlq := &fakeDLQ{}
-			runRouter(t, steps, func(r *inbox.BatchRouter) {
-				require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-					ids := eventIDs(b)
-					calls = append(calls, ids)
-					for _, id := range ids {
-						if id == "bad" {
-							return errors.New("bad row")
-						}
-					}
-					return nil
-				}))
-			}, append(tc.opts, inbox.WithBatchDeadLetter(dlq))...)
+			fail := failOn("bad", errors.New("bad row"))
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(ctx context.Context, b observationBatch) error {
+				calls = append(calls, eventIDs(b))
+				return fail(ctx, b)
+			}))
 
+			assert.ErrorIs(t, r.Run(ctx), context.Canceled)
 			assert.Equal(t, [][]string{{"good-1", "bad", "good-2"}, {"good-1"}, {"bad"}, {"good-2"}}, calls)
 			for _, h := range []*handle{good1, good2} {
-				acks, terms, naks := h.state()
-				assert.Equal(t, []int{1, 0, 0}, []int{acks, terms, naks})
+				acks, terms, nacks := h.state()
+				assert.Equal(t, 1, acks)
+				assert.Zero(t, terms)
+				assert.Empty(t, nacks)
 			}
-			acks, terms, naks := bad.state()
-			assert.Equal(t, []int{0, 1, 0}, []int{acks, terms, naks})
+			acks, terms, nacks := bad.state()
+			assert.Zero(t, acks)
+			assert.Equal(t, 1, terms)
+			assert.Empty(t, nacks)
 
 			require.Len(t, dlq.stored, 1)
 			assert.Equal(t, inbox.DeadLetterReasonHandler, dlq.stored[0].Reason)
-			assert.Equal(t, observationFeed, dlq.stored[0].Feed)
+			assert.Equal(t, natstest.ObservationFeed, dlq.stored[0].Feed)
 			assert.Equal(t, "bad", dlq.stored[0].EventID)
 			assert.Equal(t, tc.attempt, dlq.stored[0].Attempts)
 			assert.Contains(t, dlq.stored[0].Error, "bad row")
@@ -219,175 +249,347 @@ func TestBatchRouter_SplitsAndDeadLettersOnlyTheBadRecord(t *testing.T) {
 	}
 }
 
-func TestBatchRouter_SplitNaksARecordThatFailsBeforeItsFinalAttempt(t *testing.T) {
-	final, early := &handle{}, &handle{}
-	steps := []fetchStep{{recs: []inbox.BatchRecord{
-		final.record(observationFeed+".t1", eventBytes(t, "final"), 3),
-		early.record(observationFeed+".t1", eventBytes(t, "early"), 1),
-	}}}
-
-	dlq := &fakeDLQ{}
-	runRouter(t, steps, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error {
-			return errors.New("down")
-		}))
-	}, inbox.WithBatchDeadLetter(dlq), inbox.WithBatchRetry(inbox.WithMaxAttempts(3)))
-
-	_, terms, _ := final.state()
-	assert.Equal(t, 1, terms)
-	_, terms, naks := early.state()
-	assert.Equal(t, []int{0, 1}, []int{terms, naks}, "a record with attempts left is redelivered, not dead-lettered")
-	assert.Len(t, dlq.stored, 1)
-}
-
-func TestBatchRouter_DeadLettersOneRecordThatDoesNotDecodeOrRoute(t *testing.T) {
+func TestBatchRouter_SplitWithNoPassingRecordIsAnOutage(t *testing.T) {
+	permanent := errors.New("permanent")
 	cases := []struct {
-		name       string
-		subject    string
-		payload    []byte
-		wantReason inbox.DeadLetterReason
-		wantFeed   string
+		name          string
+		errs          map[string]error
+		wantDeadIDs   []string
+		wantRetriedID []string
 	}{
-		{name: "decode failure", subject: observationFeed + ".t1", payload: []byte{0xff, 0xff, 0xff},
-			wantReason: inbox.DeadLetterReasonDecode, wantFeed: observationFeed},
-		{name: "unrouted subject", subject: maintainerFeed + ".t1", payload: maintainerBytes(t, "m"),
-			wantReason: inbox.DeadLetterReasonNoRoute, wantFeed: maintainerFeed},
-		{name: "subject without a tenant token", subject: "plain", payload: eventBytes(t, "p"),
-			wantReason: inbox.DeadLetterReasonNoRoute, wantFeed: ""},
+		{name: "every record fails with a transient error",
+			errs:          map[string]error{"a": errors.New("down"), "b": errors.New("down")},
+			wantRetriedID: []string{"a", "b"}},
+		{name: "a permanent error still dead-letters its record",
+			errs:          map[string]error{"a": permanent, "b": errors.New("down")},
+			wantDeadIDs:   []string{"a"},
+			wantRetriedID: []string{"b"}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			handles := map[string]*handle{"a": {}, "b": {}}
+			src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+				handles["a"].record(natstest.ObservationFeed, observationBytes(t, "a"), 4),
+				handles["b"].record(natstest.ObservationFeed, observationBytes(t, "b"), 4),
+			}}}}
+			dlq := &fakeDLQ{}
+			r, err := inbox.NewBatchRouter(src, dlq,
+				inbox.WithBatchRedeliveryBackoff(time.Second, time.Minute),
+				inbox.WithBatchRetry(inbox.WithPermanentClassifier(func(err error) bool { return errors.Is(err, permanent) })))
+			require.NoError(t, err)
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+				if len(b) > 1 {
+					return errors.New("down")
+				}
+				return tc.errs[b[0].Meta.GetEventId()]
+			}))
+
+			assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+
+			var dead []string
+			for _, rec := range dlq.stored {
+				dead = append(dead, rec.EventID)
+			}
+			assert.Equal(t, tc.wantDeadIDs, dead)
+			for _, id := range tc.wantRetriedID {
+				_, terms, nacks := handles[id].state()
+				assert.Zero(t, terms, id)
+				assert.Equal(t, []time.Duration{time.Minute}, nacks, "%s waits the maximum backoff", id)
+			}
+		})
+	}
+}
+
+func TestBatchRouter_DeadLettersARecordThatDoesNotDecode(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload []byte
+	}{
+		{name: "bad bytes", payload: []byte{0xff, 0xff, 0xff}},
+		{name: "envelope tenant is not the subject tenant", payload: natstest.Bytes(t, natstest.Observation("other", "tenant-b"))},
+		{name: "envelope without a tenant", payload: natstest.Bytes(t, natstest.Observation("none", ""))},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
 			poison, good := &handle{}, &handle{}
-			steps := []fetchStep{{recs: []inbox.BatchRecord{
-				poison.record(tc.subject, tc.payload, 1),
-				good.record(observationFeed+".t1", eventBytes(t, "good"), 1),
-			}}}
+			src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+				poison.record(natstest.ObservationFeed, tc.payload, 1),
+				good.record(natstest.ObservationFeed, observationBytes(t, "good"), 1),
+			}}}}
+			dlq := &fakeDLQ{}
+			r, err := inbox.NewBatchRouter(src, dlq)
+			require.NoError(t, err)
 
 			var got []string
-			dlq := &fakeDLQ{}
-			runRouter(t, steps, func(r *inbox.BatchRouter) {
-				require.NoError(t, inbox.Route(r, newObservation, func(_ context.Context, b observationBatch) error {
-					got = append(got, eventIDs(b)...)
-					return nil
-				}))
-			}, inbox.WithBatchDeadLetter(dlq))
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+				got = append(got, eventIDs(b)...)
+				return nil
+			}))
 
+			assert.ErrorIs(t, r.Run(ctx), context.Canceled)
 			assert.Equal(t, []string{"good"}, got)
 			acks, _, _ := good.state()
 			assert.Equal(t, 1, acks)
-			acks, terms, naks := poison.state()
-			assert.Equal(t, []int{0, 1, 0}, []int{acks, terms, naks})
+			_, terms, nacks := poison.state()
+			assert.Equal(t, 1, terms, "a record that does not decode is dead-lettered on its first attempt")
+			assert.Empty(t, nacks)
 			require.Len(t, dlq.stored, 1)
-			assert.Equal(t, tc.wantReason, dlq.stored[0].Reason)
-			assert.Equal(t, tc.wantFeed, dlq.stored[0].Feed)
+			assert.Equal(t, inbox.DeadLetterReasonDecode, dlq.stored[0].Reason)
+			assert.Equal(t, natstest.ObservationFeed, dlq.stored[0].Feed)
 			assert.Equal(t, tc.payload, dlq.stored[0].Payload)
 		})
 	}
 }
 
-func TestBatchRouter_DeadLetterFallbacks(t *testing.T) {
+func TestBatchRouter_UnroutedRecordWaitsForItsLastAttempt(t *testing.T) {
 	cases := []struct {
-		name      string
-		dlq       inbox.DeadLetterQueue
-		wantTerms int
-		wantNaks  int
+		name     string
+		feed     string
+		attempt  int
+		wantDead bool
 	}{
-		{name: "no store terminates", dlq: nil, wantTerms: 1},
-		{name: "store failure redelivers", dlq: &fakeDLQ{failErr: errors.New("db down")}, wantNaks: 1},
+		{name: "first attempt is redelivered", feed: natstest.MaintainerFeed, attempt: 1},
+		{name: "last attempt is dead-lettered", feed: natstest.MaintainerFeed, attempt: 4, wantDead: true},
+		{name: "a subject without a feed is dead-lettered on its last attempt", feed: "", attempt: 4, wantDead: true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := &handle{}
-			steps := []fetchStep{{recs: []inbox.BatchRecord{h.record(observationFeed+".t1", []byte{0xff}, 1)}}}
-			var opts []inbox.BatchOption
-			if tc.dlq != nil {
-				opts = append(opts, inbox.WithBatchDeadLetter(tc.dlq))
-			}
-			runRouter(t, steps, func(r *inbox.BatchRouter) {
-				require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error { return nil }))
-			}, opts...)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
 
-			_, terms, naks := h.state()
-			assert.Equal(t, tc.wantTerms, terms)
-			assert.Equal(t, tc.wantNaks, naks)
+			h := &handle{}
+			src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+				h.record(tc.feed, maintainerBytes(t, "m"), tc.attempt),
+			}}}}
+			dlq := &fakeDLQ{}
+			r, err := inbox.NewBatchRouter(src, dlq)
+			require.NoError(t, err)
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+			assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+			_, terms, nacks := h.state()
+			if !tc.wantDead {
+				assert.Empty(t, dlq.stored)
+				assert.Zero(t, terms)
+				assert.Len(t, nacks, 1)
+				return
+			}
+			assert.Equal(t, 1, terms)
+			require.Len(t, dlq.stored, 1)
+			assert.Equal(t, inbox.DeadLetterReasonNoRoute, dlq.stored[0].Reason)
+			assert.Equal(t, tc.feed, dlq.stored[0].Feed)
 		})
 	}
 }
 
-func TestBatchRouter_HeartbeatMarksRecordsInProgressWhileTheHandlerRuns(t *testing.T) {
-	slow, waiting := &handle{}, &handle{}
-	steps := []fetchStep{{recs: []inbox.BatchRecord{
-		slow.record(observationFeed+".t1", eventBytes(t, "slow"), 1),
-		waiting.record(maintainerFeed+".t1", maintainerBytes(t, "waiting"), 1),
-	}}}
-
-	runRouter(t, steps, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error {
-			time.Sleep(200 * time.Millisecond)
-			return nil
-		}))
-		require.NoError(t, inbox.Route(r, newMaintainer, func(context.Context, maintainerBatch) error { return nil }))
-	}, inbox.WithBatchHeartbeat(20*time.Millisecond))
-
-	slow.mu.Lock()
-	defer slow.mu.Unlock()
-	waiting.mu.Lock()
-	defer waiting.mu.Unlock()
-	assert.GreaterOrEqual(t, slow.inProgress, 3)
-	assert.GreaterOrEqual(t, waiting.inProgress, 3, "a record that waits for another feed is in flight too")
-	assert.Equal(t, 1, slow.acks)
-	assert.Equal(t, 1, waiting.acks)
-}
-
-func TestBatchRouter_FetchErrorRetries(t *testing.T) {
-	h := &handle{}
-	steps := []fetchStep{
-		{err: errors.New("broker blip")},
-		{recs: []inbox.BatchRecord{h.record(observationFeed+".t1", eventBytes(t, "e"), 1)}},
-	}
-
-	runRouter(t, steps, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error { return nil }))
-	}, inbox.WithBatchFetchRetryDelay(time.Millisecond))
-
-	acks, _, _ := h.state()
-	assert.Equal(t, 1, acks)
-}
-
-func TestBatchRouter_CancelDuringHandlerRedeliversAtOnce(t *testing.T) {
+func TestBatchRouter_StoreFailureRedelivers(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
 	h := &handle{}
-	src := &fakeBatchSource{steps: []fetchStep{{recs: []inbox.BatchRecord{h.record(observationFeed+".t1", eventBytes(t, "e"), 1)}}}, cancel: cancel}
-	r := inbox.NewBatchRouter(src)
-	require.NoError(t, inbox.Route(r, newObservation, func(ctx context.Context, _ observationBatch) error {
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, []byte{0xff}, 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{failErr: errors.New("db down")})
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	_, terms, nacks := h.state()
+	assert.Zero(t, terms)
+	assert.Len(t, nacks, 1)
+}
+
+func TestBatchRouter_HeartbeatTouchesEveryOpenRecordWhileAHandlerRuns(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	running := &handle{touched: make(chan struct{}, 1)}
+	waiting := &handle{touched: make(chan struct{}, 1)}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		running.record(natstest.ObservationFeed, observationBytes(t, "running"), 1),
+		waiting.record(natstest.MaintainerFeed, maintainerBytes(t, "waiting"), 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchHeartbeat(time.Millisecond))
+	require.NoError(t, err)
+
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		for _, h := range []*handle{running, waiting} {
+			select {
+			case <-h.touched:
+			case <-time.After(5 * time.Second):
+				return errors.New("no heartbeat")
+			}
+		}
+		return nil
+	}))
+	require.NoError(t, inbox.Route(r, natstest.NewMaintainer, func(context.Context, maintainerBatch) error { return nil }))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	for _, h := range []*handle{running, waiting} {
+		acks, _, nacks := h.state()
+		assert.Equal(t, 1, acks)
+		assert.Empty(t, nacks)
+	}
+}
+
+func TestBatchRouter_ShutdownLeavesRecordsForAckWait(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, observationBytes(t, "e"), 4),
+	}}}}
+	dlq := &fakeDLQ{}
+	r, err := inbox.NewBatchRouter(src, dlq)
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(ctx context.Context, _ observationBatch) error {
 		cancel()
 		return ctx.Err()
 	}))
 
 	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
-	assert.Equal(t, []time.Duration{0}, h.naks)
+	acks, terms, nacks := h.state()
+	assert.Zero(t, acks)
+	assert.Zero(t, terms)
+	assert.Empty(t, nacks, "a nack at shutdown spends a delivery")
+	assert.Empty(t, dlq.stored)
 }
 
-func TestRoute_Validation(t *testing.T) {
+// cancelDLQ cancels the router and fails, as a store does when the process
+// stops in the middle of a write.
+type cancelDLQ struct{ cancel context.CancelFunc }
+
+func (c cancelDLQ) Store(ctx context.Context, _ inbox.DeadLetterRecord) error {
+	c.cancel()
+	return ctx.Err()
+}
+
+func TestBatchRouter_ShutdownDuringADeadLetterStoreLeavesTheRecord(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, []byte{0xff}, 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, cancelDLQ{cancel: cancel})
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	acks, terms, nacks := h.state()
+	assert.Zero(t, acks)
+	assert.Zero(t, terms)
+	assert.Empty(t, nacks)
+}
+
+func TestBatchRouter_HandlerPanicIsAHandlerError(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, observationBytes(t, "e"), 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchRedeliveryBackoff(time.Second, time.Minute))
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		panic("nil map")
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	_, _, nacks := h.state()
+	assert.Equal(t, []time.Duration{time.Second}, nacks)
+}
+
+func TestBatchRouter_FetchErrorRetries(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{
+		{err: errors.New("broker blip")},
+		{recs: []inbox.BatchRecord{h.record(natstest.ObservationFeed, observationBytes(t, "e"), 1)}},
+	}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchRestartDelay(time.Millisecond))
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	acks, _, _ := h.state()
+	assert.Equal(t, 1, acks)
+}
+
+func TestBatchRouter_RefusesADeliveryLimitWithinTheBudget(t *testing.T) {
+	cases := []struct {
+		name    string
+		limit   int
+		err     error
+		wantErr bool
+	}{
+		{name: "no limit", limit: -1},
+		{name: "limit above the budget", limit: 5},
+		{name: "limit equal to the budget", limit: 4, wantErr: true},
+		{name: "limit below the budget", limit: 1, wantErr: true},
+		{name: "limit lookup fails", err: errors.New("no info"), wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+
+			src := &limitedSource{fakeBatchSource: fakeBatchSource{cancel: cancel}, limit: tc.limit, err: tc.err}
+			r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchRetry(inbox.WithMaxAttempts(4)))
+			require.NoError(t, err)
+			require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
+
+			err = r.Run(ctx)
+			if tc.wantErr {
+				assert.Error(t, err)
+				assert.NotErrorIs(t, err, context.Canceled)
+				return
+			}
+			assert.ErrorIs(t, err, context.Canceled)
+		})
+	}
+}
+
+func TestBatchRouter_Validation(t *testing.T) {
 	ok := func(context.Context, observationBatch) error { return nil }
 
-	r := inbox.NewBatchRouter(&fakeBatchSource{})
-	require.NoError(t, inbox.Route(r, newObservation, ok))
-	assert.Error(t, inbox.Route(r, newObservation, ok), "a second route for one feed")
-	assert.Error(t, inbox.Route[*pkgregv1.PackageVersionObservationEvent](nil, newObservation, ok))
+	_, err := inbox.NewBatchRouter(&fakeBatchSource{}, nil)
+	assert.Error(t, err, "no dead-letter store")
+
+	r, err := inbox.NewBatchRouter(&fakeBatchSource{}, &fakeDLQ{})
+	require.NoError(t, err)
+	assert.Error(t, r.Run(t.Context()), "no routes")
+
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, ok))
+	assert.Error(t, inbox.Route(r, natstest.NewObservation, ok), "a second route for one feed")
+	assert.Error(t, inbox.Route[*pkgregv1.PackageVersionObservationEvent](nil, natstest.NewObservation, ok))
 	assert.Error(t, inbox.Route[*pkgregv1.PackageVersionObservationEvent](r, nil, ok))
-	assert.Error(t, inbox.Route(r, newObservation, nil))
+	assert.Error(t, inbox.Route(r, natstest.NewObservation, nil))
 	assert.Error(t, inbox.Route(r, func() *pkgregv1.PackageVersionObservationEvent { return nil }, ok))
 	assert.Error(t, inbox.Route(r, func() *commonv1.EventMeta { return &commonv1.EventMeta{} },
 		func(context.Context, []inbox.BatchEvent[*commonv1.EventMeta]) error { return nil }),
 		"a message that is not an event")
 
-	assert.Error(t, inbox.NewBatchRouter(nil).Run(t.Context()), "no source")
-	assert.Error(t, inbox.NewBatchRouter(&fakeBatchSource{}).Run(t.Context()), "no routes")
+	noSource, err := inbox.NewBatchRouter(nil, &fakeDLQ{})
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(noSource, natstest.NewObservation, ok))
+	assert.Error(t, noSource.Run(t.Context()), "no source")
 }
 
 func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
@@ -396,32 +598,34 @@ func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
 	require.NoError(t, err)
 	reader := newDeadLetterReader(t, adapter, "writer")
 
-	noRoute, bad := &handle{}, &handle{}
-	steps := []fetchStep{{recs: []inbox.BatchRecord{
-		noRoute.record(maintainerFeed+".t1", maintainerBytes(t, "mnt-1"), 1),
-		bad.record(observationFeed+".t1", eventBytes(t, "obs-1"), 4),
-	}}}
-	runRouter(t, steps, func(r *inbox.BatchRouter) {
-		require.NoError(t, inbox.Route(r, newObservation, func(context.Context, observationBatch) error {
-			return errors.New("bad row")
-		}))
-	}, inbox.WithBatchDeadLetter(dlq))
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	noRoute, bad, good := &handle{}, &handle{}, &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		noRoute.record(natstest.MaintainerFeed, maintainerBytes(t, "mnt-1"), 4),
+		bad.record(natstest.ObservationFeed, observationBytes(t, "obs-bad"), 4),
+		good.record(natstest.ObservationFeed, observationBytes(t, "obs-good"), 4),
+	}}}}
+	writer, err := inbox.NewBatchRouter(src, dlq)
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(writer, natstest.NewObservation, failOn("obs-bad", errors.New("bad row"))))
+	assert.ErrorIs(t, writer.Run(ctx), context.Canceled)
 
-	n, err := reader.Count(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonNoRoute})
+	n, err := reader.Count(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonNoRoute, Feed: natstest.MaintainerFeed})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
-	n, err = reader.Count(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonHandler, Feed: observationFeed})
+	n, err = reader.Count(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonHandler, Feed: natstest.ObservationFeed})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), n)
 
-	// The CLI registers the routes of the writer. The maintainer feed now has a
-	// route and its dead letter clears. The observation handler still fails.
-	var replayed []string
-	cli := inbox.NewBatchRouter(nil)
-	require.NoError(t, inbox.Route(cli, newObservation, func(context.Context, observationBatch) error {
+	// A new release routes the maintainer feed. The observation record still fails.
+	cli, err := inbox.NewBatchRouter(nil, dlq)
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(cli, natstest.NewObservation, func(context.Context, observationBatch) error {
 		return errors.New("still bad")
 	}))
-	require.NoError(t, inbox.Route(cli, newMaintainer, func(_ context.Context, b maintainerBatch) error {
+	var replayed []string
+	require.NoError(t, inbox.Route(cli, natstest.NewMaintainer, func(_ context.Context, b maintainerBatch) error {
 		replayed = append(replayed, eventIDs(b)...)
 		return nil
 	}))
@@ -435,7 +639,7 @@ func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
 	rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{})
 	require.NoError(t, err)
 	require.Len(t, rows, 1, "the replayed dead letter is deleted")
-	assert.Equal(t, observationFeed, rows[0].Feed)
+	assert.Equal(t, "obs-bad", rows[0].EventID)
 	assert.Equal(t, inbox.DeadLetterReasonHandler, rows[0].Reason)
 	assert.Equal(t, 5, rows[0].Attempts, "the failed replay counts as an attempt")
 	assert.Contains(t, rows[0].Error, "still bad")
@@ -444,12 +648,13 @@ func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
 func TestBatchRouter_ReplayKeepsADeadLetterWithoutARoute(t *testing.T) {
 	adapter := newTestAdapter(t)
 	seedDeadLetter(t, adapter, "writer", inbox.DeadLetterRecord{
-		Payload: maintainerBytes(t, "mnt-1"), Feed: maintainerFeed, Reason: inbox.DeadLetterReasonNoRoute, Attempts: 1,
+		Payload: maintainerBytes(t, "mnt-1"), Feed: natstest.MaintainerFeed, Reason: inbox.DeadLetterReasonNoRoute, Attempts: 4,
 	})
 	reader := newDeadLetterReader(t, adapter, "writer")
 
-	cli := inbox.NewBatchRouter(nil)
-	require.NoError(t, inbox.Route(cli, newObservation, func(context.Context, observationBatch) error { return nil }))
+	cli, err := inbox.NewBatchRouter(nil, &fakeDLQ{})
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(cli, natstest.NewObservation, func(context.Context, observationBatch) error { return nil }))
 
 	res, err := cli.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
 	require.NoError(t, err)
@@ -458,5 +663,5 @@ func TestBatchRouter_ReplayKeepsADeadLetterWithoutARoute(t *testing.T) {
 	row, err := reader.Get(t.Context(), res.Outcomes[0].ID)
 	require.NoError(t, err)
 	assert.Equal(t, inbox.DeadLetterReasonNoRoute, row.Reason)
-	assert.Equal(t, 1, row.Attempts)
+	assert.Equal(t, 4, row.Attempts)
 }

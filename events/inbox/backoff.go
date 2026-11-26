@@ -32,15 +32,10 @@ func (b *redeliveryBackoff) next(key string) time.Duration {
 		return 0
 	}
 
-	switch {
-	case b.delay == 0:
+	if b.delay == 0 {
 		b.delay = b.base
-	case b.delay > b.max/2:
-		// Doubling would overshoot the cap (or overflow the duration). The strict
-		// comparison lets delay == max/2 double to exactly max.
-		b.delay = b.max
-	default:
-		b.delay *= 2
+	} else {
+		b.delay = doubleCapped(b.delay, b.max)
 	}
 
 	return b.delay
@@ -54,12 +49,18 @@ func (b *redeliveryBackoff) reset() {
 // attemptBackoff returns the redelivery delay of a record on its attempt-th
 // delivery: base for the first, doubled for each next attempt, capped at max.
 func attemptBackoff(attempt int, base, max time.Duration) time.Duration {
-	delay := base
-	for i := 1; i < attempt; i++ {
-		if delay > max/2 {
-			return max
-		}
-		delay *= 2
+	delay := min(base, max)
+	for i := 1; i < attempt && delay < max; i++ {
+		delay = doubleCapped(delay, max)
 	}
-	return min(delay, max)
+	return delay
+}
+
+// doubleCapped doubles d up to max. The strict comparison lets d == max/2
+// double to exactly max, and the cap keeps the doubling from an overflow.
+func doubleCapped(d, max time.Duration) time.Duration {
+	if d > max/2 {
+		return max
+	}
+	return d * 2
 }

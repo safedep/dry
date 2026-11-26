@@ -177,104 +177,240 @@ normal pool, not this connection). So:
 
 `events/inbox` is the consumer toolkit. `Consume` reads one feed from a `Source`
 one record at a time (S2). `BatchRouter` reads many feeds from one
-`BatchSource` in batches (JetStream).
+`BatchSource` in batches (JetStream). The outbox NATS destination publishes on
+the bare feed subject without a tenant token, so the JetStream feeds take their
+events from `natsjs.Publisher`.
 
 ## JetStream
 
-`events/jetstream` and `events/inbox/sources.NewJetStream` carry private feeds
-over NATS JetStream. One stream holds one feed family. Writer replicas share one
+`events/natsjs` and `events/inbox/sources.NewJetStream` carry private feeds over
+NATS JetStream. One stream holds one feed family. Writer replicas share one
 durable pull consumer, and JetStream gives each record to one replica. The
 transport does not keep the order of one tenant.
 
 ### Subject
 
 A record subject is `<full message name>.<tenant>`, from
-`async.TenantEventSubject`. The tenant is one subject token. A tenant with a
-dot, a wildcard (`*`, `>`), whitespace or a control character is an error.
-`async.TenantEventSubjects(routing)` gives `<full message name>.*` for stream
-subjects and consumer filters. `async.EventSubject` does not change.
-
-### Stream and consumer
-
-```go
-stream, err := jetstream.EnsureStream(ctx, js, jetstream.StreamConfig{
-    Name:            "PACKAGEREGISTRY",
-    Subjects:        []string{"safedep.events.private.packageregistry.v1.>"},
-    MaxAge:          7 * 24 * time.Hour,
-    MaxBytes:        10 << 30,
-    Replicas:        3,
-    DuplicateWindow: 10 * time.Minute,
-})
-
-consumer, err := jetstream.EnsureConsumer(ctx, stream, jetstream.ConsumerConfig{
-    Durable:    "clickhouse-writer",
-    AckWait:    time.Minute,
-    MaxDeliver: inbox.DefaultMaxAttempts,
-})
-```
-
-`EnsureStream` creates or updates a file stream with limits retention that
-discards the oldest records. `MaxAge` and `MaxBytes` are required.
-`EnsureConsumer` creates or updates a durable pull consumer with explicit acks.
-No `FilterSubjects` reads the whole stream. More than one filter needs NATS
-server 2.10 or later. Set `MaxDeliver` to at least the delivery budget of the
-router. Otherwise the server stops a record before the router can dead-letter
-it.
+`async.TenantEventSubject`. The tenant is a canonical tenant id of 1 to 64 bytes
+from `[A-Za-z0-9_-]`. A dotted tenant domain such as `ab.cd.safedep.io` is an
+error, because each dot adds a subject token. `async.TenantEventSubjects`
+gives `<full message name>.*` for stream subjects and consumer filters.
+`async.ParseTenantEventSubject` splits a subject into the feed and the tenant.
+`async.EventSubject` does not change.
 
 ### Publish
 
 ```go
-pub, err := jetstream.NewPublisher(js)
-res, err := pub.Publish(ctx, evt, tenant)
+pub, err := natsjs.NewPublisher(js)
+res, err := pub.Publish(ctx, evt)
 ```
 
-`Publish` sends binary proto and waits for the acknowledgement of the stream.
-It sets the `Nats-Msg-Id` header to the envelope `event_id`, or to the id of
-`jetstream.WithMsgID`. The stream drops a second record with the same id in its
+`Publish` takes the feed from the message type and the tenant from the envelope
+`tenant.tenant_id`. It refuses an event without a tenant, and a public feed. It
+sends binary proto and waits for the acknowledgement of the stream. It sets the
+`Nats-Msg-Id` header to the envelope `event_id`, or to the id of
+`natsjs.WithMsgID`. The stream drops a second record with the same id in its
 duplicate window. A duplicate is a success, and `res.Duplicate` is true.
-`Publish` refuses a public feed.
 
-The outbox NATS destination also sets `Nats-Msg-Id` to the event id when its
-publisher has `PublishWithHeaders`, as the `dry/async` client has.
+The router trusts the subject to route a record. Publish only through
+`Publisher`. A raw publish to a feed subject is not supported.
 
-### Batch consume
+### Stream and consumer
+
+`natsjs.EnsureStream` creates a file stream with limits retention that discards
+the oldest records. `MaxAge` and `MaxBytes` are required. `natsjs.EnsureConsumer`
+creates a durable pull consumer with explicit acks that starts at the first
+record. No `FilterSubjects` reads the whole stream. More than one filter needs
+NATS server 2.10 or later.
+
+Both functions create what is missing and never change what exists. An older
+replica would otherwise revert a newer config, and a lower `MaxAge` or
+`MaxBytes` discards records. When the server config differs from the code, they
+return an error that wraps `natsjs.ErrDrift` and names each field. Change a
+stream or a consumer on purpose with `natsjs.UpdateStream` or
+`natsjs.UpdateConsumer`.
+
+Leave `MaxDeliver` unset. The router owns the delivery budget and dead-letters
+a record on its last attempt. With a server limit at or below that budget, the
+server drops a record that the router could not store. `BatchRouter.Run` refuses
+to start with such a limit.
+
+### Writer
 
 ```go
-src, err := sources.NewJetStream(consumer)
-router := inbox.NewBatchRouter(src,
-    inbox.WithBatchSize(500),
-    inbox.WithBatchDeadLetter(dlq), // inbox.NewGormDeadLetter
-    inbox.WithBatchHeartbeat(15*time.Second),
+package writer
+
+import (
+	"context"
+	"os"
+	"time"
+
+	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+	"github.com/safedep/dry/async"
+	"github.com/safedep/dry/db"
+	"github.com/safedep/dry/events"
+	"github.com/safedep/dry/events/inbox"
+	"github.com/safedep/dry/events/inbox/sources"
+	"github.com/safedep/dry/events/natsjs"
 )
-err = inbox.Route(router, newObservation, insertObservations)
-err = inbox.Route(router, newMaintainer, insertMaintainers)
-err = router.Run(ctx)
+
+type (
+	observation = pkgregv1.PackageVersionObservationEvent
+	maintainer  = pkgregv1.MaintainerObservationEvent
+)
+
+// row is one ClickHouse row.
+type row struct {
+	EventID    string
+	Tenant     string
+	OccurredAt time.Time
+}
+
+func runWriter(ctx context.Context) error {
+	nc, err := nats.Connect(os.Getenv("NATS_URL"))
+	if err != nil {
+		return err
+	}
+	defer nc.Close()
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return err
+	}
+
+	observations, err := events.RoutingFor(&observation{})
+	if err != nil {
+		return err
+	}
+	maintainers, err := events.RoutingFor(&maintainer{})
+	if err != nil {
+		return err
+	}
+
+	stream, err := natsjs.EnsureStream(ctx, js, natsjs.StreamConfig{
+		Name:            "PACKAGEREGISTRY",
+		Subjects:        []string{async.TenantEventSubjects(observations), async.TenantEventSubjects(maintainers)},
+		MaxAge:          7 * 24 * time.Hour,
+		MaxBytes:        10 << 30,
+		Replicas:        3,
+		DuplicateWindow: 10 * time.Minute,
+	})
+	if err != nil {
+		return err
+	}
+
+	// No MaxDeliver: the router owns the delivery budget.
+	consumer, err := natsjs.EnsureConsumer(ctx, stream, natsjs.ConsumerConfig{
+		Durable: "clickhouse-writer",
+		AckWait: time.Minute,
+	})
+	if err != nil {
+		return err
+	}
+
+	src, err := sources.NewJetStream(consumer)
+	if err != nil {
+		return err
+	}
+
+	adapter, err := db.NewPostgreSqlAdapter(db.PostgreSqlAdapterConfig{DSN: os.Getenv("DATABASE_URL")})
+	if err != nil {
+		return err
+	}
+	deadLetters, err := inbox.NewGormDeadLetter(adapter, "clickhouse-writer")
+	if err != nil {
+		return err
+	}
+
+	router, err := inbox.NewBatchRouter(src, deadLetters,
+		inbox.WithBatchSize(500),
+		inbox.WithBatchHeartbeat(15*time.Second),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = inbox.Route(router, func() *observation { return &observation{} },
+		func(ctx context.Context, batch []inbox.BatchEvent[*observation]) error {
+			rows := make([]row, 0, len(batch))
+			for _, ev := range batch {
+				rows = append(rows, row{
+					EventID:    ev.Meta.GetEventId(),
+					Tenant:     ev.Meta.GetTenant().GetTenantId(),
+					OccurredAt: ev.Meta.GetOccurredAt().AsTime(),
+				})
+			}
+			return insert(ctx, "package_version_observations", rows)
+		})
+	if err != nil {
+		return err
+	}
+
+	err = inbox.Route(router, func() *maintainer { return &maintainer{} },
+		func(ctx context.Context, batch []inbox.BatchEvent[*maintainer]) error {
+			rows := make([]row, 0, len(batch))
+			for _, ev := range batch {
+				rows = append(rows, row{
+					EventID:    ev.Meta.GetEventId(),
+					Tenant:     ev.Meta.GetTenant().GetTenantId(),
+					OccurredAt: ev.Meta.GetOccurredAt().AsTime(),
+				})
+			}
+			return insert(ctx, "maintainer_observations", rows)
+		})
+	if err != nil {
+		return err
+	}
+
+	return router.Run(ctx)
+}
+
+// insert writes rows to a ClickHouse table in one statement.
+func insert(ctx context.Context, table string, rows []row) error {
+	return nil
+}
 ```
 
+Run `inbox.Migrate` from your migration pipeline before a new version consumes.
+It adds the `reason` column to the dead-letter table.
+
+`sources.NewJetStream` waits up to 2s for a full batch (`WithFetchMaxWait`). The
+wait must be below the consumer `AckWait`.
+
+### What the router does with a record
+
 `Route` registers one `BatchHandler` for each event type. The route key is the
-full message name, which is the subject without its tenant token. The router
-also checks that the decoded event has the routing of its feed.
+full message name. For each fetch, the router groups the records by feed and
+runs the handler of each feed once. Each feed is acked or redelivered on its
+own, so a failing feed never redelivers the records of a feed that succeeded.
 
-`Run` fetches a batch and runs the handler of each feed of the batch:
-
-- A record that does not decode is dead-lettered and terminated. The other
-  records go on.
-- A record whose subject has no route is dead-lettered and terminated.
+- A record that does not decode, or whose envelope tenant is not the tenant of
+  its subject, is dead-lettered (`decode`) and terminated at once.
+- A record without a route is redelivered with a backoff. On its last attempt
+  it is dead-lettered (`no_route`). In a rolling deploy an old replica can fetch
+  a feed that only the new version routes.
 - If a handler succeeds, the router acks the records of its feed.
 - If a handler fails, the router redelivers the records of its feed with a
-  backoff by attempt. The records of the other feeds are not affected.
+  backoff by attempt (`WithBatchRedeliveryBackoff`).
 - If the error is permanent (`inbox.WithPermanentClassifier`), or a record is on
   its last attempt (`inbox.WithMaxAttempts`), the router runs the handler with
-  each record alone. It acks each record that passes. It dead-letters and
-  terminates each record that fails for good.
+  each record alone. It acks each record that passes. If one record passed, it
+  dead-letters (`handler`) each record that failed. If none passed, the cause is
+  most likely an outage: it dead-letters only the records with a permanent error
+  and redelivers the rest after the maximum backoff. The consumer lag alert
+  covers the outage.
+- A handler can thus run again with single records, and delivery is at least
+  once. A handler must be idempotent.
+- A handler panic is a handler error.
 - While the handlers run, a heartbeat marks every open record of the batch as in
-  progress, so a slow insert does not pass `AckWait`.
-- A fetch error makes the router wait and fetch again. `Run` returns only when
-  ctx is done.
-
-Without a dead-letter store, the router logs a record that it gives up on and
-terminates it. If the store fails, the router redelivers the record.
-`ConsumeBatch` is a router with one route.
+  progress (`WithBatchHeartbeat`), so a slow insert does not pass `AckWait`.
+- If the dead-letter store fails, the router redelivers the record.
+- At shutdown the router does not nack, because a nack spends a delivery. The
+  open records come back after `AckWait`.
+- A fetch error makes the router wait (`WithBatchRestartDelay`) and fetch again.
+  `Run` returns only when ctx is done.
 
 ### Dead letters
 
@@ -283,16 +419,18 @@ feed and a reason: `no_route`, `decode` or `handler`. Rows from before the
 reason column, and rows of `NewRetryPolicy`, have the reason `unspecified`.
 `DeadLetterReader` filters on `Feed` and `Reason`.
 
-`router.Replay(ctx, reader, filter)` runs each dead letter through the handler
-of its feed, as a batch of one event. It deletes a dead letter that passes. A
-dead letter that fails again stays, with the new reason and error and one more
-attempt. A dead letter whose feed has no route stays as it is. So a record that
-was dead-lettered for `no_route` clears after a release adds its route.
+To replay, build a router with the routes of the writer and call
+`router.Replay(ctx, reader, filter)`. A router for Replay alone can have a nil
+source. Replay runs each dead letter through the handler of its feed, as a batch
+of one event. It deletes a dead letter that passes. A dead letter that fails
+again stays, with the new reason and error and one more attempt. A dead letter
+whose feed has no route stays as it is. So a `no_route` record clears after a
+release adds its route.
 
 ### Purge a tenant
 
 ```go
-err := jetstream.PurgeTenant(ctx, stream, routing, tenant)
+err := natsjs.PurgeTenant(ctx, stream, routing, tenant)
 ```
 
 `PurgeTenant` removes the records of one tenant of one feed from the stream.

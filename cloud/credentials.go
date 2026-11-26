@@ -1,6 +1,9 @@
 package cloud
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // CredentialType identifies the authentication plane.
 type CredentialType int
@@ -48,6 +51,10 @@ type Credentials struct {
 	tenantDomain string
 	source       CredentialSource
 	workload     *RefreshingWorkloadCredential
+
+	// apiKeyMeta is what the keychain recorded about the API key. It is
+	// zero for an API key from the environment or saved with no metadata.
+	apiKeyMeta APIKeyMetadata
 }
 
 // NewAPIKeyCredential creates data plane credentials.
@@ -147,6 +154,20 @@ func (c *Credentials) GetTenantDomain() (string, error) {
 		return "", fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
 	}
 	return c.tenantDomain, nil
+}
+
+// APIKeyID returns the id of the API key in SafeDep Cloud. ok is false when
+// the id is not known, for example for an API key from the environment or a
+// key that a tool saved with no metadata.
+func (c *Credentials) APIKeyID() (id string, ok bool) {
+	return c.apiKeyMeta.KeyID, c.apiKeyMeta.KeyID != ""
+}
+
+// APIKeyExpiresAt returns when SafeDep Cloud stops accepting the API key. ok
+// is false when the expiry is not known. A tool must then not treat the key
+// as expired: only SafeDep Cloud can tell.
+func (c *Credentials) APIKeyExpiresAt() (expiresAt time.Time, ok bool) {
+	return c.apiKeyMeta.ExpiresAt, !c.apiKeyMeta.ExpiresAt.IsZero()
 }
 
 // Source returns where a resolver found the credentials. Credentials built

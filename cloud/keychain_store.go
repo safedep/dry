@@ -2,9 +2,11 @@ package cloud
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/safedep/dry/keychain"
 )
@@ -16,12 +18,32 @@ const (
 	fieldTenantDomain = "tenant_domain"
 )
 
+// allCredentialFields lists every field that Clear deletes.
+var allCredentialFields = []string{
+	fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain, fieldAPIKeyMetadata,
+}
+
 // CredentialStore writes SafeDep Cloud credentials to the keychain.
 type CredentialStore interface {
 	SaveAPIKeyCredential(apiKey, tenantDomain string) error
+	// SaveAPIKeyCredentialWithMetadata saves an API key together with its
+	// metadata, so that a tool can tell an expired key from a valid one
+	// before it calls SafeDep Cloud.
+	SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string, meta APIKeyMetadata) error
 	SaveTokenCredential(token, refreshToken, tenantDomain string) error
 	Clear() error
 	io.Closer
+}
+
+// APIKeyMetadata is what SafeDep Cloud returns about an API key when it
+// creates the key. A zero field means that the value is not known.
+type APIKeyMetadata struct {
+	// KeyID is the id of the key in SafeDep Cloud. A tool needs it to revoke
+	// the key.
+	KeyID string
+
+	// ExpiresAt is when SafeDep Cloud stops accepting the key.
+	ExpiresAt time.Time
 }
 
 type keychainCredentialStore struct {
@@ -46,7 +68,21 @@ func NewKeychainCredentialStore(opts ...KeychainOption) (CredentialStore, error)
 	}, nil
 }
 
+// SaveAPIKeyCredential saves an API key with no metadata. It deletes the
+// metadata of the key that it replaces, so the new key never carries the id
+// or the expiry of the old one.
 func (s *keychainCredentialStore) SaveAPIKeyCredential(apiKey, tenantDomain string) error {
+	return s.SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain, APIKeyMetadata{})
+}
+
+// SaveAPIKeyCredentialWithMetadata saves an API key, its tenant and its
+// metadata. It also writes tenant_domain, which older readers use as the
+// tenant of the API key. The keychain has no transaction, so a read during
+// the save can see the new key before its metadata. The fingerprint does not
+// match then, and the key resolves as an older dry saved it.
+func (s *keychainCredentialStore) SaveAPIKeyCredentialWithMetadata(apiKey, tenantDomain string,
+	meta APIKeyMetadata,
+) error {
 	if apiKey == "" {
 		return fmt.Errorf("%w: API key is required", ErrMissingCredentials)
 	}
@@ -54,12 +90,20 @@ func (s *keychainCredentialStore) SaveAPIKeyCredential(apiKey, tenantDomain stri
 		return fmt.Errorf("%w: tenant domain is required", ErrMissingCredentials)
 	}
 
-	ctx := context.Background()
-	if err := s.kc.Set(ctx, s.config.keyForField(fieldAPIKey), &keychain.Secret{Value: apiKey}); err != nil {
-		return fmt.Errorf("cloud: failed to save API key: %w", err)
+	value, err := json.Marshal(newStoredAPIKeyMetadata(apiKey, tenantDomain, meta))
+	if err != nil {
+		return fmt.Errorf("cloud: failed to encode %s: %w", fieldAPIKeyMetadata, err)
 	}
-	if err := s.kc.Set(ctx, s.config.keyForField(fieldTenantDomain), &keychain.Secret{Value: tenantDomain}); err != nil {
-		return fmt.Errorf("cloud: failed to save tenant domain: %w", err)
+
+	ctx := context.Background()
+	for _, w := range []struct{ field, value string }{
+		{fieldAPIKey, apiKey},
+		{fieldAPIKeyMetadata, string(value)},
+		{fieldTenantDomain, tenantDomain},
+	} {
+		if err := s.kc.Set(ctx, s.config.keyForField(w.field), &keychain.Secret{Value: w.value}); err != nil {
+			return fmt.Errorf("cloud: failed to save %s: %w", w.field, err)
+		}
 	}
 	return nil
 }
@@ -87,12 +131,19 @@ func (s *keychainCredentialStore) SaveTokenCredential(token, refreshToken, tenan
 
 func (s *keychainCredentialStore) Clear() error {
 	ctx := context.Background()
-	fields := []string{fieldAPIKey, fieldToken, fieldRefreshToken, fieldTenantDomain}
-	for _, field := range fields {
-		err := s.kc.Delete(ctx, s.config.keyForField(field))
-		if err != nil && !errors.Is(err, keychain.ErrNotFound) {
-			return fmt.Errorf("cloud: failed to clear %s: %w", field, err)
+	for _, field := range allCredentialFields {
+		if err := s.delete(ctx, field); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// delete removes a field. A field that is not there is not an error.
+func (s *keychainCredentialStore) delete(ctx context.Context, field string) error {
+	err := s.kc.Delete(ctx, s.config.keyForField(field))
+	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+		return fmt.Errorf("cloud: failed to clear %s: %w", field, err)
 	}
 	return nil
 }

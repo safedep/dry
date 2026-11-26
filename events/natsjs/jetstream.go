@@ -89,15 +89,18 @@ func (c StreamConfig) native() jetstream.StreamConfig {
 	}
 
 	return jetstream.StreamConfig{
-		Name:       c.Name,
-		Subjects:   c.Subjects,
-		Storage:    jetstream.FileStorage,
-		Retention:  jetstream.LimitsPolicy,
-		Discard:    jetstream.DiscardOld,
-		MaxAge:     c.MaxAge,
-		MaxBytes:   c.MaxBytes,
-		Replicas:   replicas,
-		Duplicates: duplicates,
+		Name:              c.Name,
+		Subjects:          c.Subjects,
+		Storage:           jetstream.FileStorage,
+		Retention:         jetstream.LimitsPolicy,
+		Discard:           jetstream.DiscardOld,
+		MaxAge:            c.MaxAge,
+		MaxBytes:          c.MaxBytes,
+		MaxMsgs:           -1,
+		MaxMsgsPerSubject: -1,
+		MaxMsgSize:        -1,
+		Replicas:          replicas,
+		Duplicates:        duplicates,
 	}
 }
 
@@ -133,6 +136,9 @@ func EnsureStream(ctx context.Context, js jetstream.JetStream, cfg StreamConfig)
 	d.check("discard", got.Discard, want.Discard)
 	d.check("max age", got.MaxAge, want.MaxAge)
 	d.check("max bytes", got.MaxBytes, want.MaxBytes)
+	d.check("max msgs", got.MaxMsgs, want.MaxMsgs)
+	d.check("max msgs per subject", got.MaxMsgsPerSubject, want.MaxMsgsPerSubject)
+	d.check("max msg size", got.MaxMsgSize, want.MaxMsgSize)
 	d.check("replicas", got.Replicas, want.Replicas)
 	d.check("duplicate window", got.Duplicates, want.Duplicates)
 	if err := d.err("stream", cfg.Name); err != nil {
@@ -256,6 +262,7 @@ func EnsureConsumer(ctx context.Context, stream jetstream.Stream, cfg ConsumerCo
 	d.check("ack wait", got.AckWait, want.AckWait)
 	d.check("max deliver", got.MaxDeliver, want.MaxDeliver)
 	d.check("max ack pending", got.MaxAckPending, want.MaxAckPending)
+	d.check("headers only", got.HeadersOnly, want.HeadersOnly)
 	if err := d.err("consumer", cfg.Durable); err != nil {
 		return nil, err
 	}

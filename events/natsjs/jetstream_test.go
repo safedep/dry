@@ -172,21 +172,82 @@ func TestEnsureConsumer_DetectsDrift(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestEnsureConsumer_ADeliveryLimitIsDrift(t *testing.T) {
-	_, stream := ensureStream(t)
+func TestEnsureConsumer_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*jetstream.ConsumerConfig)
+		want   string
+	}{
+		{name: "delivery limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxDeliver = 10 }, want: "max deliver is 10"},
+		{name: "ack all", mutate: func(c *jetstream.ConsumerConfig) { c.AckPolicy = jetstream.AckAllPolicy }, want: "ack policy"},
+		{name: "headers only", mutate: func(c *jetstream.ConsumerConfig) { c.HeadersOnly = true }, want: "headers only"},
+	}
 
-	_, err := stream.CreateConsumer(t.Context(), jetstream.ConsumerConfig{
-		Durable:       "writer",
-		AckPolicy:     jetstream.AckExplicitPolicy,
-		AckWait:       30 * time.Second,
-		MaxAckPending: 1000,
-		MaxDeliver:    10,
-	})
-	require.NoError(t, err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, stream := ensureStream(t)
 
-	_, err = natsjs.EnsureConsumer(t.Context(), stream, natsjs.ConsumerConfig{Durable: "writer"})
-	require.ErrorIs(t, err, natsjs.ErrDrift)
-	assert.Contains(t, err.Error(), "max deliver is 10")
+			// The raw API makes the consumer, as an operator could.
+			cfg := jetstream.ConsumerConfig{
+				Durable:       "writer",
+				AckPolicy:     jetstream.AckExplicitPolicy,
+				AckWait:       30 * time.Second,
+				MaxAckPending: 1000,
+				MaxDeliver:    -1,
+			}
+			tc.mutate(&cfg)
+			_, err := stream.CreateConsumer(t.Context(), cfg)
+			require.NoError(t, err)
+
+			_, err = natsjs.EnsureConsumer(t.Context(), stream, natsjs.ConsumerConfig{Durable: "writer"})
+			require.ErrorIs(t, err, natsjs.ErrDrift)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*jetstream.StreamConfig)
+		want   string
+	}{
+		{name: "message limit", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgs = 100 }, want: "max msgs is 100"},
+		{name: "message limit per subject", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgsPerSubject = 10 }, want: "max msgs per subject"},
+		{name: "message size limit", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgSize = 1024 }, want: "max msg size"},
+		{name: "discard new", mutate: func(c *jetstream.StreamConfig) { c.Discard = jetstream.DiscardNew }, want: "discard"},
+		{name: "work queue", mutate: func(c *jetstream.StreamConfig) { c.Retention = jetstream.WorkQueuePolicy }, want: "retention"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := natstest.Connect(t)
+			want := srv.StreamConfig()
+
+			// The raw API makes the stream, as an operator could.
+			cfg := jetstream.StreamConfig{
+				Name:              want.Name,
+				Subjects:          want.Subjects,
+				Storage:           jetstream.FileStorage,
+				Retention:         jetstream.LimitsPolicy,
+				Discard:           jetstream.DiscardOld,
+				MaxAge:            want.MaxAge,
+				MaxBytes:          want.MaxBytes,
+				MaxMsgs:           -1,
+				MaxMsgsPerSubject: -1,
+				MaxMsgSize:        -1,
+				Replicas:          1,
+				Duplicates:        2 * time.Minute,
+			}
+			tc.mutate(&cfg)
+			_, err := srv.JS.CreateStream(t.Context(), cfg)
+			require.NoError(t, err)
+
+			_, err = natsjs.EnsureStream(t.Context(), srv.JS, want)
+			require.ErrorIs(t, err, natsjs.ErrDrift)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
 }
 
 func TestPublisher_DedupsOnMessageID(t *testing.T) {

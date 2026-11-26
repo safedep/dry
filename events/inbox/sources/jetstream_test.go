@@ -164,6 +164,33 @@ func TestNewJetStream_Validation(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestNewJetStream_RefusesAConsumerThatCannotSettleEachRecord(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*jetstream.ConsumerConfig)
+	}{
+		{name: "ack all", mutate: func(c *jetstream.ConsumerConfig) { c.AckPolicy = jetstream.AckAllPolicy }},
+		{name: "ack none", mutate: func(c *jetstream.ConsumerConfig) { c.AckPolicy = jetstream.AckNonePolicy }},
+		{name: "headers only", mutate: func(c *jetstream.ConsumerConfig) { c.HeadersOnly = true }},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := natstest.Connect(t)
+			stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig())
+			require.NoError(t, err)
+
+			cfg := jetstream.ConsumerConfig{Durable: "writer", AckPolicy: jetstream.AckExplicitPolicy}
+			tc.mutate(&cfg)
+			consumer, err := stream.CreateConsumer(t.Context(), cfg)
+			require.NoError(t, err)
+
+			_, err = sources.NewJetStream(consumer)
+			assert.Error(t, err)
+		})
+	}
+}
+
 func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	env.publish(t, natstest.Observation("evt-1", env.Tenant))
@@ -385,7 +412,7 @@ func TestJetStreamRouter_HeartbeatKeepsASlowBatchFromRedelivery(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
 	env.publish(t, natstest.Observation("slow", env.Tenant))
 
-	started := make(chan struct{})
+	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	calls := make(chan struct{}, 2)
 	handler := func(context.Context, observationBatch) error {

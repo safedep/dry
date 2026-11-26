@@ -51,6 +51,15 @@ func NewJetStream(consumer jetstream.Consumer, opts ...JetStreamOption) (inbox.B
 	if info == nil {
 		return nil, errors.New("inbox/jetstream: consumer has no info")
 	}
+	// The router settles each record on its own. AckAll would let the ack of one
+	// feed settle a record that another feed nacked, and AckNone settles nothing.
+	if info.Config.AckPolicy != jetstream.AckExplicitPolicy {
+		return nil, fmt.Errorf("inbox/jetstream: consumer ack policy is %s, want explicit", info.Config.AckPolicy)
+	}
+	// A headers-only consumer delivers no payload to decode.
+	if info.Config.HeadersOnly {
+		return nil, errors.New("inbox/jetstream: consumer delivers headers only")
+	}
 
 	src := &jetStreamSource{consumer: consumer, maxWait: defaultFetchMaxWait}
 	for _, opt := range opts {

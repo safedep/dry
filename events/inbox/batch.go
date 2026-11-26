@@ -9,6 +9,7 @@ import (
 	"time"
 
 	commonv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/common/v1"
+	"github.com/safedep/dry/async"
 	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/log"
 	"google.golang.org/protobuf/proto"
@@ -151,7 +152,7 @@ type BatchRouter struct {
 
 type batchRoute struct {
 	handle func(ctx context.Context, recs []*inflight)
-	replay func(ctx context.Context, payload []byte) (DeadLetterReason, error)
+	replay func(ctx context.Context, row DeadLetter) (DeadLetterReason, error)
 }
 
 // NewBatchRouter builds a router over source that stores the records it gives up
@@ -207,8 +208,11 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 		handle: func(ctx context.Context, recs []*inflight) {
 			handleGroup(ctx, r, feed, newEvent, handler, recs)
 		},
-		replay: func(ctx context.Context, payload []byte) (DeadLetterReason, error) {
-			ev, err := decodeBatchEvent(payload, newEvent)
+		replay: func(ctx context.Context, row DeadLetter) (DeadLetterReason, error) {
+			ev, err := decodeBatchEvent(row.Payload, newEvent)
+			if err == nil && row.Subject != "" {
+				err = checkSubjectTenant(row.Subject, ev.Meta)
+			}
 			if err != nil {
 				return DeadLetterReasonDecode, err
 			}
@@ -279,7 +283,8 @@ func (r *BatchRouter) checkDeliveryLimit(ctx context.Context) error {
 }
 
 // Replay runs each dead letter that matches f through the handler of its feed,
-// as a batch of one event. It deletes a dead letter that its handler accepts. A
+// as a batch of one event. A dead letter with a subject must still carry the
+// tenant of its subject in its envelope, as in Run. It deletes a dead letter that its handler accepts. A
 // dead letter that fails again stays, and the store of NewGormDeadLetterReader
 // keeps the new reason and error and counts the attempt. A dead letter whose
 // feed has no route stays as it is. Replay returns a List error. The failure of
@@ -296,7 +301,7 @@ func (r *BatchRouter) Replay(ctx context.Context, reader DeadLetterReader, f Dea
 			return fmt.Errorf("no route for feed %q", row.Feed)
 		}
 
-		reason, err := route.replay(ctx, row.Payload)
+		reason, err := route.replay(ctx, row)
 		if err != nil {
 			if recorder != nil {
 				if rerr := recorder.recordFailure(ctx, row.ID, reason, err.Error()); rerr != nil {
@@ -376,7 +381,7 @@ func handleGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 		}
 	default:
 		log.Warnf("inbox: batch of %d %s record(s) failed: %v; running each record alone", len(live), feed, err)
-		runAlone(ctx, r, feed, handler, batch, live)
+		runAlone(ctx, r, feed, newEvent, handler, live)
 	}
 }
 
@@ -389,9 +394,7 @@ func decodeGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 	for _, it := range recs {
 		ev, err := decodeBatchEvent(it.Payload, newEvent)
 		if err == nil {
-			if tenant := ev.Meta.GetTenant().GetTenantId(); tenant != it.Tenant {
-				err = fmt.Errorf("envelope tenant %q is not the subject tenant %q", tenant, it.Tenant)
-			}
+			err = checkTenant(it.Tenant, ev.Meta)
 		}
 		if err != nil {
 			r.deadLetter(ctx, it, feed, ev.Meta.GetEventId(), DeadLetterReasonDecode, err)
@@ -404,24 +407,32 @@ func decodeGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 }
 
 // runAlone runs the handler with each record alone and acks each record that
-// passes. When one record passes, the others are bad records: the router
+// passes. It decodes each record again, because the failed handler call can
+// have reordered the batch or changed its events. When one record passes, the others are bad records: the router
 // dead-letters them. When none passes, the cause is most likely an outage: the
 // router dead-letters only the records with a permanent error, and redelivers
 // the rest after the maximum backoff.
 func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
-	handler BatchHandler[T], batch []BatchEvent[T], live []*inflight) {
+	newEvent func() T, handler BatchHandler[T], live []*inflight) {
 	type failure struct {
-		index int
-		err   error
+		it      *inflight
+		eventID string
+		err     error
 	}
 
 	var failed []failure
 	passed := 0
-	for i, it := range live {
+	for _, it := range live {
 		if ctx.Err() != nil {
 			return
 		}
-		err := callHandler(ctx, handler, batch[i:i+1])
+		ev, err := decodeBatchEvent(it.Payload, newEvent)
+		if err != nil {
+			r.deadLetter(ctx, it, feed, "", DeadLetterReasonDecode, err)
+			continue
+		}
+		eventID := ev.Meta.GetEventId()
+		err = callHandler(ctx, handler, []BatchEvent[T]{ev})
 		if err == nil {
 			it.ack()
 			passed++
@@ -430,21 +441,34 @@ func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 		if ctx.Err() != nil {
 			return
 		}
-		failed = append(failed, failure{index: i, err: err})
+		failed = append(failed, failure{it: it, eventID: eventID, err: err})
 	}
 
 	if passed == 0 && len(failed) > 0 {
 		log.Warnf("inbox: every %s record failed alone; redelivering the records without a permanent error", feed)
 	}
 	for _, f := range failed {
-		it := live[f.index]
 		if passed > 0 || r.permanent(f.err) {
-			r.deadLetter(ctx, it, feed, batch[f.index].Meta.GetEventId(), DeadLetterReasonHandler,
-				fmt.Errorf("handler: %w", f.err))
+			r.deadLetter(ctx, f.it, feed, f.eventID, DeadLetterReasonHandler, fmt.Errorf("handler: %w", f.err))
 			continue
 		}
-		r.retry(ctx, it, r.cfg.backoffMax)
+		r.retry(ctx, f.it, r.cfg.backoffMax)
 	}
+}
+
+func checkTenant(subjectTenant string, meta *commonv1.EventMeta) error {
+	if tenant := meta.GetTenant().GetTenantId(); tenant != subjectTenant {
+		return fmt.Errorf("envelope tenant %q is not the subject tenant %q", tenant, subjectTenant)
+	}
+	return nil
+}
+
+func checkSubjectTenant(subject string, meta *commonv1.EventMeta) error {
+	_, tenant, err := async.ParseTenantEventSubject(subject)
+	if err != nil {
+		return err
+	}
+	return checkTenant(tenant, meta)
 }
 
 func decodeBatchEvent[T proto.Message](payload []byte, newEvent func() T) (BatchEvent[T], error) {
@@ -483,6 +507,7 @@ func (r *BatchRouter) deadLetter(ctx context.Context, it *inflight, feed, eventI
 		Attempts: it.Attempt,
 		EventID:  eventID,
 		Feed:     feed,
+		Subject:  it.Subject,
 		Reason:   reason,
 	})
 	if err != nil {

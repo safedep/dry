@@ -3,6 +3,7 @@ package inbox_test
 import (
 	"path/filepath"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/safedep/dry/events/inbox"
@@ -139,16 +140,18 @@ func TestMigrate_Idempotent(t *testing.T) {
 	assert.True(t, gdb.Migrator().HasTable(&inbox.DeadLetter{}))
 }
 
-// deadLetterBeforeReason is the dead-letter model before the reason column.
+// deadLetterBeforeReason is the dead-letter model on main before the reason
+// and subject columns.
 type deadLetterBeforeReason struct {
-	ID           uint64 `gorm:"primaryKey;autoIncrement"`
-	ConsumerName string `gorm:"column:consumer_name;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:1"`
-	PayloadHash  string `gorm:"column:payload_hash;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:2"`
-	Feed         string `gorm:"column:feed"`
-	EventID      string `gorm:"column:event_id"`
-	Payload      []byte `gorm:"column:payload"`
-	Error        string `gorm:"column:error"`
-	Attempts     int    `gorm:"column:attempts"`
+	ID           uint64    `gorm:"primaryKey;autoIncrement"`
+	ConsumerName string    `gorm:"column:consumer_name;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:1"`
+	PayloadHash  string    `gorm:"column:payload_hash;uniqueIndex:idx_event_inbox_dead_letter_unique,priority:2"`
+	Feed         string    `gorm:"column:feed"`
+	EventID      string    `gorm:"column:event_id"`
+	Payload      []byte    `gorm:"column:payload"`
+	Error        string    `gorm:"column:error"`
+	Attempts     int       `gorm:"column:attempts"`
+	FailedAt     time.Time `gorm:"column:failed_at;index:idx_event_inbox_dead_letter_failed_at"`
 }
 
 func (deadLetterBeforeReason) TableName() string { return "event_inbox_dead_letter" }
@@ -157,7 +160,10 @@ func TestMigrate_GivesOldDeadLettersTheUnspecifiedReason(t *testing.T) {
 	gdb, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "old.db")), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, gdb.AutoMigrate(&deadLetterBeforeReason{}))
-	require.NoError(t, gdb.Create(&deadLetterBeforeReason{ConsumerName: "consumer-a", PayloadHash: "h", Payload: []byte("p")}).Error)
+	failedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	require.NoError(t, gdb.Create(&deadLetterBeforeReason{
+		ConsumerName: "consumer-a", PayloadHash: "h", Payload: []byte("p"), FailedAt: failedAt,
+	}).Error)
 
 	adapter := testAdapter{gdb: gdb}
 	require.NoError(t, inbox.Migrate(adapter))
@@ -167,6 +173,9 @@ func TestMigrate_GivesOldDeadLettersTheUnspecifiedReason(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, inbox.DeadLetterReasonUnspecified, rows[0].Reason)
+	assert.Empty(t, rows[0].Subject)
+	assert.True(t, failedAt.Equal(rows[0].FailedAt), "failed_at survives the migration: %s", rows[0].FailedAt)
+	assert.True(t, gdb.Migrator().HasIndex(&inbox.DeadLetter{}, "idx_event_inbox_dead_letter_failed_at"))
 }
 
 func TestGormDeadLetter_StoreKeepsTheReason(t *testing.T) {

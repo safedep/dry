@@ -226,7 +226,9 @@ NATS server 2.10 or later.
 Both functions create what is missing and never change what exists. An older
 replica would otherwise revert a newer config, and a lower `MaxAge` or
 `MaxBytes` discards records. When the server config differs from the code, they
-return an error that wraps `natsjs.ErrDrift` and names each field. Change a
+return an error that wraps `natsjs.ErrDrift` and names each field. They also
+compare the fields that the config does not expose: the stream message limits
+and the consumer ack policy and headers-only mode. Change a
 stream or a consumer on purpose with `natsjs.UpdateStream` or
 `natsjs.UpdateConsumer`.
 
@@ -375,11 +377,12 @@ func insert(ctx context.Context, table string, rows []row) error {
 ```
 
 Run `inbox.Migrate` from your migration pipeline before a new version consumes.
-It adds the `reason` column to the dead-letter table.
+It adds the `reason` and `subject` columns to the dead-letter table.
 
 `sources.NewJetStream` waits up to 2s for a full batch (`WithFetchMaxWait`). The
 wait must be below the consumer `AckWait`. A cancel stops the router after the
-current fetch wait ends.
+current fetch wait ends. `NewJetStream` refuses a consumer that does not ack
+each record explicitly, or that delivers headers only.
 
 ### What the router does with a record
 
@@ -419,14 +422,16 @@ own, so a failing feed never redelivers the records of a feed that succeeded.
 ### Dead letters
 
 The router writes dead letters to the `event_inbox_dead_letter` table, with the
-feed and a reason: `no_route`, `decode` or `handler`. Rows from before the
+feed, the subject and a reason: `no_route`, `decode` or `handler`. Rows from
+before the subject column, and rows of `Consume`, have an empty subject. Rows from before the
 reason column, and rows of `NewRetryPolicy`, have the reason `unspecified`.
 `DeadLetterReader` filters on `Feed` and `Reason`.
 
 To replay, build a router with the routes of the writer and call
 `router.Replay(ctx, reader, filter)`. A router for Replay alone can have a nil
 source. Replay runs each dead letter through the handler of its feed, as a batch
-of one event. It deletes a dead letter that passes. A dead letter that fails
+of one event. When the row has a subject, the envelope tenant must still be the
+subject tenant, as in `Run`. It deletes a dead letter that passes. A dead letter that fails
 again stays, with the new reason and error and one more attempt. A dead letter
 whose feed has no route stays as it is. So a `no_route` record clears after a
 release adds its route.

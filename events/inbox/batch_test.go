@@ -3,6 +3,7 @@ package inbox_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -666,6 +667,83 @@ func TestBatchRouter_ReplaysBatchDeadLetters(t *testing.T) {
 	assert.Equal(t, inbox.DeadLetterReasonHandler, rows[0].Reason)
 	assert.Equal(t, 5, rows[0].Attempts, "the failed replay counts as an attempt")
 	assert.Contains(t, rows[0].Error, "still bad")
+}
+
+func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
+	adapter := newTestAdapter(t)
+	dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
+	require.NoError(t, err)
+	reader := newDeadLetterReader(t, adapter, "writer")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	wrong := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		wrong.record(natstest.ObservationFeed, natstest.Bytes(t, natstest.Observation("other", "tenant-b")), 1),
+	}}}}
+	writer, err := inbox.NewBatchRouter(src, dlq)
+	require.NoError(t, err)
+	var handled []string
+	handler := func(_ context.Context, b observationBatch) error {
+		handled = append(handled, eventIDs(b)...)
+		return nil
+	}
+	require.NoError(t, inbox.Route(writer, natstest.NewObservation, handler))
+	assert.ErrorIs(t, writer.Run(ctx), context.Canceled)
+
+	rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
+
+	res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Failed)
+	assert.Empty(t, handled, "the handler never sees an event of another tenant")
+
+	row, err := reader.Get(t.Context(), rows[0].ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, row.Attempts)
+	assert.Contains(t, row.Error, "tenant")
+}
+
+func TestBatchRouter_SplitPairsEachRecordWithItsOwnEvent(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	bad, good1, good2 := &handle{}, &handle{}, &handle{}
+	badPayload := observationBytes(t, "bad")
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		bad.record(natstest.ObservationFeed, badPayload, 4),
+		good1.record(natstest.ObservationFeed, observationBytes(t, "good-1"), 4),
+		good2.record(natstest.ObservationFeed, observationBytes(t, "good-2"), 4),
+	}}}}
+	dlq := &fakeDLQ{}
+	r, err := inbox.NewBatchRouter(src, dlq)
+	require.NoError(t, err)
+
+	// The handler reverses the batch and changes an event before it fails.
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+		slices.Reverse(b)
+		ids := eventIDs(b)
+		b[0].Meta.SetEventId("changed")
+		if len(b) > 1 || ids[0] == "bad" {
+			return errors.New("bad row")
+		}
+		return nil
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	_, terms, _ := bad.state()
+	assert.Equal(t, 1, terms)
+	for _, h := range []*handle{good1, good2} {
+		acks, terms, _ := h.state()
+		assert.Equal(t, 1, acks)
+		assert.Zero(t, terms)
+	}
+	require.Len(t, dlq.stored, 1)
+	assert.Equal(t, "bad", dlq.stored[0].EventID)
+	assert.Equal(t, badPayload, dlq.stored[0].Payload)
 }
 
 func TestBatchRouter_ReplayKeepsADeadLetterWithoutARoute(t *testing.T) {

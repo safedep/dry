@@ -706,6 +706,17 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, row.Attempts)
 	assert.Contains(t, row.Error, "tenant")
+
+	generic := func(_ context.Context, ev *pkgregv1.PackageVersionObservationEvent, _ *commonv1.EventMeta) error {
+		handled = append(handled, ev.GetMeta().GetEventId())
+		return nil
+	}
+	res, err = inbox.Replay(t.Context(), reader, natstest.NewObservation, generic, inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, res.Failed)
+	assert.Empty(t, handled, "the generic replay refuses a dead letter of the batch router")
+	_, err = reader.Get(t.Context(), rows[0].ID)
+	require.NoError(t, err, "the dead letter stays")
 }
 
 func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {

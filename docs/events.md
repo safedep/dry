@@ -437,6 +437,8 @@ deletes a dead letter that passes. A dead letter that fails
 again stays, with the new reason and error and one more attempt. A dead letter
 whose feed has no route stays as it is. So a `no_route` record clears after a
 release adds its route.
+The generic `inbox.Replay[T]` refuses a row of the router, because it has no
+tenant to check. It replays only the rows of `Consume`.
 
 ### Purge a tenant
 

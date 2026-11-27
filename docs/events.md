@@ -442,7 +442,8 @@ again stays, with the new reason and error and one more attempt. A dead letter
 whose feed has no route stays as it is. So a `no_route` record clears after a
 release adds its route.
 The generic `inbox.Replay[T]` refuses a row of the router, because it has no
-tenant to check. It replays only the rows of `Consume`.
+tenant to check. It replays only the rows of `Consume`. The router replay leaves
+a row of `Consume` as it is.
 A row of the router is unique by its source tenant, subject and payload. So a
 record of another tenant, or a row of `Consume`, with the same payload gets a
 row of its own.

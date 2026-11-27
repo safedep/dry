@@ -791,12 +791,24 @@ func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testin
 
 func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
 	cases := []struct {
-		name   string
-		tenant string
-		want   string
+		name         string
+		tenant       string
+		reason       inbox.DeadLetterReason
+		wantAttempts int
+		wantReason   inbox.DeadLetterReason
+		wantError    string
 	}{
-		{name: "a tenant without a subject and another envelope tenant", tenant: "tenant-b", want: "tenant"},
-		{name: "no stored tenant", tenant: "", want: "no source tenant"},
+		{
+			name: "a tenant without a subject and another envelope tenant", tenant: "tenant-b",
+			reason: inbox.DeadLetterReasonHandler, wantAttempts: 5, wantReason: inbox.DeadLetterReasonDecode, wantError: "tenant",
+		},
+		{
+			name: "no stored tenant", reason: inbox.DeadLetterReasonHandler,
+			wantAttempts: 5, wantReason: inbox.DeadLetterReasonDecode, wantError: "no source tenant",
+		},
+		{
+			name: "a row of Consume stays as it is", wantAttempts: 4, wantReason: inbox.DeadLetterReasonUnspecified,
+		},
 	}
 
 	for _, tc := range cases {
@@ -806,7 +818,7 @@ func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
 				Payload:  observationBytes(t, "e"),
 				Feed:     natstest.ObservationFeed,
 				Tenant:   tc.tenant,
-				Reason:   inbox.DeadLetterReasonHandler,
+				Reason:   tc.reason,
 				Attempts: 4,
 			})
 			reader := newDeadLetterReader(t, adapter, "writer")
@@ -826,9 +838,9 @@ func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
 
 			row, err := reader.Get(t.Context(), res.Outcomes[0].ID)
 			require.NoError(t, err)
-			assert.Equal(t, 5, row.Attempts)
-			assert.Equal(t, inbox.DeadLetterReasonDecode, row.Reason)
-			assert.Contains(t, row.Error, tc.want)
+			assert.Equal(t, tc.wantAttempts, row.Attempts)
+			assert.Equal(t, tc.wantReason, row.Reason)
+			assert.Contains(t, row.Error, tc.wantError)
 		})
 	}
 }

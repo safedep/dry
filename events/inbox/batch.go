@@ -287,7 +287,8 @@ func (r *BatchRouter) checkDeliveryLimit(ctx context.Context) error {
 // stays. It deletes a dead letter that its handler accepts. A
 // dead letter that fails again stays, and the store of NewGormDeadLetterReader
 // keeps the new reason and error and counts the attempt. A dead letter whose
-// feed has no route stays as it is. Replay returns a List error. The failure of
+// feed has no route, or that comes from Consume, stays as it is. Replay returns
+// a List error. The failure of
 // one record goes to its outcome.
 func (r *BatchRouter) Replay(ctx context.Context, reader DeadLetterReader, f DeadLetterFilter) (ReplayResult, error) {
 	if reader == nil {
@@ -296,6 +297,11 @@ func (r *BatchRouter) Replay(ctx context.Context, reader DeadLetterReader, f Dea
 	recorder, _ := reader.(deadLetterFailureRecorder)
 
 	return replayRows(ctx, reader, f, func(ctx context.Context, row DeadLetter) error {
+		if !fromBatchRouter(row) {
+			// A recorded failure would give the row a reason, and Replay[T]
+			// would then refuse it too.
+			return errors.New("the dead letter does not come from a BatchRouter: replay it with Replay")
+		}
 		route, ok := r.routes[row.Feed]
 		if !ok {
 			return fmt.Errorf("no route for feed %q", row.Feed)

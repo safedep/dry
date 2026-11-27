@@ -182,6 +182,9 @@ func TestEnsureConsumer_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 		{name: "delivery limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxDeliver = 10 }, want: "max deliver is 10"},
 		{name: "ack all", mutate: func(c *jetstream.ConsumerConfig) { c.AckPolicy = jetstream.AckAllPolicy }, want: "ack policy"},
 		{name: "headers only", mutate: func(c *jetstream.ConsumerConfig) { c.HeadersOnly = true }, want: "headers only"},
+		{name: "request batch limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestBatch = 10 }, want: "max request batch is 10"},
+		{name: "request wait limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestExpires = time.Second }, want: "max request expires"},
+		{name: "request size limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestMaxBytes = 1024 }, want: "max request max bytes"},
 	}
 
 	for _, tc := range cases {
@@ -218,6 +221,14 @@ func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 		{name: "message size limit", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgSize = 1024 }, want: "max msg size"},
 		{name: "discard new", mutate: func(c *jetstream.StreamConfig) { c.Discard = jetstream.DiscardNew }, want: "discard"},
 		{name: "work queue", mutate: func(c *jetstream.StreamConfig) { c.Retention = jetstream.WorkQueuePolicy }, want: "retention"},
+		{name: "no publish ack", mutate: func(c *jetstream.StreamConfig) { c.NoAck = true }, want: "no ack"},
+		{
+			name: "subject transform",
+			mutate: func(c *jetstream.StreamConfig) {
+				c.SubjectTransform = &jetstream.SubjectTransformConfig{Source: c.Subjects[0], Destination: c.Subjects[1]}
+			},
+			want: "subject transform",
+		},
 	}
 
 	for _, tc := range cases {

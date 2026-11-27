@@ -142,6 +142,8 @@ func EnsureStream(ctx context.Context, js jetstream.JetStream, cfg StreamConfig)
 	d.check("max msg size", got.MaxMsgSize, want.MaxMsgSize)
 	d.check("replicas", got.Replicas, want.Replicas)
 	d.check("duplicate window", got.Duplicates, want.Duplicates)
+	d.check("subject transform", got.SubjectTransform, want.SubjectTransform)
+	d.check("no ack", got.NoAck, want.NoAck)
 	if err := d.err("stream", cfg.Name); err != nil {
 		return nil, err
 	}
@@ -264,6 +266,9 @@ func EnsureConsumer(ctx context.Context, stream jetstream.Stream, cfg ConsumerCo
 	d.check("max deliver", got.MaxDeliver, want.MaxDeliver)
 	d.check("max ack pending", got.MaxAckPending, want.MaxAckPending)
 	d.check("headers only", got.HeadersOnly, want.HeadersOnly)
+	d.check("max request batch", got.MaxRequestBatch, want.MaxRequestBatch)
+	d.check("max request expires", got.MaxRequestExpires, want.MaxRequestExpires)
+	d.check("max request max bytes", got.MaxRequestMaxBytes, want.MaxRequestMaxBytes)
 	if err := d.err("consumer", cfg.Durable); err != nil {
 		return nil, err
 	}

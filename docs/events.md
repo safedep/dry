@@ -184,16 +184,20 @@ events from `natsjs.Publisher`.
 ## JetStream
 
 `events/natsjs` and `events/inbox/sources.NewJetStream` carry private feeds over
-NATS JetStream. One stream holds one feed family. Writer replicas share one
+NATS JetStream. One stream holds one feed family. Reader replicas share one
 durable pull consumer, and JetStream gives each record to one replica. The
 transport does not keep the order of one tenant.
 
 ### Subject
 
 A record subject is `<full message name>.<tenant>`, from
-`async.TenantEventSubject`. The tenant is a canonical tenant id of 1 to 64 bytes
-from `[A-Za-z0-9_-]`. A dotted tenant domain such as `ab.cd.safedep.io` is an
-error, because each dot adds a subject token. `async.TenantEventSubjects`
+`async.TenantEventSubject`. The tenant is a stable tenant id of 1 to 64 bytes
+from `[A-Za-z0-9_-]`. SafeDep services put `<organization id>-<team id>` from
+control-tower in the envelope `tenant.tenant_id`, for example `42-7`. These ids
+never change, so a purge or a replay by tenant always finds every record. The
+tenant domain, such as `ab.cd.safedep.io`, is not a valid tenant token. Each dot
+adds a subject token, the domain can be longer than 64 bytes, and it changes
+when a team or an organization changes its slug. `async.TenantEventSubjects`
 gives `<full message name>.*` for stream subjects and consumer filters.
 `async.ParseTenantEventSubject` splits a subject into the feed and the tenant.
 `async.EventSubject` does not change.

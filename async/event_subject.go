@@ -25,9 +25,9 @@ func EventSubject(r events.Routing) string {
 // "<full message name>.<tenant>". The tenant is the last token, so a purge by
 // subject removes the events of one tenant only.
 //
-// The tenant is a canonical tenant id of 1 to 64 bytes from [A-Za-z0-9_-]. A
-// dotted tenant domain such as "ab.cd.safedep.io" is an error, because each dot
-// adds a token.
+// The tenant is a stable tenant id of 1 to 64 bytes from [A-Za-z0-9_-], such as
+// "<organization id>-<team id>". A dotted tenant domain such as
+// "ab.cd.safedep.io" is an error, because each dot adds a token.
 func TenantEventSubject(r events.Routing, tenant string) (string, error) {
 	if err := validateTenantToken(tenant); err != nil {
 		return "", fmt.Errorf("async: tenant %q: %w", tenant, err)

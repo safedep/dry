@@ -711,7 +711,7 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 			assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
 			assert.Equal(t, natstest.Tenant, rows[0].Tenant)
 
-			res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
+			res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
 			require.NoError(t, err)
 			assert.Equal(t, 1, res.Failed)
 			assert.Empty(t, handled, "the handler never sees an event of another tenant")
@@ -727,10 +727,64 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 			}
 			res, err = inbox.Replay(t.Context(), reader, natstest.NewObservation, generic, inbox.DeadLetterFilter{})
 			require.NoError(t, err)
-			assert.Equal(t, 1, res.Failed)
-			assert.Empty(t, handled, "the generic replay refuses a dead letter of the batch router")
+			assert.Equal(t, 1, res.Failed, "the generic replay refuses a dead letter of the batch router")
+			if tc.consumeRow {
+				assert.Equal(t, []string{"other"}, handled, "the dead letter of Consume is a row of its own")
+			} else {
+				assert.Empty(t, handled)
+			}
 			_, err = reader.Get(t.Context(), rows[0].ID)
-			require.NoError(t, err, "the dead letter stays")
+			require.NoError(t, err, "the dead letter of the batch router stays")
+		})
+	}
+}
+
+func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testing.T) {
+	payload := natstest.Bytes(t, natstest.Observation("evt-b", "tenant-b"))
+	valid := inbox.DeadLetterRecord{
+		Payload: payload, Feed: natstest.ObservationFeed, Reason: inbox.DeadLetterReasonHandler,
+		Subject: natstest.ObservationFeed + ".tenant-b", Tenant: "tenant-b",
+	}
+	wrong := inbox.DeadLetterRecord{
+		Payload: payload, Feed: natstest.ObservationFeed, Reason: inbox.DeadLetterReasonDecode,
+		Subject: natstest.ObservationFeed + ".tenant-a", Tenant: "tenant-a",
+	}
+	cases := []struct {
+		name  string
+		order []inbox.DeadLetterRecord
+	}{
+		{name: "valid record first", order: []inbox.DeadLetterRecord{valid, wrong}},
+		{name: "wrong record first", order: []inbox.DeadLetterRecord{wrong, valid}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := newTestAdapter(t)
+			dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
+			require.NoError(t, err)
+			reader := newDeadLetterReader(t, adapter, "writer")
+			for _, rec := range tc.order {
+				require.NoError(t, dlq.Store(t.Context(), rec))
+				require.NoError(t, dlq.Store(t.Context(), rec), "a redelivery of one source keeps one row")
+			}
+
+			writer, err := inbox.NewBatchRouter(nil, dlq)
+			require.NoError(t, err)
+			var handled []string
+			require.NoError(t, inbox.Route(writer, natstest.NewObservation, func(_ context.Context, b observationBatch) error {
+				handled = append(handled, eventIDs(b)...)
+				return nil
+			}))
+
+			res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{})
+			require.NoError(t, err)
+			assert.Equal(t, 1, res.Succeeded)
+			assert.Equal(t, 1, res.Failed)
+			assert.Equal(t, []string{"evt-b"}, handled, "the dead letter of tenant-b replays")
+
+			rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{})
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.Equal(t, "tenant-a", rows[0].Tenant, "the dead letter of the wrong subject stays")
 		})
 	}
 }

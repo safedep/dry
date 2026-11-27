@@ -3,6 +3,7 @@ package inbox
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -127,7 +128,6 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 	// zero-length poison record (Store error -> Retry) — reintroducing the stall.
 	row := DeadLetter{
 		ConsumerName: q.consumerName,
-		PayloadHash:  payloadFingerprint(rec.Payload),
 		Feed:         sanitizeForText(rec.Feed),
 		EventID:      sanitizeForText(rec.EventID),
 		Payload:      rec.Payload,
@@ -142,21 +142,11 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		Subject:  sanitizeForText(rec.Subject),
 		Tenant:   sanitizeForText(rec.Tenant),
 	}
+	row.PayloadHash = deadLetterKey(row)
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
-	// dead-letter keeps one row rather than a duplicate row or an error.
-	onConflict := clause.OnConflict{DoNothing: true}
-	if fromBatchRouter(row) {
-		// A row of Consume with the same payload has no source tenant. Without the
-		// update, Replay would run it past the tenant check of the batch router.
-		onConflict = clause.OnConflict{
-			Columns: []clause.Column{{Name: "consumer_name"}, {Name: "payload_hash"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"feed", "event_id", "error", "attempts", "failed_at", "reason", "subject", "tenant",
-			}),
-		}
-	}
+	// dead-letter is a no-op rather than a duplicate row or an error.
 	err := q.db.WithContext(ctx).
-		Clauses(onConflict).
+		Clauses(clause.OnConflict{DoNothing: true}).
 		Create(&row).Error
 	if err != nil {
 		return fmt.Errorf("inbox: dead-letter store: %w", err)
@@ -172,6 +162,25 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 func payloadFingerprint(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
+}
+
+// deadLetterKey is the dedup key of a dead letter. The key of a BatchRouter row
+// also covers its source tenant and subject. So a row of Consume, or a record of
+// another tenant with the same payload, never shares the row. A row then never
+// changes kind, and the tenant check of BatchRouter.Replay always has the
+// tenant of the record that failed.
+func deadLetterKey(row DeadLetter) string {
+	if !fromBatchRouter(row) {
+		return payloadFingerprint(row.Payload)
+	}
+	h := sha256.New()
+	for _, part := range [][]byte{[]byte("batch"), []byte(row.Tenant), []byte(row.Subject), row.Payload} {
+		var size [8]byte
+		binary.BigEndian.PutUint64(size[:], uint64(len(part)))
+		h.Write(size[:])
+		h.Write(part)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // shortFingerprint abbreviates a payload fingerprint for log lines. The prefix

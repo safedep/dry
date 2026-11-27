@@ -10,6 +10,6 @@ docker rm -f dry-nats
 ```
 
 Each test makes its own stream, with a name from the test name and a random
-suffix, and its own tenant token. The test deletes the stream at the end. So
+suffix, and its own tenant stream segment id. The test deletes the stream at the end. So
 tests can share one server, and a server can run tests from many packages at
 the same time.

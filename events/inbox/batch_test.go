@@ -2,6 +2,7 @@ package inbox_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"slices"
 	"sync"
@@ -737,6 +738,30 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 			require.NoError(t, err, "the dead letter of the batch router stays")
 		})
 	}
+}
+
+func TestDeadLetter_BatchKeyNeverMatchesAConsumePayload(t *testing.T) {
+	payload := observationBytes(t, "e")
+	batch := inbox.DeadLetterRecord{
+		Payload: payload, Feed: natstest.ObservationFeed, Reason: inbox.DeadLetterReasonHandler,
+		Subject: natstest.ObservationFeed + "." + natstest.Segment, Segment: natstest.Segment,
+	}
+	// A Consume payload that holds the exact bytes that the batch key hashes.
+	var preimage []byte
+	for _, part := range [][]byte{[]byte("batch"), []byte(batch.Segment), []byte(batch.Subject), payload} {
+		preimage = binary.BigEndian.AppendUint64(preimage, uint64(len(part)))
+		preimage = append(preimage, part...)
+	}
+
+	adapter := newTestAdapter(t)
+	dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
+	require.NoError(t, err)
+	require.NoError(t, dlq.Store(t.Context(), inbox.DeadLetterRecord{Payload: preimage}))
+	require.NoError(t, dlq.Store(t.Context(), batch))
+
+	n, err := newDeadLetterReader(t, adapter, "writer").Count(t.Context(), inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "each dead letter keeps a row")
 }
 
 func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testing.T) {

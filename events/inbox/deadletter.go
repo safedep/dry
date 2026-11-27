@@ -182,7 +182,9 @@ func deadLetterKey(row DeadLetter) string {
 		h.Write(size[:])
 		h.Write(part)
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	// The prefix keeps this key apart from the plain payload hash of a Consume
+	// row. A Consume payload can hold the exact bytes that this hash reads.
+	return "batch:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // shortFingerprint abbreviates a payload fingerprint for log lines. The prefix

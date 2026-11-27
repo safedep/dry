@@ -41,7 +41,8 @@ func WithFetchMaxWait(d time.Duration) JetStreamOption {
 
 // NewJetStream builds a BatchSource over a durable pull consumer. Replicas that
 // share the consumer share its records: each record goes to one replica. The
-// source reads the feed and the tenant of a record from its subject (see
+// source reads the feed and the tenant stream segment id of a record from its
+// subject (see
 // async.ParseTenantEventSubject).
 func NewJetStream(consumer jetstream.Consumer, opts ...JetStreamOption) (inbox.BatchSource, error) {
 	if consumer == nil {
@@ -118,7 +119,7 @@ func (s *jetStreamSource) Fetch(ctx context.Context, max int) ([]inbox.BatchReco
 }
 
 func record(msg jetstream.Msg) inbox.BatchRecord {
-	feed, tenant, err := async.ParseTenantEventSubject(msg.Subject())
+	feed, segment, err := async.ParseTenantEventSubject(msg.Subject())
 	if err != nil {
 		log.Warnf("inbox/jetstream: %v", err)
 	}
@@ -126,7 +127,7 @@ func record(msg jetstream.Msg) inbox.BatchRecord {
 	return inbox.BatchRecord{
 		Subject:    msg.Subject(),
 		Feed:       feed,
-		Tenant:     tenant,
+		Segment:    segment.String(),
 		Payload:    msg.Data(),
 		Attempt:    attempt(msg),
 		Ack:        msg.Ack,

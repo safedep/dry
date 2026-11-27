@@ -145,5 +145,5 @@ func replayOne[T proto.Message](
 // fromBatchRouter reports a row that a BatchRouter stored. Replay has no subject
 // tenant to check the envelope against, so it must not run the handler for one.
 func fromBatchRouter(row DeadLetter) bool {
-	return reasonOrUnspecified(row.Reason) != DeadLetterReasonUnspecified || row.Subject != "" || row.Tenant != ""
+	return reasonOrUnspecified(row.Reason) != DeadLetterReasonUnspecified || row.Subject != "" || row.Segment != ""
 }

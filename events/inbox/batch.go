@@ -42,8 +42,10 @@ type BatchRecord struct {
 	// Feed is the full message name of the record. It is empty when the source
 	// cannot read the feed from the subject.
 	Feed string
-	// Tenant is the tenant of the subject.
-	Tenant string
+	// Segment is the tenant stream segment id of the subject (see
+	// async.TenantStreamSegmentID). The router checks it against the envelope
+	// tenant_id.
+	Segment string
 	// Payload is the binary-proto <Feed>Event.
 	Payload []byte
 	// Attempt is the delivery count of the record. The first delivery is 1.
@@ -210,7 +212,7 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 		replay: func(ctx context.Context, row DeadLetter) (DeadLetterReason, error) {
 			ev, err := decodeBatchEvent(row.Payload, newEvent)
 			if err == nil {
-				err = checkStoredTenant(row.Tenant, ev.Meta)
+				err = checkStoredSegment(row.Segment, ev.Meta)
 			}
 			if err != nil {
 				return DeadLetterReasonDecode, err
@@ -400,7 +402,7 @@ func decodeGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 	for _, it := range recs {
 		ev, err := decodeBatchEvent(it.Payload, newEvent)
 		if err == nil {
-			err = checkTenant(it.Tenant, ev.Meta)
+			err = checkSegment(it.Segment, ev.Meta)
 		}
 		if err != nil {
 			r.deadLetter(ctx, it, feed, ev.Meta.GetEventId(), DeadLetterReasonDecode, err)
@@ -462,20 +464,20 @@ func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 	}
 }
 
-func checkTenant(subjectTenant string, meta *commonv1.EventMeta) error {
-	if tenant := meta.GetTenant().GetTenantId(); tenant != subjectTenant {
-		return fmt.Errorf("envelope tenant %q is not the subject tenant %q", tenant, subjectTenant)
+func checkSegment(segment string, meta *commonv1.EventMeta) error {
+	if tenant := meta.GetTenant().GetTenantId(); tenant != segment {
+		return fmt.Errorf("envelope tenant %q is not the subject segment %q", tenant, segment)
 	}
 	return nil
 }
 
-// checkStoredTenant makes Replay as strict as Run. A row without the tenant of
+// checkStoredSegment makes Replay as strict as Run. A row without the segment of
 // its source cannot prove which tenant its event belongs to.
-func checkStoredTenant(tenant string, meta *commonv1.EventMeta) error {
-	if tenant == "" {
-		return errors.New("the dead letter has no source tenant, so replay cannot check the envelope tenant")
+func checkStoredSegment(segment string, meta *commonv1.EventMeta) error {
+	if segment == "" {
+		return errors.New("the dead letter has no source segment, so replay cannot check the envelope tenant")
 	}
-	return checkTenant(tenant, meta)
+	return checkSegment(segment, meta)
 }
 
 func decodeBatchEvent[T proto.Message](payload []byte, newEvent func() T) (BatchEvent[T], error) {
@@ -515,7 +517,7 @@ func (r *BatchRouter) deadLetter(ctx context.Context, it *inflight, feed, eventI
 		EventID:  eventID,
 		Feed:     feed,
 		Subject:  it.Subject,
-		Tenant:   it.Tenant,
+		Segment:  it.Segment,
 		Reason:   reason,
 	})
 	if err != nil {

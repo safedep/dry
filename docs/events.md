@@ -190,17 +190,18 @@ transport does not keep the order of one tenant.
 
 ### Subject
 
-A record subject is `<full message name>.<tenant>`, from
-`async.TenantEventSubject`. The tenant is a stable tenant id of 1 to 64 bytes
-from `[A-Za-z0-9_-]`. SafeDep services put `<organization id>-<team id>` from
-control-tower in the envelope `tenant.tenant_id`, for example `42-7`. These ids
-never change, so a purge or a replay by tenant always finds every record. The
-tenant domain, such as `ab.cd.safedep.io`, is not a valid tenant token. Each dot
-adds a subject token, the domain can be longer than 64 bytes, and it changes
-when a team or an organization changes its slug. `async.TenantEventSubjects`
-gives `<full message name>.*` for stream subjects and consumer filters.
-`async.ParseTenantEventSubject` splits a subject into the feed and the tenant.
-`async.EventSubject` does not change.
+A record subject is `<full message name>.<segment>`, from
+`async.TenantEventSubject`. The segment is an `async.TenantStreamSegmentID`: 1
+to 64 bytes from `[A-Za-z0-9_-]`. `async.NewTenantStreamSegmentID` is the only
+way to make one, and it refuses any other value. The producer picks a value that
+never changes, so a purge or a replay by segment always finds every record of a
+tenant. SafeDep services use the `ExternalID` of the control-tower team, and
+control-tower owns that mapping in one package. The tenant domain, such as
+`ab.cd.safedep.io`, is not a valid segment id. Each dot adds a subject token,
+the domain can be longer than 64 bytes, and it changes with a slug.
+`async.TenantEventSubjects` gives `<full message name>.*` for stream subjects
+and consumer filters. `async.ParseTenantEventSubject` splits a subject into the
+feed and the segment id. `async.EventSubject` does not change.
 
 ### Publish
 
@@ -209,8 +210,9 @@ pub, err := natsjs.NewPublisher(js)
 res, err := pub.Publish(ctx, evt)
 ```
 
-`Publish` takes the feed from the message type and the tenant from the envelope
-`tenant.tenant_id`. It refuses an event without a tenant, and a public feed. It
+`Publish` takes the feed from the message type and the segment id from the
+envelope `tenant.tenant_id`. It refuses an event whose `tenant_id` is not a
+valid segment id, and a public feed. It
 sends binary proto and waits for the acknowledgement of the stream. It sets the
 `Nats-Msg-Id` header to the envelope `event_id`, or to the id of
 `natsjs.WithMsgID`. The stream drops a second record with the same id in its
@@ -272,7 +274,7 @@ type (
 // row is one ClickHouse row.
 type row struct {
 	EventID    string
-	Tenant     string
+	Segment    string
 	OccurredAt time.Time
 }
 
@@ -345,7 +347,7 @@ func runWriter(ctx context.Context) error {
 			for _, ev := range batch {
 				rows = append(rows, row{
 					EventID:    ev.Meta.GetEventId(),
-					Tenant:     ev.Meta.GetTenant().GetTenantId(),
+					Segment:    ev.Meta.GetTenant().GetTenantId(),
 					OccurredAt: ev.Meta.GetOccurredAt().AsTime(),
 				})
 			}
@@ -361,7 +363,7 @@ func runWriter(ctx context.Context) error {
 			for _, ev := range batch {
 				rows = append(rows, row{
 					EventID:    ev.Meta.GetEventId(),
-					Tenant:     ev.Meta.GetTenant().GetTenantId(),
+					Segment:    ev.Meta.GetTenant().GetTenantId(),
 					OccurredAt: ev.Meta.GetOccurredAt().AsTime(),
 				})
 			}
@@ -381,7 +383,7 @@ func insert(ctx context.Context, table string, rows []row) error {
 ```
 
 Run `inbox.Migrate` from your migration pipeline before a new version consumes.
-It adds the `reason`, `subject` and `tenant` columns to the dead-letter table.
+It adds the `reason`, `subject` and `segment` columns to the dead-letter table.
 
 `sources.NewJetStream` waits up to 2s for a full batch (`WithFetchMaxWait`). The
 wait must be below the consumer `AckWait`. A cancel stops the router after the
@@ -395,8 +397,8 @@ full message name. For each fetch, the router groups the records by feed and
 runs the handler of each feed once. Each feed is acked or redelivered on its
 own, so a failing feed never redelivers the records of a feed that succeeded.
 
-- A record that does not decode, or whose envelope tenant is not the tenant of
-  its subject, is dead-lettered (`decode`) and terminated at once.
+- A record that does not decode, or whose envelope `tenant_id` is not the
+  segment id of its subject, is dead-lettered (`decode`) and terminated at once.
 - A record without a route is redelivered with a backoff. On its last attempt
   it is dead-lettered (`no_route`). In a rolling deploy an old replica can fetch
   a feed that only the new version routes.
@@ -426,35 +428,36 @@ own, so a failing feed never redelivers the records of a feed that succeeded.
 ### Dead letters
 
 The router writes dead letters to the `event_inbox_dead_letter` table, with the
-feed, the subject, the source tenant and a reason: `no_route`, `decode` or
-`handler`. Rows from before these columns, and rows of `Consume`, have an empty
-subject and tenant. Rows from before the
+feed, the subject, the segment id of the source and a reason: `no_route`,
+`decode` or `handler`. Rows from before these columns, and rows of `Consume`,
+have an empty subject and segment. Rows from before the
 reason column, and rows of `NewRetryPolicy`, have the reason `unspecified`.
 `DeadLetterReader` filters on `Feed` and `Reason`.
 
 To replay, build a router with the routes of the writer and call
 `router.Replay(ctx, reader, filter)`. A router for Replay alone can have a nil
 source. Replay runs each dead letter through the handler of its feed, as a batch
-of one event. The envelope tenant must equal the source tenant that the router
-stored on the row, so a row without a stored tenant stays dead-lettered. It
+of one event. The envelope `tenant_id` must equal the segment id that the router
+stored on the row, so a row without a stored segment stays dead-lettered. It
 deletes a dead letter that passes. A dead letter that fails
 again stays, with the new reason and error and one more attempt. A dead letter
 whose feed has no route stays as it is. So a `no_route` record clears after a
 release adds its route.
 The generic `inbox.Replay[T]` refuses a row of the router, because it has no
-tenant to check. It replays only the rows of `Consume`. The router replay leaves
+segment to check. It replays only the rows of `Consume`. The router replay leaves
 a row of `Consume` as it is.
-A row of the router is unique by its source tenant, subject and payload. So a
+A row of the router is unique by its segment id, subject and payload. So a
 record of another tenant, or a row of `Consume`, with the same payload gets a
 row of its own.
 
 ### Purge a tenant
 
 ```go
-err := natsjs.PurgeTenant(ctx, stream, routing, tenant)
+err := natsjs.PurgeTenant(ctx, stream, routing, segment)
 ```
 
-`PurgeTenant` removes the records of one tenant of one feed from the stream.
+`PurgeTenant` removes the records of one tenant stream segment of one feed from
+the stream.
 
 ### Tests
 

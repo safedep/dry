@@ -2,7 +2,8 @@
 // a stream and a durable pull consumer, publishes events with publish-side
 // deduplication, and purges the events of one tenant.
 //
-// A record subject is "<full message name>.<tenant>" (async.TenantEventSubject).
+// A record subject is "<full message name>.<segment>", where the segment is an
+// async.TenantStreamSegmentID (async.TenantEventSubject).
 // The inbox reads the stream with events/inbox/sources.NewJetStream and a
 // BatchRouter. NATS is intra-platform only, so this package refuses public feeds.
 package natsjs

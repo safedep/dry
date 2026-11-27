@@ -48,10 +48,10 @@ func WithMsgID(id string) PublishOption {
 	return func(c *publishConfig) { c.msgID = id }
 }
 
-// Publish sends event as binary proto on "<full message name>.<tenant>". The
-// message type gives the feed and the envelope tenant_id gives the tenant, so a
-// consumer can route by subject. Publish refuses an event without a tenant, and
-// a public feed.
+// Publish sends event as binary proto on "<full message name>.<segment>". The
+// message type gives the feed. The envelope tenant_id gives the tenant stream
+// segment id, so a consumer can route by subject. Publish refuses an event whose
+// tenant_id is not a valid segment id, and a public feed.
 //
 // The Nats-Msg-Id header makes the stream drop a retry of the same event within
 // its duplicate window. A duplicate is a success and PublishResult.Duplicate is
@@ -70,9 +70,13 @@ func (p *Publisher) Publish(ctx context.Context, event proto.Message, opts ...Pu
 		return PublishResult{}, fmt.Errorf("natsjs: publish: %w", err)
 	}
 
-	subject, err := async.TenantEventSubject(routing, meta.GetTenant().GetTenantId())
+	segment, err := async.NewTenantStreamSegmentID(meta.GetTenant().GetTenantId())
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("natsjs: publish: envelope tenant: %w", err)
+	}
+	subject, err := async.TenantEventSubject(routing, segment)
+	if err != nil {
+		return PublishResult{}, fmt.Errorf("natsjs: publish: %w", err)
 	}
 
 	cfg := publishConfig{msgID: meta.GetEventId()}
@@ -96,13 +100,14 @@ func (p *Publisher) Publish(ctx context.Context, event proto.Message, opts ...Pu
 	return PublishResult{Stream: ack.Stream, Sequence: ack.Sequence, Duplicate: ack.Duplicate}, nil
 }
 
-// PurgeTenant removes every record of one tenant of a feed from stream.
-func PurgeTenant(ctx context.Context, stream jetstream.Stream, routing events.Routing, tenant string) error {
+// PurgeTenant removes every record of one tenant stream segment of a feed from
+// stream.
+func PurgeTenant(ctx context.Context, stream jetstream.Stream, routing events.Routing, segment async.TenantStreamSegmentID) error {
 	if stream == nil {
 		return errors.New("natsjs: purge: stream is required")
 	}
 
-	subject, err := async.TenantEventSubject(routing, tenant)
+	subject, err := async.TenantEventSubject(routing, segment)
 	if err != nil {
 		return fmt.Errorf("natsjs: purge: %w", err)
 	}

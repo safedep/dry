@@ -29,16 +29,16 @@ const URLEnv = "DRY_NATS_TEST_URL"
 const (
 	ObservationFeed = "safedep.events.private.packageregistry.v1.PackageVersionObservationEvent"
 	MaintainerFeed  = "safedep.events.private.packageregistry.v1.MaintainerObservationEvent"
-	// Tenant is the tenant of the tests that need no server.
-	Tenant = "tenant-a"
+	// Segment is the tenant stream segment id of the tests that need no server.
+	Segment = "tenant-a"
 )
 
 // Server is the part of the shared test server that one test owns: a stream
 // name and a tenant that no other test uses.
 type Server struct {
-	JS     jetstream.JetStream
-	Stream string
-	Tenant string
+	JS      jetstream.JetStream
+	Stream  string
+	Segment string
 }
 
 // Connect connects to the server at DRY_NATS_TEST_URL. It skips the test when
@@ -62,7 +62,7 @@ func Connect(t testing.TB) Server {
 	require.NoError(t, err)
 
 	suffix := randomSuffix(t)
-	srv := Server{JS: js, Stream: streamName(t.Name(), suffix), Tenant: "t-" + suffix}
+	srv := Server{JS: js, Stream: streamName(t.Name(), suffix), Segment: "t-" + suffix}
 
 	t.Cleanup(func() {
 		// t.Context is done when the cleanup runs.
@@ -82,7 +82,7 @@ func Connect(t testing.TB) Server {
 // tests can share one server.
 func (s Server) StreamConfig(tenants ...string) natsjs.StreamConfig {
 	if len(tenants) == 0 {
-		tenants = []string{s.Tenant}
+		tenants = []string{s.Segment}
 	}
 	var subjects []string
 	for _, tenant := range tenants {

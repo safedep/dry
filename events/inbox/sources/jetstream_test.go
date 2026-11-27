@@ -33,13 +33,13 @@ type feedEnv struct {
 }
 
 // otherTenant is a second tenant on the stream of a test.
-func (e feedEnv) otherTenant() string { return e.Tenant + "-b" }
+func (e feedEnv) otherTenant() string { return e.Segment + "-b" }
 
 func newFeedEnv(t *testing.T, cfg natsjs.ConsumerConfig) feedEnv {
 	t.Helper()
 	srv := natstest.Connect(t)
 
-	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Tenant, srv.Tenant+"-b"))
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Segment, srv.Segment+"-b"))
 	require.NoError(t, err)
 
 	cfg.Durable = "writer"
@@ -193,15 +193,15 @@ func TestNewJetStream_RefusesAConsumerThatCannotSettleEachRecord(t *testing.T) {
 
 func TestJetStreamSource_MapsRecordAndAttempt(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	env.publish(t, natstest.Observation("evt-1", env.Tenant))
+	env.publish(t, natstest.Observation("evt-1", env.Segment))
 	src := env.source(t)
 
 	recs, err := src.Fetch(t.Context(), 10)
 	require.NoError(t, err)
 	require.Len(t, recs, 1)
-	assert.Equal(t, natstest.ObservationFeed+"."+env.Tenant, recs[0].Subject)
+	assert.Equal(t, natstest.ObservationFeed+"."+env.Segment, recs[0].Subject)
 	assert.Equal(t, natstest.ObservationFeed, recs[0].Feed)
-	assert.Equal(t, env.Tenant, recs[0].Tenant)
+	assert.Equal(t, env.Segment, recs[0].Segment)
 	assert.Equal(t, 1, recs[0].Attempt)
 	assert.NotEmpty(t, recs[0].Payload)
 	require.NoError(t, recs[0].Nack(0))
@@ -276,7 +276,7 @@ func TestJetStreamRouter_DeliveryLimit(t *testing.T) {
 func TestJetStreamRouter_AcksABatch(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	for i := range 3 {
-		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%d", i), env.Tenant))
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%d", i), env.Segment))
 	}
 
 	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{})
@@ -295,9 +295,9 @@ func TestJetStreamRouter_AcksABatch(t *testing.T) {
 func TestJetStreamRouter_RedeliversOnlyTheFailedGroup(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	env.publish(t,
-		natstest.Observation("obs-1", env.Tenant),
-		natstest.Maintainer("mnt-1", env.Tenant),
-		natstest.Observation("obs-2", env.Tenant))
+		natstest.Observation("obs-1", env.Segment),
+		natstest.Maintainer("mnt-1", env.Segment),
+		natstest.Observation("obs-2", env.Segment))
 
 	r, err := inbox.NewBatchRouter(env.source(t), &memDLQ{},
 		inbox.WithBatchRedeliveryBackoff(20*time.Millisecond, 20*time.Millisecond))
@@ -322,9 +322,9 @@ func TestJetStreamRouter_RedeliversOnlyTheFailedGroup(t *testing.T) {
 func TestJetStreamRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	env.publish(t,
-		natstest.Observation("good-1", env.Tenant),
-		natstest.Observation("bad", env.Tenant),
-		natstest.Observation("good-2", env.Tenant))
+		natstest.Observation("good-1", env.Segment),
+		natstest.Observation("bad", env.Segment),
+		natstest.Observation("good-2", env.Segment))
 
 	dlq := &memDLQ{}
 	r, err := inbox.NewBatchRouter(env.source(t), dlq,
@@ -354,14 +354,14 @@ func TestJetStreamRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 
 func TestJetStreamRouter_DeadLettersDecodeFailuresAndUnroutedFeeds(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	_, err := env.JS.Publish(t.Context(), natstest.ObservationFeed+"."+env.Tenant, []byte{0xff, 0xff, 0xff})
+	_, err := env.JS.Publish(t.Context(), natstest.ObservationFeed+"."+env.Segment, []byte{0xff, 0xff, 0xff})
 	require.NoError(t, err)
 	_, err = env.JS.Publish(t.Context(), natstest.ObservationFeed+"."+env.otherTenant(),
-		natstest.Bytes(t, natstest.Observation("wrong-tenant", env.Tenant)))
+		natstest.Bytes(t, natstest.Observation("wrong-tenant", env.Segment)))
 	require.NoError(t, err)
 	env.publish(t,
-		natstest.Maintainer("mnt-1", env.Tenant),
-		natstest.Observation("obs-1", env.Tenant))
+		natstest.Maintainer("mnt-1", env.Segment),
+		natstest.Observation("obs-1", env.Segment))
 
 	dlq := &memDLQ{}
 	r, err := inbox.NewBatchRouter(env.source(t), dlq,
@@ -388,7 +388,7 @@ func TestJetStreamRouter_DeadLettersDecodeFailuresAndUnroutedFeeds(t *testing.T)
 
 func TestJetStreamRouter_StoreFailureKeepsTheRecordPastTheBudget(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
-	env.publish(t, natstest.Observation("bad", env.Tenant))
+	env.publish(t, natstest.Observation("bad", env.Segment))
 
 	dlq := &memDLQ{failures: 2}
 	permanent := errors.New("bad row")
@@ -410,7 +410,7 @@ func TestJetStreamRouter_StoreFailureKeepsTheRecordPastTheBudget(t *testing.T) {
 func TestJetStreamRouter_HeartbeatKeepsASlowBatchFromRedelivery(t *testing.T) {
 	const ackWait = 500 * time.Millisecond
 	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
-	env.publish(t, natstest.Observation("slow", env.Tenant))
+	env.publish(t, natstest.Observation("slow", env.Segment))
 
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
@@ -458,7 +458,7 @@ func TestJetStreamRouter_RecordThatWaitedInTheFetchIsNotRedelivered(t *testing.T
 		handling = 600 * time.Millisecond
 	)
 	env := newFeedEnv(t, natsjs.ConsumerConfig{AckWait: ackWait})
-	env.publish(t, natstest.Observation("waited", env.Tenant))
+	env.publish(t, natstest.Observation("waited", env.Segment))
 
 	// The record arrives at the start of a fetch that waits for a full batch. The
 	// handler then runs past AckWait, before the first heartbeat tick.
@@ -493,7 +493,7 @@ func TestJetStreamRouter_ReplicasShareOneDurableConsumer(t *testing.T) {
 	env := newFeedEnv(t, natsjs.ConsumerConfig{})
 	const n = 60
 	for i := range n {
-		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%02d", i), env.Tenant))
+		env.publish(t, natstest.Observation(fmt.Sprintf("evt-%02d", i), env.Segment))
 	}
 
 	all := newSeen()

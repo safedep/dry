@@ -174,7 +174,7 @@ func TestMigrate_GivesOldDeadLettersTheUnspecifiedReason(t *testing.T) {
 	require.Len(t, rows, 1)
 	assert.Equal(t, inbox.DeadLetterReasonUnspecified, rows[0].Reason)
 	assert.Empty(t, rows[0].Subject)
-	assert.Empty(t, rows[0].Tenant)
+	assert.Empty(t, rows[0].Segment)
 	assert.True(t, failedAt.Equal(rows[0].FailedAt), "failed_at survives the migration: %s", rows[0].FailedAt)
 	assert.True(t, gdb.Migrator().HasIndex(&inbox.DeadLetter{}, "idx_event_inbox_dead_letter_failed_at"))
 }

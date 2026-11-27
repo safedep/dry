@@ -34,9 +34,9 @@ type handle struct {
 
 func (h *handle) record(feed string, payload []byte, attempt int) inbox.BatchRecord {
 	return inbox.BatchRecord{
-		Subject: feed + "." + natstest.Tenant,
+		Subject: feed + "." + natstest.Segment,
 		Feed:    feed,
-		Tenant:  natstest.Tenant,
+		Segment: natstest.Segment,
 		Payload: payload,
 		Attempt: attempt,
 		Ack:     func() error { h.mu.Lock(); defer h.mu.Unlock(); h.acks++; return nil },
@@ -101,11 +101,11 @@ type limitedSource struct {
 func (l *limitedSource) MaxDeliveries(context.Context) (int, error) { return l.limit, l.err }
 
 func observationBytes(t *testing.T, id string) []byte {
-	return natstest.Bytes(t, natstest.Observation(id, natstest.Tenant))
+	return natstest.Bytes(t, natstest.Observation(id, natstest.Segment))
 }
 
 func maintainerBytes(t *testing.T, id string) []byte {
-	return natstest.Bytes(t, natstest.Maintainer(id, natstest.Tenant))
+	return natstest.Bytes(t, natstest.Maintainer(id, natstest.Segment))
 }
 
 func eventIDs[T proto.Message](batch []inbox.BatchEvent[T]) []string {
@@ -708,8 +708,8 @@ func TestBatchRouter_ReplayKeepsTheSubjectTenantCheck(t *testing.T) {
 			rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
-			assert.Equal(t, natstest.ObservationFeed+"."+natstest.Tenant, rows[0].Subject)
-			assert.Equal(t, natstest.Tenant, rows[0].Tenant)
+			assert.Equal(t, natstest.ObservationFeed+"."+natstest.Segment, rows[0].Subject)
+			assert.Equal(t, natstest.Segment, rows[0].Segment)
 
 			res, err := writer.Replay(t.Context(), reader, inbox.DeadLetterFilter{Reason: inbox.DeadLetterReasonDecode})
 			require.NoError(t, err)
@@ -743,11 +743,11 @@ func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testin
 	payload := natstest.Bytes(t, natstest.Observation("evt-b", "tenant-b"))
 	valid := inbox.DeadLetterRecord{
 		Payload: payload, Feed: natstest.ObservationFeed, Reason: inbox.DeadLetterReasonHandler,
-		Subject: natstest.ObservationFeed + ".tenant-b", Tenant: "tenant-b",
+		Subject: natstest.ObservationFeed + ".tenant-b", Segment: "tenant-b",
 	}
 	wrong := inbox.DeadLetterRecord{
 		Payload: payload, Feed: natstest.ObservationFeed, Reason: inbox.DeadLetterReasonDecode,
-		Subject: natstest.ObservationFeed + ".tenant-a", Tenant: "tenant-a",
+		Subject: natstest.ObservationFeed + ".tenant-a", Segment: "tenant-a",
 	}
 	cases := []struct {
 		name  string
@@ -784,7 +784,7 @@ func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testin
 			rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{})
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
-			assert.Equal(t, "tenant-a", rows[0].Tenant, "the dead letter of the wrong subject stays")
+			assert.Equal(t, "tenant-a", rows[0].Segment, "the dead letter of the wrong subject stays")
 		})
 	}
 }
@@ -803,8 +803,8 @@ func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
 			reason: inbox.DeadLetterReasonHandler, wantAttempts: 5, wantReason: inbox.DeadLetterReasonDecode, wantError: "tenant",
 		},
 		{
-			name: "no stored tenant", reason: inbox.DeadLetterReasonHandler,
-			wantAttempts: 5, wantReason: inbox.DeadLetterReasonDecode, wantError: "no source tenant",
+			name: "no stored segment", reason: inbox.DeadLetterReasonHandler,
+			wantAttempts: 5, wantReason: inbox.DeadLetterReasonDecode, wantError: "no source segment",
 		},
 		{
 			name: "a row of Consume stays as it is", wantAttempts: 4, wantReason: inbox.DeadLetterReasonUnspecified,
@@ -817,7 +817,7 @@ func TestBatchRouter_ReplayRequiresTheStoredTenant(t *testing.T) {
 			seedDeadLetter(t, adapter, "writer", inbox.DeadLetterRecord{
 				Payload:  observationBytes(t, "e"),
 				Feed:     natstest.ObservationFeed,
-				Tenant:   tc.tenant,
+				Segment:  tc.tenant,
 				Reason:   tc.reason,
 				Attempts: 4,
 			})

@@ -40,9 +40,10 @@ type DeadLetter struct {
 	// Subject is the transport subject of a BatchRouter record. It is empty on
 	// rows from before the column and on rows of Consume.
 	Subject string `gorm:"column:subject;not null;default:''"`
-	// Tenant is the tenant that the source of a BatchRouter record gave. It is
-	// empty on rows from before the column and on rows of Consume.
-	Tenant string `gorm:"column:tenant;not null;default:''"`
+	// Segment is the tenant stream segment id that the source of a BatchRouter
+	// record gave. It is empty on rows from before the column and on rows of
+	// Consume.
+	Segment string `gorm:"column:segment;not null;default:''"`
 }
 
 func (DeadLetter) TableName() string { return "event_inbox_dead_letter" }
@@ -79,8 +80,9 @@ type DeadLetterRecord struct {
 	Reason DeadLetterReason
 	// Subject is the transport subject of the record, when it has one.
 	Subject string
-	// Tenant is the tenant that the source of the record gave, when it has one.
-	Tenant string
+	// Segment is the tenant stream segment id that the source of the record gave,
+	// when it has one.
+	Segment string
 }
 
 // DeadLetterQueue persists records a consumer has given up on. It is the sink an
@@ -140,7 +142,7 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		FailedAt: time.Now(),
 		Reason:   reasonOrUnspecified(rec.Reason),
 		Subject:  sanitizeForText(rec.Subject),
-		Tenant:   sanitizeForText(rec.Tenant),
+		Segment:  sanitizeForText(rec.Segment),
 	}
 	row.PayloadHash = deadLetterKey(row)
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
@@ -165,16 +167,16 @@ func payloadFingerprint(payload []byte) string {
 }
 
 // deadLetterKey is the dedup key of a dead letter. The key of a BatchRouter row
-// also covers its source tenant and subject. So a row of Consume, or a record of
+// also covers its source segment and subject. So a row of Consume, or a record of
 // another tenant with the same payload, never shares the row. A row then never
 // changes kind, and the tenant check of BatchRouter.Replay always has the
-// tenant of the record that failed.
+// segment of the record that failed.
 func deadLetterKey(row DeadLetter) string {
 	if !fromBatchRouter(row) {
 		return payloadFingerprint(row.Payload)
 	}
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte("batch"), []byte(row.Tenant), []byte(row.Subject), row.Payload} {
+	for _, part := range [][]byte{[]byte("batch"), []byte(row.Segment), []byte(row.Subject), row.Payload} {
 		var size [8]byte
 		binary.BigEndian.PutUint64(size[:], uint64(len(part)))
 		h.Write(size[:])

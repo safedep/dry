@@ -6,6 +6,7 @@ import (
 
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/safedep/dry/async"
 	"github.com/safedep/dry/events"
 	"github.com/safedep/dry/events/internal/natstest"
 	"github.com/safedep/dry/events/natsjs"
@@ -91,8 +92,8 @@ func TestEnsureStream_CreatesAndDetectsDrift(t *testing.T) {
 
 func TestEnsureConsumer(t *testing.T) {
 	srv, stream := ensureStream(t)
-	observations := natstest.ObservationFeed + "." + srv.Tenant
-	maintainers := natstest.MaintainerFeed + "." + srv.Tenant
+	observations := natstest.ObservationFeed + "." + srv.Segment
+	maintainers := natstest.MaintainerFeed + "." + srv.Segment
 
 	cases := []struct {
 		name    string
@@ -154,7 +155,7 @@ func TestEnsureConsumer_DetectsDrift(t *testing.T) {
 
 	changed := cfg
 	changed.AckWait = 20 * time.Second
-	changed.FilterSubjects = []string{natstest.ObservationFeed + "." + srv.Tenant}
+	changed.FilterSubjects = []string{natstest.ObservationFeed + "." + srv.Segment}
 	_, err = natsjs.EnsureConsumer(t.Context(), stream, changed)
 	require.ErrorIs(t, err, natsjs.ErrDrift)
 	assert.Contains(t, err.Error(), "ack wait")
@@ -269,12 +270,12 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 			pub, err := natsjs.NewPublisher(srv.JS)
 			require.NoError(t, err)
 
-			first, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[0], srv.Tenant), tc.first...)
+			first, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[0], srv.Segment), tc.first...)
 			require.NoError(t, err)
 			assert.False(t, first.Duplicate)
 			assert.Equal(t, srv.Stream, first.Stream)
 
-			second, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[1], srv.Tenant), tc.second...)
+			second, err := pub.Publish(t.Context(), natstest.Observation(tc.ids[1], srv.Segment), tc.second...)
 			require.NoError(t, err, "a duplicate is a success")
 			assert.True(t, second.Duplicate)
 			assert.Equal(t, first.Sequence, second.Sequence)
@@ -285,7 +286,7 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 
 			msg, err := stream.GetMsg(t.Context(), first.Sequence)
 			require.NoError(t, err)
-			assert.Equal(t, natstest.ObservationFeed+"."+srv.Tenant, msg.Subject, "the tenant comes from the envelope")
+			assert.Equal(t, natstest.ObservationFeed+"."+srv.Segment, msg.Subject, "the tenant comes from the envelope")
 			got := &pkgregv1.PackageVersionObservationEvent{}
 			require.NoError(t, proto.Unmarshal(msg.Data, got))
 			assert.Equal(t, tc.ids[0], got.GetMeta().GetEventId())
@@ -299,7 +300,7 @@ func TestPublisher_DistinctIDsAreStored(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, id := range []string{"evt-1", "evt-2"} {
-		res, err := pub.Publish(t.Context(), natstest.Observation(id, srv.Tenant))
+		res, err := pub.Publish(t.Context(), natstest.Observation(id, srv.Segment))
 		require.NoError(t, err)
 		assert.False(t, res.Duplicate)
 	}
@@ -337,7 +338,7 @@ func TestPublisher_Refuses(t *testing.T) {
 		{name: "tenant domain", event: natstest.Observation("e", "ab.cd.safedep.io")},
 		{name: "wildcard tenant", event: natstest.Observation("e", "*")},
 		{name: "no event id", event: pkgregv1.PackageVersionObservationEvent_builder{
-			Meta: events.NewMeta(events.WithEventID(""), events.WithTenant(srv.Tenant)),
+			Meta: events.NewMeta(events.WithEventID(""), events.WithTenant(srv.Segment)),
 		}.Build()},
 	}
 	for _, tc := range cases {
@@ -353,16 +354,16 @@ func TestPublisher_Refuses(t *testing.T) {
 
 func TestPurgeTenant_RemovesOnlyThatTenant(t *testing.T) {
 	srv := natstest.Connect(t)
-	other := srv.Tenant + "-b"
-	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Tenant, other))
+	other := srv.Segment + "-b"
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Segment, other))
 	require.NoError(t, err)
 	pub, err := natsjs.NewPublisher(srv.JS)
 	require.NoError(t, err)
 
 	for _, ev := range []proto.Message{
-		natstest.Observation("a-1", srv.Tenant),
+		natstest.Observation("a-1", srv.Segment),
 		natstest.Observation("b-1", other),
-		natstest.Observation("a-2", srv.Tenant),
+		natstest.Observation("a-2", srv.Segment),
 	} {
 		_, err := pub.Publish(t.Context(), ev)
 		require.NoError(t, err)
@@ -370,15 +371,18 @@ func TestPurgeTenant_RemovesOnlyThatTenant(t *testing.T) {
 
 	routing, err := events.RoutingFor(natstest.NewObservation())
 	require.NoError(t, err)
-	require.NoError(t, natsjs.PurgeTenant(t.Context(), stream, routing, srv.Tenant))
+	segment, err := async.NewTenantStreamSegmentID(srv.Segment)
+	require.NoError(t, err)
+	require.NoError(t, natsjs.PurgeTenant(t.Context(), stream, routing, segment))
 
 	info, err := stream.Info(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, uint64(1), info.State.Msgs)
 	_, err = stream.GetLastMsgForSubject(t.Context(), natstest.ObservationFeed+"."+other)
 	require.NoError(t, err, "the other tenant keeps its record")
-	_, err = stream.GetLastMsgForSubject(t.Context(), natstest.ObservationFeed+"."+srv.Tenant)
+	_, err = stream.GetLastMsgForSubject(t.Context(), natstest.ObservationFeed+"."+srv.Segment)
 	assert.ErrorIs(t, err, jetstream.ErrMsgNotFound)
 
-	assert.Error(t, natsjs.PurgeTenant(t.Context(), stream, routing, "*"), "a wildcard would purge every tenant")
+	assert.Error(t, natsjs.PurgeTenant(t.Context(), stream, routing, async.TenantStreamSegmentID{}),
+		"an empty segment id is refused")
 }

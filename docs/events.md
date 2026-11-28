@@ -507,10 +507,15 @@ row of its own.
 ### Purge a tenant
 
 ```go
-// segment comes from async.NewTenantStreamSegmentID, which refuses an empty id.
+// Step 2, for each feed. segment comes from async.NewTenantStreamSegmentID,
+// which refuses an empty id.
 if err := natsjs.PurgeTenant(ctx, stream, routing, segment); err != nil {
 	return err
 }
+```
+
+```go
+// Step 4, only after every writer that ran before the purge has stopped.
 n, err := inbox.DeleteDeadLetters(ctx, reader, inbox.DeadLetterFilter{Segment: segment.String()})
 if err != nil {
 	return err

@@ -20,13 +20,14 @@ const defaultDeadLetterPageSize = 100
 var ErrDeadLetterNotFound = errors.New("inbox: dead-letter record not found")
 
 // DeadLetterFilter narrows a List / Count. All fields are optional; a zero filter
-// matches every record for the consumer. Feed / EventID / Reason / Before select
+// matches every record for the consumer. Feed / EventID / Reason / Segment / Before select
 // records; AfterID / Limit page over them (id-ordered, ascending). Count ignores
 // AfterID and Limit — it answers "how many match the selection", not "how many on a page".
 type DeadLetterFilter struct {
 	Feed    string
 	EventID string
 	Reason  DeadLetterReason
+	Segment string    // the tenant stream segment id of a BatchRouter row
 	Before  time.Time // failed_at strictly before this instant
 	AfterID uint64    // cursor: records with id greater than this
 	Limit   int       // page size; <= 0 uses defaultDeadLetterPageSize
@@ -60,7 +61,7 @@ func NewGormDeadLetterReader(adapter db.SqlDataAdapter, consumerName string) (De
 }
 
 // selection applies the consumer scope and content filters (Feed / EventID /
-// Reason / Before), the predicates shared by List and Count. Pagination (AfterID / Limit)
+// Reason / Segment / Before), the predicates shared by List and Count. Pagination (AfterID / Limit)
 // is layered on by List only.
 func (q *gormDeadLetter) selection(tx *gorm.DB, f DeadLetterFilter) *gorm.DB {
 	tx = tx.Where("consumer_name = ?", q.consumerName)
@@ -72,6 +73,9 @@ func (q *gormDeadLetter) selection(tx *gorm.DB, f DeadLetterFilter) *gorm.DB {
 	}
 	if f.Reason != "" {
 		tx = tx.Where("reason = ?", f.Reason)
+	}
+	if f.Segment != "" {
+		tx = tx.Where("segment = ?", f.Segment)
 	}
 	if !f.Before.IsZero() {
 		tx = tx.Where("failed_at < ?", f.Before)
@@ -148,4 +152,31 @@ func (q *gormDeadLetter) recordFailure(ctx context.Context, id uint64, reason De
 		return fmt.Errorf("inbox: dead-letter record failure: %w", err)
 	}
 	return nil
+}
+
+// DeleteDeadLetters deletes every record that matches f, page by page, and
+// returns how many it deleted. Use it with f.Segment when a tenant is deleted:
+// natsjs.PurgeTenant clears the stream, and the dead letters of the tenant keep
+// its raw payloads until this runs.
+func DeleteDeadLetters(ctx context.Context, reader DeadLetterReader, f DeadLetterFilter) (int, error) {
+	if reader == nil {
+		return 0, errors.New("inbox: delete dead letters: reader is required")
+	}
+	deleted := 0
+	for {
+		rows, err := reader.List(ctx, f)
+		if err != nil {
+			return deleted, fmt.Errorf("inbox: delete dead letters: %w", err)
+		}
+		if len(rows) == 0 {
+			return deleted, nil
+		}
+		for _, row := range rows {
+			if err := reader.Delete(ctx, row.ID); err != nil {
+				return deleted, fmt.Errorf("inbox: delete dead letter %d: %w", row.ID, err)
+			}
+			deleted++
+		}
+		f.AfterID = rows[len(rows)-1].ID
+	}
 }

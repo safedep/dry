@@ -1,6 +1,7 @@
 package natsjs_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -42,6 +43,7 @@ func TestEnsureStream_Validation(t *testing.T) {
 		{name: "negative replicas", mutate: func(c *natsjs.StreamConfig) { c.Replicas = -1 }},
 		{name: "negative duplicate window", mutate: func(c *natsjs.StreamConfig) { c.DuplicateWindow = -time.Second }},
 		{name: "duplicate window above max age", mutate: func(c *natsjs.StreamConfig) { c.DuplicateWindow = 2 * time.Hour }},
+		{name: "unknown discard policy", mutate: func(c *natsjs.StreamConfig) { c.Discard = 7 }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -63,7 +65,7 @@ func TestEnsureStream_CreatesAndDetectsDrift(t *testing.T) {
 	info := stream.CachedInfo().Config
 	assert.Equal(t, jetstream.FileStorage, info.Storage)
 	assert.Equal(t, jetstream.LimitsPolicy, info.Retention)
-	assert.Equal(t, jetstream.DiscardOld, info.Discard)
+	assert.Equal(t, jetstream.DiscardNew, info.Discard)
 	assert.Equal(t, 1, info.Replicas)
 	assert.Equal(t, 2*time.Minute, info.Duplicates)
 
@@ -74,9 +76,11 @@ func TestEnsureStream_CreatesAndDetectsDrift(t *testing.T) {
 
 	lower := cfg
 	lower.MaxBytes = 1 << 20
-	_, err = natsjs.EnsureStream(t.Context(), js, lower)
+	drifted, err := natsjs.EnsureStream(t.Context(), js, lower)
 	require.ErrorIs(t, err, natsjs.ErrDrift)
 	assert.Contains(t, err.Error(), "max bytes")
+	require.NotNil(t, drifted, "the caller gets the existing stream")
+	assert.Equal(t, cfg.MaxBytes, drifted.CachedInfo().Config.MaxBytes)
 
 	current, err := js.Stream(t.Context(), cfg.Name)
 	require.NoError(t, err)
@@ -156,9 +160,11 @@ func TestEnsureConsumer_DetectsDrift(t *testing.T) {
 	changed := cfg
 	changed.AckWait = 20 * time.Second
 	changed.FilterSubjects = []string{natstest.ObservationFeed + "." + srv.Segment}
-	_, err = natsjs.EnsureConsumer(t.Context(), stream, changed)
+	drifted, err := natsjs.EnsureConsumer(t.Context(), stream, changed)
 	require.ErrorIs(t, err, natsjs.ErrDrift)
 	assert.Contains(t, err.Error(), "ack wait")
+	require.NotNil(t, drifted, "the caller gets the existing consumer")
+	assert.Equal(t, cfg.AckWait, drifted.CachedInfo().Config.AckWait)
 	assert.Contains(t, err.Error(), "filter subjects")
 
 	current, err := stream.Consumer(t.Context(), cfg.Durable)
@@ -219,7 +225,7 @@ func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 		{name: "message limit", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgs = 100 }, want: "max msgs is 100"},
 		{name: "message limit per subject", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgsPerSubject = 10 }, want: "max msgs per subject"},
 		{name: "message size limit", mutate: func(c *jetstream.StreamConfig) { c.MaxMsgSize = 1024 }, want: "max msg size"},
-		{name: "discard new", mutate: func(c *jetstream.StreamConfig) { c.Discard = jetstream.DiscardNew }, want: "discard"},
+		{name: "discard old", mutate: func(c *jetstream.StreamConfig) { c.Discard = jetstream.DiscardOld }, want: "discard"},
 		{name: "work queue", mutate: func(c *jetstream.StreamConfig) { c.Retention = jetstream.WorkQueuePolicy }, want: "retention"},
 		{name: "no publish ack", mutate: func(c *jetstream.StreamConfig) { c.NoAck = true }, want: "no ack"},
 		{
@@ -242,7 +248,7 @@ func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 				Subjects:          want.Subjects,
 				Storage:           jetstream.FileStorage,
 				Retention:         jetstream.LimitsPolicy,
-				Discard:           jetstream.DiscardOld,
+				Discard:           jetstream.DiscardNew,
 				MaxAge:            want.MaxAge,
 				MaxBytes:          want.MaxBytes,
 				MaxMsgs:           -1,
@@ -303,6 +309,69 @@ func TestPublisher_DedupsOnMessageID(t *testing.T) {
 			assert.Equal(t, tc.ids[0], got.GetMeta().GetEventId())
 		})
 	}
+}
+
+func TestPublisher_FullStream(t *testing.T) {
+	cases := []struct {
+		name     string
+		discard  natsjs.DiscardPolicy
+		wantFail bool
+	}{
+		{name: "discard new refuses the publish", discard: natsjs.DiscardNew, wantFail: true},
+		{name: "discard old drops the oldest record", discard: natsjs.DiscardOld},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := natstest.Connect(t)
+			cfg := srv.StreamConfig()
+			cfg.MaxBytes = 4 << 10
+			cfg.Discard = tc.discard
+			stream, err := natsjs.EnsureStream(t.Context(), srv.JS, cfg)
+			require.NoError(t, err)
+			pub, err := natsjs.NewPublisher(srv.JS)
+			require.NoError(t, err)
+
+			var failed int
+			for i := range 200 {
+				if _, err := pub.Publish(t.Context(), natstest.Observation(fmt.Sprintf("evt-%d", i), srv.Segment)); err != nil {
+					failed++
+				}
+			}
+			info, err := stream.Info(t.Context())
+			require.NoError(t, err)
+			if tc.wantFail {
+				assert.Positive(t, failed, "a full stream refuses the publish")
+				assert.Equal(t, uint64(1), info.State.FirstSeq, "no stored record is lost")
+				return
+			}
+			assert.Zero(t, failed)
+			assert.Greater(t, info.State.FirstSeq, uint64(1))
+		})
+	}
+}
+
+func TestPublisher_OneEventIDOfTwoTenantsOrFeedsGivesTwoRecords(t *testing.T) {
+	srv := natstest.Connect(t)
+	other := srv.Segment + "-b"
+	stream, err := natsjs.EnsureStream(t.Context(), srv.JS, srv.StreamConfig(srv.Segment, other))
+	require.NoError(t, err)
+	pub, err := natsjs.NewPublisher(srv.JS)
+	require.NoError(t, err)
+
+	for _, ev := range []proto.Message{
+		natstest.Observation("evt-1", srv.Segment),
+		natstest.Observation("evt-1", other),
+		natstest.Maintainer("evt-1", srv.Segment),
+	} {
+		res, err := pub.Publish(t.Context(), ev)
+		require.NoError(t, err)
+		assert.False(t, res.Duplicate)
+	}
+
+	info, err := stream.Info(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, uint64(3), info.State.Msgs)
 }
 
 func TestPublisher_DistinctIDsAreStored(t *testing.T) {

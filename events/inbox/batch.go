@@ -17,6 +17,7 @@ import (
 const (
 	defaultBatchSize         = 100
 	defaultHeartbeatInterval = 10 * time.Second
+	defaultHandlerTimeout    = 2 * time.Minute
 )
 
 // BatchSource is a transport adapter that yields records in batches. One source
@@ -78,6 +79,7 @@ type batchConfig struct {
 	backoffMax        time.Duration
 	restartDelay      time.Duration
 	heartbeatInterval time.Duration
+	handlerTimeout    time.Duration
 }
 
 // BatchOption configures a BatchRouter.
@@ -127,6 +129,18 @@ func WithBatchRestartDelay(d time.Duration) BatchOption {
 	}
 }
 
+// WithBatchHandlerTimeout sets the deadline of the context of one handler call
+// (default 2m). The heartbeat keeps the records of a running handler from
+// redelivery, so a handler that never returns would hold its batch for ever. A
+// handler must return when its context is done. A timeout is a handler error.
+func WithBatchHandlerTimeout(d time.Duration) BatchOption {
+	return func(c *batchConfig) {
+		if d > 0 {
+			c.handlerTimeout = d
+		}
+	}
+}
+
 // WithBatchHeartbeat sets how often the router marks in-flight records as in
 // progress while handlers run (default 10s). Keep it well below the AckWait of
 // the transport consumer.
@@ -170,6 +184,7 @@ func NewBatchRouter(source BatchSource, deadLetters DeadLetterQueue, opts ...Bat
 		backoffMax:        defaultRedeliveryMax,
 		restartDelay:      defaultRestartDelay,
 		heartbeatInterval: defaultHeartbeatInterval,
+		handlerTimeout:    defaultHandlerTimeout,
 	}
 	for _, o := range opts {
 		o(&cfg)
@@ -217,7 +232,7 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 			if err != nil {
 				return DeadLetterReasonDecode, err
 			}
-			if err := callHandler(ctx, handler, []BatchEvent[T]{ev}); err != nil {
+			if err := callHandler(ctx, r.cfg.handlerTimeout, handler, []BatchEvent[T]{ev}); err != nil {
 				return DeadLetterReasonHandler, fmt.Errorf("handler: %w", err)
 			}
 			return "", nil
@@ -374,7 +389,7 @@ func handleGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 		return
 	}
 
-	err := callHandler(ctx, handler, batch)
+	err := callHandler(ctx, r.cfg.handlerTimeout, handler, batch)
 	switch {
 	case err == nil:
 		for _, it := range live {
@@ -416,10 +431,12 @@ func decodeGroup[T proto.Message](ctx context.Context, r *BatchRouter, feed stri
 
 // runAlone runs the handler with each record alone and acks each record that
 // passes. It decodes each record again, because the failed handler call can
-// have reordered the batch or changed its events. When one record passes, the others are bad records: the router
-// dead-letters them. When none passes, the cause is most likely an outage: the
-// router dead-letters only the records with a permanent error, and redelivers
-// the rest after the maximum backoff.
+// have reordered the batch or changed its events. A failed record is
+// dead-lettered when its error is permanent, or when one record passed and the
+// failed record is on its own last attempt. When no record passes, the cause is
+// most likely an outage, so the router redelivers every record without a
+// permanent error after the maximum backoff. A failed record with attempts left
+// gets the backoff of its attempt.
 func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 	newEvent func() T, handler BatchHandler[T], live []*inflight) {
 	type failure struct {
@@ -440,7 +457,7 @@ func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 			continue
 		}
 		eventID := ev.Meta.GetEventId()
-		err = callHandler(ctx, handler, []BatchEvent[T]{ev})
+		err = callHandler(ctx, r.cfg.handlerTimeout, handler, []BatchEvent[T]{ev})
 		if err == nil {
 			it.ack()
 			passed++
@@ -456,11 +473,14 @@ func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 		log.Warnf("inbox: every %s record failed alone; redelivering the records without a permanent error", feed)
 	}
 	for _, f := range failed {
-		if passed > 0 || r.permanent(f.err) {
+		switch {
+		case r.permanent(f.err), passed > 0 && r.final(f.it):
 			r.deadLetter(ctx, f.it, feed, f.eventID, DeadLetterReasonHandler, fmt.Errorf("handler: %w", f.err))
-			continue
+		case passed > 0:
+			r.retry(ctx, f.it, r.nackDelay(f.it.Attempt))
+		default:
+			r.retry(ctx, f.it, r.cfg.backoffMax)
 		}
-		r.retry(ctx, f.it, r.cfg.backoffMax)
 	}
 }
 
@@ -494,9 +514,12 @@ func decodeBatchEvent[T proto.Message](payload []byte, newEvent func() T) (Batch
 	return BatchEvent[T]{Event: event, Meta: meta}, nil
 }
 
-// callHandler turns a handler panic into an error, so that one bad record cannot
-// stop the router of every feed.
-func callHandler[T proto.Message](ctx context.Context, handler BatchHandler[T], batch []BatchEvent[T]) (err error) {
+// callHandler runs handler with the handler timeout, and turns a handler panic
+// into an error, so that one bad record cannot stop the router of every feed.
+func callHandler[T proto.Message](ctx context.Context, timeout time.Duration, handler BatchHandler[T],
+	batch []BatchEvent[T]) (err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	defer func() {
 		if p := recover(); p != nil {
 			log.Errorf("inbox: batch handler panic: %v\n%s", p, debug.Stack())

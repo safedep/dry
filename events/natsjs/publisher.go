@@ -2,6 +2,8 @@ package natsjs
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -42,8 +44,10 @@ type publishConfig struct {
 // PublishOption configures one Publish call.
 type PublishOption func(*publishConfig)
 
-// WithMsgID sets the Nats-Msg-Id of the record. The default is the event_id of
-// the envelope.
+// WithMsgID sets the Nats-Msg-Id of the record. The stream compares it with
+// every record of the duplicate window, of every feed and tenant, so the id must
+// be unique in the stream. The default is a hash of the subject and the
+// envelope event_id.
 func WithMsgID(id string) PublishOption {
 	return func(c *publishConfig) { c.msgID = id }
 }
@@ -55,7 +59,9 @@ func WithMsgID(id string) PublishOption {
 //
 // The Nats-Msg-Id header makes the stream drop a retry of the same event within
 // its duplicate window. A duplicate is a success and PublishResult.Duplicate is
-// true.
+// true. The default id covers the subject, so one event_id of two tenants or of
+// two feeds gives two records. A client can supply the event_id, and it is
+// unique only within a tenant.
 func (p *Publisher) Publish(ctx context.Context, event proto.Message, opts ...PublishOption) (PublishResult, error) {
 	routing, err := events.RoutingFor(event)
 	if err != nil {
@@ -79,12 +85,15 @@ func (p *Publisher) Publish(ctx context.Context, event proto.Message, opts ...Pu
 		return PublishResult{}, fmt.Errorf("natsjs: publish: %w", err)
 	}
 
-	cfg := publishConfig{msgID: meta.GetEventId()}
+	var cfg publishConfig
 	for _, o := range opts {
 		o(&cfg)
 	}
 	if cfg.msgID == "" {
-		return PublishResult{}, errors.New("natsjs: publish: the event has no event_id and no message id is set")
+		if meta.GetEventId() == "" {
+			return PublishResult{}, errors.New("natsjs: publish: the event has no event_id and no message id is set")
+		}
+		cfg.msgID = defaultMsgID(subject, meta.GetEventId())
 	}
 
 	data, err := proto.Marshal(event)
@@ -98,6 +107,14 @@ func (p *Publisher) Publish(ctx context.Context, event proto.Message, opts ...Pu
 	}
 
 	return PublishResult{Stream: ack.Stream, Sequence: ack.Sequence, Duplicate: ack.Duplicate}, nil
+}
+
+// defaultMsgID is a hex SHA-256 of the subject and the event_id. A subject never
+// has a NUL byte, so the separator keeps the two parts apart. The hash also
+// keeps a client event_id out of the header as raw text.
+func defaultMsgID(subject, eventID string) string {
+	sum := sha256.Sum256([]byte(subject + "\x00" + eventID))
+	return hex.EncodeToString(sum[:])
 }
 
 // PurgeTenant removes every record of one tenant stream segment of a feed from

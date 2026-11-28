@@ -21,7 +21,9 @@ import (
 )
 
 // ErrDrift is the error of EnsureStream and EnsureConsumer when the server has
-// a config that differs from the one in code.
+// a config that differs from the one in code. With ErrDrift they also return the
+// existing stream or consumer, so a caller can log the drift and go on after a
+// deliberate change on the server.
 var ErrDrift = errors.New("natsjs: config drift")
 
 // The JetStream defaults, set explicitly so that a drift check compares like
@@ -33,6 +35,18 @@ const (
 	defaultMaxAckPending   = 1000
 )
 
+// DiscardPolicy says what a stream at MaxBytes does with a new record.
+type DiscardPolicy int
+
+const (
+	// DiscardNew refuses the new record. Publish fails, and the producer keeps
+	// the event and tries again. It is the default.
+	DiscardNew DiscardPolicy = iota
+	// DiscardOld removes the oldest record, also when no consumer has read it.
+	// Use it only for a feed that can lose records.
+	DiscardOld
+)
+
 // StreamConfig is the stream of one feed family. MaxAge and MaxBytes are
 // required: an unbounded file stream fills the disk of the server.
 type StreamConfig struct {
@@ -40,6 +54,8 @@ type StreamConfig struct {
 	Subjects []string
 	MaxAge   time.Duration
 	MaxBytes int64
+	// Discard is DiscardNew when zero.
+	Discard DiscardPolicy
 	// Replicas is 1 when zero.
 	Replicas int
 	// DuplicateWindow is how long the server remembers a Nats-Msg-Id. It is 2m
@@ -66,6 +82,9 @@ func (c StreamConfig) validate() error {
 	if c.MaxBytes <= 0 {
 		errs = append(errs, errors.New("max bytes must be positive"))
 	}
+	if c.Discard != DiscardNew && c.Discard != DiscardOld {
+		errs = append(errs, fmt.Errorf("unknown discard policy %d", c.Discard))
+	}
 	if c.Replicas < 0 || c.Replicas > maxReplicas {
 		errs = append(errs, fmt.Errorf("replicas must be from 0 to %d", maxReplicas))
 	}
@@ -88,13 +107,17 @@ func (c StreamConfig) native() jetstream.StreamConfig {
 	if duplicates == 0 {
 		duplicates = min(defaultDuplicateWindow, c.MaxAge)
 	}
+	discard := jetstream.DiscardNew
+	if c.Discard == DiscardOld {
+		discard = jetstream.DiscardOld
+	}
 
 	return jetstream.StreamConfig{
 		Name:              c.Name,
 		Subjects:          c.Subjects,
 		Storage:           jetstream.FileStorage,
 		Retention:         jetstream.LimitsPolicy,
-		Discard:           jetstream.DiscardOld,
+		Discard:           discard,
 		MaxAge:            c.MaxAge,
 		MaxBytes:          c.MaxBytes,
 		MaxMsgs:           -1,
@@ -106,7 +129,7 @@ func (c StreamConfig) native() jetstream.StreamConfig {
 }
 
 // EnsureStream creates the stream when it is missing. The stream uses file
-// storage and limits retention, and discards the oldest records at a limit.
+// storage and limits retention. At MaxBytes it applies cfg.Discard.
 //
 // EnsureStream never changes a stream that exists. An older replica would revert
 // a newer config, and a lower MaxAge or MaxBytes discards records. When the
@@ -145,7 +168,7 @@ func EnsureStream(ctx context.Context, js jetstream.JetStream, cfg StreamConfig)
 	d.check("subject transform", got.SubjectTransform, want.SubjectTransform)
 	d.check("no ack", got.NoAck, want.NoAck)
 	if err := d.err("stream", cfg.Name); err != nil {
-		return nil, err
+		return stream, err
 	}
 
 	return stream, nil
@@ -270,7 +293,7 @@ func EnsureConsumer(ctx context.Context, stream jetstream.Stream, cfg ConsumerCo
 	d.check("max request expires", got.MaxRequestExpires, want.MaxRequestExpires)
 	d.check("max request max bytes", got.MaxRequestMaxBytes, want.MaxRequestMaxBytes)
 	if err := d.err("consumer", cfg.Durable); err != nil {
-		return nil, err
+		return consumer, err
 	}
 
 	return consumer, nil

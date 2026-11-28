@@ -251,6 +251,41 @@ func TestBatchRouter_SplitDeadLettersOnlyTheBadRecord(t *testing.T) {
 	}
 }
 
+func TestBatchRouter_SplitRedeliversAFailedRecordWithAttemptsLeft(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	last, fresh := &handle{}, &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		last.record(natstest.ObservationFeed, observationBytes(t, "last"), 4),
+		fresh.record(natstest.ObservationFeed, observationBytes(t, "fresh"), 1),
+	}}}}
+	dlq := &fakeDLQ{}
+	r, err := inbox.NewBatchRouter(src, dlq, inbox.WithBatchRetry(inbox.WithMaxAttempts(4)),
+		inbox.WithBatchRedeliveryBackoff(time.Second, time.Minute))
+	require.NoError(t, err)
+
+	// The store flaps: the batch call fails, the first single call passes and
+	// the next single call times out.
+	calls := 0
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		calls++
+		if calls == 2 {
+			return nil
+		}
+		return errors.New("i/o timeout")
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	acks, _, _ := last.state()
+	assert.Equal(t, 1, acks)
+	acks, terms, nacks := fresh.state()
+	assert.Zero(t, acks)
+	assert.Zero(t, terms, "a record with attempts left is not dead-lettered")
+	assert.Equal(t, []time.Duration{time.Second}, nacks, "it waits the backoff of its own attempt")
+	assert.Empty(t, dlq.stored)
+}
+
 func TestBatchRouter_SplitWithNoPassingRecordIsAnOutage(t *testing.T) {
 	permanent := errors.New("permanent")
 	cases := []struct {
@@ -517,6 +552,29 @@ func TestBatchRouter_ShutdownDuringADeadLetterStoreLeavesTheRecord(t *testing.T)
 	assert.Zero(t, acks)
 	assert.Zero(t, terms)
 	assert.Empty(t, nacks)
+}
+
+func TestBatchRouter_HandlerTimeoutIsAHandlerError(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{
+		h.record(natstest.ObservationFeed, observationBytes(t, "hung"), 1),
+	}}}}
+	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchHandlerTimeout(20*time.Millisecond),
+		inbox.WithBatchRedeliveryBackoff(time.Second, time.Minute))
+	require.NoError(t, err)
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(ctx context.Context, _ observationBatch) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	acks, terms, nacks := h.state()
+	assert.Zero(t, acks)
+	assert.Zero(t, terms)
+	assert.Equal(t, []time.Duration{time.Second}, nacks, "the hung handler gives up its batch")
 }
 
 func TestBatchRouter_HandlerPanicIsAHandlerError(t *testing.T) {

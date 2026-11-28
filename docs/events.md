@@ -214,17 +214,24 @@ res, err := pub.Publish(ctx, evt)
 envelope `tenant.tenant_id`. It refuses an event whose `tenant_id` is not a
 valid segment id, and a public feed. It
 sends binary proto and waits for the acknowledgement of the stream. It sets the
-`Nats-Msg-Id` header to the envelope `event_id`, or to the id of
-`natsjs.WithMsgID`. The stream drops a second record with the same id in its
-duplicate window. A duplicate is a success, and `res.Duplicate` is true.
+`Nats-Msg-Id` header to a hash of the subject and the envelope `event_id`, or to
+the id of `natsjs.WithMsgID`. The stream drops a second record with the same id
+in its duplicate window. A duplicate is a success, and `res.Duplicate` is true.
+The stream compares the id with the records of every feed and tenant. A client
+can supply the `event_id`, and it is unique only within one tenant, so the
+default id covers the subject. An id of `WithMsgID` must be unique in the
+stream.
 
 The router trusts the subject to route a record. Publish only through
 `Publisher`. A raw publish to a feed subject is not supported.
 
 ### Stream and consumer
 
-`natsjs.EnsureStream` creates a file stream with limits retention that discards
-the oldest records. `MaxAge` and `MaxBytes` are required. `natsjs.EnsureConsumer`
+`natsjs.EnsureStream` creates a file stream with limits retention. `MaxAge` and
+`MaxBytes` are required. A stream at `MaxBytes` refuses a new record by default
+(`natsjs.DiscardNew`): `Publish` fails, and the producer keeps the event and
+tries again. `natsjs.DiscardOld` removes the oldest record instead, also when no
+consumer has read it. Use it only for a feed that can lose records. `natsjs.EnsureConsumer`
 creates a durable pull consumer with explicit acks that starts at the first
 record. No `FilterSubjects` reads the whole stream. More than one filter needs
 NATS server 2.10 or later.
@@ -232,9 +239,12 @@ NATS server 2.10 or later.
 Both functions create what is missing and never change what exists. An older
 replica would otherwise revert a newer config, and a lower `MaxAge` or
 `MaxBytes` discards records. When the server config differs from the code, they
-return an error that wraps `natsjs.ErrDrift` and names each field. They also
-compare the fields that the config does not expose: the stream message limits
-and the consumer ack policy and headers-only mode. Change a
+return an error that wraps `natsjs.ErrDrift` and names each field, and they
+return the existing stream or consumer with it. A caller can log the drift and
+go on after a deliberate change on the server. They also compare the fields
+that the config does not expose: the stream message limits, publish acks and
+subject transform, and the consumer ack policy, headers-only mode and pull
+request limits. Change a
 stream or a consumer on purpose with `natsjs.UpdateStream` or
 `natsjs.UpdateConsumer`.
 
@@ -311,9 +321,12 @@ func runWriter(ctx context.Context) error {
 		return err
 	}
 
+	// Filter on the routed feeds only. A feed that a later release adds to the
+	// stream then waits on the server, and does not become no_route dead letters.
 	consumer, err := natsjs.EnsureConsumer(ctx, stream, natsjs.ConsumerConfig{
-		Durable: "clickhouse-writer",
-		AckWait: time.Minute,
+		Durable:        "clickhouse-writer",
+		FilterSubjects: []string{async.TenantEventSubjects(observations), async.TenantEventSubjects(maintainers)},
+		AckWait:        time.Minute,
 	})
 	if err != nil {
 		return err
@@ -407,14 +420,20 @@ own, so a failing feed never redelivers the records of a feed that succeeded.
   backoff by attempt (`WithBatchRedeliveryBackoff`).
 - If the error is permanent (`inbox.WithPermanentClassifier`), or a record is on
   its last attempt (`inbox.WithMaxAttempts`), the router runs the handler with
-  each record alone. It acks each record that passes. If one record passed, it
-  dead-letters (`handler`) each record that failed. If none passed, the cause is
-  most likely an outage: it dead-letters only the records with a permanent error
-  and redelivers the rest after the maximum backoff. The consumer lag alert
-  covers the outage.
+  each record alone. It acks each record that passes. It dead-letters
+  (`handler`) a failed record with a permanent error. If one record passed, it
+  also dead-letters a failed record on its own last attempt, and redelivers a
+  failed record with attempts left with the backoff of its attempt. If none
+  passed, the cause is most likely an outage: it redelivers every record without
+  a permanent error after the maximum backoff. The consumer lag alert covers the
+  outage.
 - A handler can thus run again with single records, and delivery is at least
   once. A handler must be idempotent.
 - A handler panic is a handler error.
+- The context of a handler call has a deadline (`WithBatchHandlerTimeout`,
+  default 2m). A timeout is a handler error. A handler must return when its
+  context is done. The heartbeat keeps the records of a running handler from
+  redelivery, so a handler that does not return holds its batch.
 - Before the first handler runs, and then at each heartbeat interval
   (`WithBatchHeartbeat`), the router marks every open record of the batch as in
   progress. A record can wait in the fetch for most of `AckWait`, and a slow
@@ -424,6 +443,35 @@ own, so a failing feed never redelivers the records of a feed that succeeded.
   open records come back after `AckWait`.
 - A fetch error makes the router wait (`WithBatchRestartDelay`) and fetch again.
   `Run` returns only when ctx is done.
+
+### One broken feed stops the consumer
+
+All feeds of a stream share one consumer and its `MaxAckPending`. A feed whose
+every record fails without a permanent error looks like an outage. The router
+redelivers its records after the maximum backoff and never dead-letters them.
+When those records fill `MaxAckPending`, the server delivers nothing more, and
+every feed of the consumer stops. This is on purpose: the router never
+dead-letters a whole feed during an outage. The consumer lag alert pages.
+
+- Classify a data error as permanent (`inbox.WithPermanentClassifier`), for
+  example a row that the table refuses after a schema change. The router then
+  dead-letters the record and the other feeds go on.
+- Give a feed its own stream and consumer when its failure must not stop the
+  other feeds.
+
+### Add a feed
+
+A filter subject that `UpdateConsumer` adds does not deliver the records that
+the stream got before the change, and a replica without the route dead-letters
+a record of the feed (`no_route`) after its delivery budget. So add a feed in
+this order:
+
+1. Add the feed subject to the stream (`natsjs.UpdateStream`) and to the
+   consumer filter (`natsjs.UpdateConsumer`). No record of the feed exists yet.
+2. Deploy every replica of the writer with the route and the new config. A
+   replica that restarts with the old config gets `natsjs.ErrDrift` from
+   `EnsureConsumer`, and the existing consumer with it.
+3. Deploy the producer of the feed.
 
 ### Dead letters
 
@@ -454,10 +502,13 @@ row of its own.
 
 ```go
 err := natsjs.PurgeTenant(ctx, stream, routing, segment)
+n, err := inbox.DeleteDeadLetters(ctx, reader, inbox.DeadLetterFilter{Segment: segment.String()})
 ```
 
 `PurgeTenant` removes the records of one tenant stream segment of one feed from
-the stream.
+the stream. The dead letters of the tenant keep its raw payloads in Postgres, so
+a tenant deletion also runs `inbox.DeleteDeadLetters` with the segment.
+`DeadLetterFilter.Segment` also lists or counts the dead letters of one tenant.
 
 ### Tests
 

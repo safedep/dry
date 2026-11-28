@@ -185,6 +185,9 @@ func TestDeleteDeadLetters_DeletesOneSegment(t *testing.T) {
 	reader, err := inbox.NewGormDeadLetterReader(adapter, "writer")
 	require.NoError(t, err)
 
+	_, err = inbox.DeleteDeadLetters(t.Context(), reader, inbox.DeadLetterFilter{})
+	require.Error(t, err, "a filter that selects every record is refused")
+
 	n, err := reader.Count(t.Context(), inbox.DeadLetterFilter{Segment: "tenant-a"})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n)

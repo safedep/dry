@@ -242,9 +242,9 @@ replica would otherwise revert a newer config, and a lower `MaxAge` or
 return an error that wraps `natsjs.ErrDrift` and names each field, and they
 return the existing stream or consumer with it. A caller can log the drift and
 go on after a deliberate change on the server. They also compare the fields
-that the config does not expose: the stream message limits, publish acks and
-subject transform, and the consumer ack policy, headers-only mode and pull
-request limits. Change a
+that the config does not expose: the stream message limits, publish acks,
+subject transform and purge lock, and the consumer ack policy, headers-only
+mode, pull request limits, inactivity expiry, server backoff and pull mode. Change a
 stream or a consumer on purpose with `natsjs.UpdateStream` or
 `natsjs.UpdateConsumer`.
 
@@ -262,6 +262,7 @@ package writer
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
@@ -389,9 +390,10 @@ func runWriter(ctx context.Context) error {
 	return router.Run(ctx)
 }
 
-// insert writes rows to a ClickHouse table in one statement.
+// insert is a placeholder. Replace it with one ClickHouse statement that
+// writes rows to table. Until then it fails, so no batch is acked unwritten.
 func insert(ctx context.Context, table string, rows []row) error {
-	return nil
+	return errors.New("insert: the ClickHouse write is not implemented")
 }
 ```
 
@@ -470,7 +472,9 @@ this order:
    consumer filter (`natsjs.UpdateConsumer`). No record of the feed exists yet.
 2. Deploy every replica of the writer with the route and the new config. A
    replica that restarts with the old config gets `natsjs.ErrDrift` from
-   `EnsureConsumer`, and the existing consumer with it.
+   `EnsureStream` first, because the stream subjects changed, and the existing
+   stream with it. A writer that returns on the error cannot restart until it
+   runs the new config.
 3. Deploy the producer of the feed.
 
 ### Dead letters
@@ -501,14 +505,34 @@ row of its own.
 ### Purge a tenant
 
 ```go
-err := natsjs.PurgeTenant(ctx, stream, routing, segment)
+// segment comes from async.NewTenantStreamSegmentID, which refuses an empty id.
+if err := natsjs.PurgeTenant(ctx, stream, routing, segment); err != nil {
+	return err
+}
 n, err := inbox.DeleteDeadLetters(ctx, reader, inbox.DeadLetterFilter{Segment: segment.String()})
+if err != nil {
+	return err
+}
 ```
 
 `PurgeTenant` removes the records of one tenant stream segment of one feed from
 the stream. The dead letters of the tenant keep its raw payloads in Postgres, so
 a tenant deletion also runs `inbox.DeleteDeadLetters` with the segment.
+`DeleteDeadLetters` refuses a filter that selects every record, and its count
+includes rows that a replay deleted at the same time.
 `DeadLetterFilter.Segment` also lists or counts the dead letters of one tenant.
+
+A writer can hold records that it fetched before the purge. If one of them
+fails, the router stores it as a dead letter again. So delete a tenant in this
+order:
+
+1. Stop the publishes of the tenant.
+2. Run `PurgeTenant` for each feed.
+3. Restart the writers. A stopping writer leaves its open records without a
+   dead letter, and the purge has removed them from the stream. A writer that
+   runs on can hold a batch for its handler calls, each up to the handler
+   timeout, in a row.
+4. Run `DeleteDeadLetters` with the segment.
 
 ### Tests
 

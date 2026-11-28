@@ -227,7 +227,7 @@ func Route[T proto.Message](r *BatchRouter, newEvent func() T, handler BatchHand
 		replay: func(ctx context.Context, row DeadLetter) (DeadLetterReason, error) {
 			ev, err := decodeBatchEvent(row.Payload, newEvent)
 			if err == nil {
-				err = checkStoredSegment(row.Segment, ev.Meta)
+				err = checkSegment(row.Segment, ev.Meta)
 			}
 			if err != nil {
 				return DeadLetterReasonDecode, err
@@ -484,20 +484,17 @@ func runAlone[T proto.Message](ctx context.Context, r *BatchRouter, feed string,
 	}
 }
 
+// checkSegment holds Run and Replay to one rule. A record without the segment
+// of its source cannot prove which tenant its event belongs to, also when its
+// envelope has no tenant.
 func checkSegment(segment string, meta *commonv1.EventMeta) error {
+	if segment == "" {
+		return errors.New("the record has no source segment, so the router cannot check the envelope tenant")
+	}
 	if tenant := meta.GetTenant().GetTenantId(); tenant != segment {
 		return fmt.Errorf("envelope tenant %q is not the subject segment %q", tenant, segment)
 	}
 	return nil
-}
-
-// checkStoredSegment makes Replay as strict as Run. A row without the segment of
-// its source cannot prove which tenant its event belongs to.
-func checkStoredSegment(segment string, meta *commonv1.EventMeta) error {
-	if segment == "" {
-		return errors.New("the dead letter has no source segment, so replay cannot check the envelope tenant")
-	}
-	return checkSegment(segment, meta)
 }
 
 func decodeBatchEvent[T proto.Message](payload []byte, newEvent func() T) (BatchEvent[T], error) {

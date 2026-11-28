@@ -6,6 +6,7 @@ import (
 	"time"
 
 	pkgregv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/events/private/packageregistry/v1"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/safedep/dry/async"
 	"github.com/safedep/dry/events"
@@ -191,6 +192,11 @@ func TestEnsureConsumer_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 		{name: "request batch limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestBatch = 10 }, want: "max request batch is 10"},
 		{name: "request wait limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestExpires = time.Second }, want: "max request expires"},
 		{name: "request size limit", mutate: func(c *jetstream.ConsumerConfig) { c.MaxRequestMaxBytes = 1024 }, want: "max request max bytes"},
+		{name: "inactive threshold", mutate: func(c *jetstream.ConsumerConfig) { c.InactiveThreshold = time.Hour }, want: "inactive threshold"},
+		{name: "server backoff", mutate: func(c *jetstream.ConsumerConfig) {
+			c.AckWait = 0
+			c.BackOff = []time.Duration{30 * time.Second, time.Second}
+		}, want: "backoff"},
 	}
 
 	for _, tc := range cases {
@@ -216,6 +222,27 @@ func TestEnsureConsumer_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 	}
 }
 
+func TestEnsureConsumer_RefusesAPushConsumer(t *testing.T) {
+	srv, stream := ensureStream(t)
+
+	// The jetstream package cannot make a push consumer, so the older API does.
+	legacy, err := srv.JS.Conn().JetStream()
+	require.NoError(t, err)
+	_, err = legacy.AddConsumer(srv.Stream, &nats.ConsumerConfig{
+		Durable:        "writer",
+		DeliverSubject: "deliver." + srv.Segment,
+		AckPolicy:      nats.AckExplicitPolicy,
+		AckWait:        30 * time.Second,
+		MaxAckPending:  1000,
+		MaxDeliver:     -1,
+	})
+	require.NoError(t, err)
+
+	_, err = natsjs.EnsureConsumer(t.Context(), stream, natsjs.ConsumerConfig{Durable: "writer"})
+	require.ErrorIs(t, err, natsjs.ErrDrift)
+	assert.Contains(t, err.Error(), "delivery mode is push")
+}
+
 func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -228,6 +255,7 @@ func TestEnsureStream_DetectsDriftOfFieldsItDoesNotExpose(t *testing.T) {
 		{name: "discard old", mutate: func(c *jetstream.StreamConfig) { c.Discard = jetstream.DiscardOld }, want: "discard"},
 		{name: "work queue", mutate: func(c *jetstream.StreamConfig) { c.Retention = jetstream.WorkQueuePolicy }, want: "retention"},
 		{name: "no publish ack", mutate: func(c *jetstream.StreamConfig) { c.NoAck = true }, want: "no ack"},
+		{name: "deny purge", mutate: func(c *jetstream.StreamConfig) { c.DenyPurge = true }, want: "deny purge"},
 		{
 			name: "subject transform",
 			mutate: func(c *jetstream.StreamConfig) {
@@ -410,8 +438,9 @@ func TestPublisher_Refuses(t *testing.T) {
 	cases := []struct {
 		name  string
 		event proto.Message
+		want  string
 	}{
-		{name: "public feed", event: publicEvent(t)},
+		{name: "public feed", event: publicEvent(t), want: "public feed"},
 		{name: "not an event", event: events.NewMeta()},
 		{name: "nil event", event: nil},
 		{name: "envelope without a tenant", event: natstest.Observation("e", "")},
@@ -424,7 +453,8 @@ func TestPublisher_Refuses(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := pub.Publish(t.Context(), tc.event)
-			assert.Error(t, err)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
 		})
 	}
 

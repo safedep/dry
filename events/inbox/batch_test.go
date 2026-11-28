@@ -459,12 +459,17 @@ func TestBatchRouter_HeartbeatTouchesEveryOpenRecordWhileAHandlerRuns(t *testing
 	r, err := inbox.NewBatchRouter(src, &fakeDLQ{}, inbox.WithBatchHeartbeat(time.Millisecond))
 	require.NoError(t, err)
 
+	// The first touch is the one before any handler runs, and it can already
+	// be in the channel. The second one comes from the heartbeat while this
+	// handler runs.
 	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
 		for _, h := range []*handle{running, waiting} {
-			select {
-			case <-h.touched:
-			case <-time.After(5 * time.Second):
-				return errors.New("no heartbeat")
+			for range 2 {
+				select {
+				case <-h.touched:
+				case <-time.After(5 * time.Second):
+					return errors.New("no heartbeat")
+				}
 			}
 		}
 		return nil
@@ -552,6 +557,30 @@ func TestBatchRouter_ShutdownDuringADeadLetterStoreLeavesTheRecord(t *testing.T)
 	assert.Zero(t, acks)
 	assert.Zero(t, terms)
 	assert.Empty(t, nacks)
+}
+
+func TestBatchRouter_DeadLettersARecordWithoutASourceSegment(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	h := &handle{}
+	rec := h.record(natstest.ObservationFeed, natstest.Bytes(t, natstest.Observation("no-tenant", "")), 1)
+	rec.Segment = ""
+	src := &fakeBatchSource{cancel: cancel, steps: []fetchStep{{recs: []inbox.BatchRecord{rec}}}}
+	dlq := &fakeDLQ{}
+	r, err := inbox.NewBatchRouter(src, dlq)
+	require.NoError(t, err)
+	var handled int
+	require.NoError(t, inbox.Route(r, natstest.NewObservation, func(context.Context, observationBatch) error {
+		handled++
+		return nil
+	}))
+
+	assert.ErrorIs(t, r.Run(ctx), context.Canceled)
+	assert.Zero(t, handled, "an empty envelope tenant does not match an empty segment")
+	require.Len(t, dlq.stored, 1)
+	assert.Equal(t, inbox.DeadLetterReasonDecode, dlq.stored[0].Reason)
+	assert.Contains(t, dlq.stored[0].Error, "no source segment")
 }
 
 func TestBatchRouter_HandlerTimeoutIsAHandlerError(t *testing.T) {
@@ -806,7 +835,7 @@ func TestDeadLetter_BatchKeyNeverMatchesAConsumePayload(t *testing.T) {
 	}
 	// A Consume payload that holds the exact bytes that the batch key hashes.
 	var preimage []byte
-	for _, part := range [][]byte{[]byte("batch"), []byte(batch.Segment), []byte(batch.Subject), payload} {
+	for _, part := range [][]byte{[]byte("batch"), []byte(batch.Segment), []byte(batch.Feed), []byte(batch.Subject), payload} {
 		preimage = binary.BigEndian.AppendUint64(preimage, uint64(len(part)))
 		preimage = append(preimage, part...)
 	}
@@ -820,6 +849,22 @@ func TestDeadLetter_BatchKeyNeverMatchesAConsumePayload(t *testing.T) {
 	n, err := newDeadLetterReader(t, adapter, "writer").Count(t.Context(), inbox.DeadLetterFilter{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), n, "each dead letter keeps a row")
+}
+
+func TestDeadLetter_TwoFeedsWithOnePayloadAndNoSubjectStaySeparate(t *testing.T) {
+	adapter := newTestAdapter(t)
+	dlq, err := inbox.NewGormDeadLetter(adapter, "writer")
+	require.NoError(t, err)
+	payload := observationBytes(t, "e")
+	for _, feed := range []string{natstest.ObservationFeed, natstest.MaintainerFeed} {
+		rec := inbox.DeadLetterRecord{Payload: payload, Feed: feed, Reason: inbox.DeadLetterReasonDecode, Segment: natstest.Segment}
+		require.NoError(t, dlq.Store(t.Context(), rec))
+		require.NoError(t, dlq.Store(t.Context(), rec), "a redelivery of one feed keeps one row")
+	}
+
+	n, err := newDeadLetterReader(t, adapter, "writer").Count(t.Context(), inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "each feed keeps its dead letter")
 }
 
 func TestBatchRouter_DeadLettersOfTwoTenantsWithOnePayloadStaySeparate(t *testing.T) {

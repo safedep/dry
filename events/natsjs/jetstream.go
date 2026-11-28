@@ -167,6 +167,7 @@ func EnsureStream(ctx context.Context, js jetstream.JetStream, cfg StreamConfig)
 	d.check("duplicate window", got.Duplicates, want.Duplicates)
 	d.check("subject transform", got.SubjectTransform, want.SubjectTransform)
 	d.check("no ack", got.NoAck, want.NoAck)
+	d.check("deny purge", got.DenyPurge, want.DenyPurge)
 	if err := d.err("stream", cfg.Name); err != nil {
 		return stream, err
 	}
@@ -292,6 +293,9 @@ func EnsureConsumer(ctx context.Context, stream jetstream.Stream, cfg ConsumerCo
 	d.check("max request batch", got.MaxRequestBatch, want.MaxRequestBatch)
 	d.check("max request expires", got.MaxRequestExpires, want.MaxRequestExpires)
 	d.check("max request max bytes", got.MaxRequestMaxBytes, want.MaxRequestMaxBytes)
+	d.check("inactive threshold", got.InactiveThreshold, want.InactiveThreshold)
+	d.check("backoff", len(got.BackOff), 0)
+	d.check("delivery mode", deliveryMode(got), "pull")
 	if err := d.err("consumer", cfg.Durable); err != nil {
 		return consumer, err
 	}
@@ -314,6 +318,16 @@ func UpdateConsumer(ctx context.Context, stream jetstream.Stream, cfg ConsumerCo
 	}
 
 	return consumer, nil
+}
+
+// deliveryMode reads the mode of a consumer from MaxWaiting. The jetstream
+// package does not expose the deliver subject of a push consumer. The server
+// sets a default MaxWaiting on every pull consumer and none on a push consumer.
+func deliveryMode(c jetstream.ConsumerConfig) string {
+	if c.MaxWaiting == 0 {
+		return "push"
+	}
+	return "pull"
 }
 
 type drift []string

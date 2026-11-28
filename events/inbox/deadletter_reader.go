@@ -154,13 +154,20 @@ func (q *gormDeadLetter) recordFailure(ctx context.Context, id uint64, reason De
 	return nil
 }
 
-// DeleteDeadLetters deletes every record that matches f, page by page, and
-// returns how many it deleted. Use it with f.Segment when a tenant is deleted:
-// natsjs.PurgeTenant clears the stream, and the dead letters of the tenant keep
-// its raw payloads until this runs.
+// DeleteDeadLetters deletes every record that matches f, page by page. It
+// returns the number of delete calls that succeeded. A row that a replay
+// deleted at the same time counts too, because Delete is idempotent. Use it with
+// f.Segment when a tenant is deleted: natsjs.PurgeTenant clears the stream, and
+// the dead letters of the tenant keep its raw payloads until this runs.
+//
+// It refuses a filter that selects nothing, because that filter matches every
+// record of the consumer.
 func DeleteDeadLetters(ctx context.Context, reader DeadLetterReader, f DeadLetterFilter) (int, error) {
 	if reader == nil {
 		return 0, errors.New("inbox: delete dead letters: reader is required")
+	}
+	if f.Feed == "" && f.EventID == "" && f.Reason == "" && f.Segment == "" && f.Before.IsZero() {
+		return 0, errors.New("inbox: delete dead letters: the filter selects every record")
 	}
 	deleted := 0
 	for {

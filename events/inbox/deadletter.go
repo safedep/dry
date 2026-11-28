@@ -167,16 +167,17 @@ func payloadFingerprint(payload []byte) string {
 }
 
 // deadLetterKey is the dedup key of a dead letter. The key of a BatchRouter row
-// also covers its source segment and subject. So a row of Consume, or a record of
-// another tenant with the same payload, never shares the row. A row then never
-// changes kind, and the tenant check of BatchRouter.Replay always has the
+// also covers its source segment, feed and subject. A source can leave the
+// subject empty, so the feed is in the key too. A row of Consume, or a record of
+// another tenant or feed with the same payload, never shares the row. A row then
+// never changes kind, and the tenant check of BatchRouter.Replay always has the
 // segment of the record that failed.
 func deadLetterKey(row DeadLetter) string {
 	if !fromBatchRouter(row) {
 		return payloadFingerprint(row.Payload)
 	}
 	h := sha256.New()
-	for _, part := range [][]byte{[]byte("batch"), []byte(row.Segment), []byte(row.Subject), row.Payload} {
+	for _, part := range [][]byte{[]byte("batch"), []byte(row.Segment), []byte(row.Feed), []byte(row.Subject), row.Payload} {
 		var size [8]byte
 		binary.BigEndian.PutUint64(size[:], uint64(len(part)))
 		h.Write(size[:])

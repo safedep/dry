@@ -244,7 +244,9 @@ return the existing stream or consumer with it. A caller can log the drift and
 go on after a deliberate change on the server. They also compare the fields
 that the config does not expose: the stream message limits, publish acks,
 subject transform and purge lock, and the consumer ack policy, headers-only
-mode, pull request limits, inactivity expiry, server backoff and pull mode. Change a
+mode, pull request limits, inactivity expiry, server backoff and pull mode. A
+stream with the purge lock (`DenyPurge`) refuses `PurgeTenant`, and NATS refuses
+an update that removes the lock. Recover with a new stream without the lock. Change a
 stream or a consumer on purpose with `natsjs.UpdateStream` or
 `natsjs.UpdateConsumer`.
 

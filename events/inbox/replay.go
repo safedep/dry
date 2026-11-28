@@ -30,6 +30,9 @@ type ReplayResult struct {
 // when the handler succeeds. It drains every record matching f, paging internally
 // (f.Limit is the page size), and returns a per-record summary.
 //
+// Replay refuses a row that a BatchRouter stored and keeps it parked. Use
+// BatchRouter.Replay for those rows.
+//
 // A record only clears if the handler can now process bytes it previously could
 // not: the earlier failure was transient (e.g. the store was down), or a code
 // change now handles them (e.g. a consumer that now sanitizes a byte its schema
@@ -63,6 +66,14 @@ func Replay[T proto.Message](
 		return ReplayResult{}, errors.New("inbox: replay: newEvent must return a non-nil message")
 	}
 
+	return replayRows(ctx, reader, f, func(ctx context.Context, row DeadLetter) error {
+		return replayOne(ctx, reader, row, newEvent, handler)
+	})
+}
+
+// replayRows pages over the records that match f and calls replay for each.
+func replayRows(ctx context.Context, reader DeadLetterReader, f DeadLetterFilter,
+	replay func(ctx context.Context, row DeadLetter) error) (ReplayResult, error) {
 	var res ReplayResult
 	afterID := f.AfterID
 	for {
@@ -93,7 +104,7 @@ func Replay[T proto.Message](
 				afterID = row.ID
 			}
 			out := ReplayOutcome{ID: row.ID, EventID: row.EventID}
-			if err := replayOne(ctx, reader, row, newEvent, handler); err != nil {
+			if err := replay(ctx, row); err != nil {
 				out.Err = err
 				res.Failed++
 			} else {
@@ -111,6 +122,9 @@ func replayOne[T proto.Message](
 	newEvent func() T,
 	handler Handler[T],
 ) error {
+	if fromBatchRouter(row) {
+		return errors.New("the dead letter comes from a BatchRouter: replay it with BatchRouter.Replay, which checks the tenant")
+	}
 	event := newEvent()
 	if err := proto.Unmarshal(row.Payload, event); err != nil {
 		return fmt.Errorf("decode: %w", err)
@@ -126,4 +140,10 @@ func replayOne[T proto.Message](
 		return fmt.Errorf("delete after replay: %w", err)
 	}
 	return nil
+}
+
+// fromBatchRouter reports a row that a BatchRouter stored. Replay has no subject
+// tenant to check the envelope against, so it must not run the handler for one.
+func fromBatchRouter(row DeadLetter) bool {
+	return reasonOrUnspecified(row.Reason) != DeadLetterReasonUnspecified || row.Subject != "" || row.Segment != ""
 }

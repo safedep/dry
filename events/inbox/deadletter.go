@@ -3,6 +3,7 @@ package inbox
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -34,9 +35,34 @@ type DeadLetter struct {
 	Error        string    `gorm:"column:error"`
 	Attempts     int       `gorm:"column:attempts"`
 	FailedAt     time.Time `gorm:"column:failed_at;index:idx_event_inbox_dead_letter_failed_at"`
+	// Reason is DeadLetterReasonUnspecified on rows from before the column.
+	Reason DeadLetterReason `gorm:"column:reason;not null;default:'unspecified'"`
+	// Subject is the transport subject of a BatchRouter record. It is empty on
+	// rows from before the column and on rows of Consume.
+	Subject string `gorm:"column:subject;not null;default:''"`
+	// Segment is the tenant stream segment id that the source of a BatchRouter
+	// record gave. It is empty on rows from before the column and on rows of
+	// Consume.
+	Segment string `gorm:"column:segment;not null;default:''"`
 }
 
 func (DeadLetter) TableName() string { return "event_inbox_dead_letter" }
+
+// DeadLetterReason says why a consumer dead-lettered a record. Callers filter
+// on it, so the values are stored and must not change.
+type DeadLetterReason string
+
+const (
+	// DeadLetterReasonUnspecified marks a record without a known reason: a row
+	// from before the reason column, or a record of NewRetryPolicy.
+	DeadLetterReasonUnspecified DeadLetterReason = "unspecified"
+	// DeadLetterReasonNoRoute marks a record whose subject has no route.
+	DeadLetterReasonNoRoute DeadLetterReason = "no_route"
+	// DeadLetterReasonDecode marks a record that does not decode to its event.
+	DeadLetterReasonDecode DeadLetterReason = "decode"
+	// DeadLetterReasonHandler marks a record that its handler failed for good.
+	DeadLetterReasonHandler DeadLetterReason = "handler"
+)
 
 // DeadLetterRecord is the input to DeadLetterQueue.Store. Payload is the raw
 // record and the source of truth; EventID and Feed are optional context populated
@@ -50,6 +76,13 @@ type DeadLetterRecord struct {
 	Attempts int
 	EventID  string
 	Feed     string
+	// Reason is DeadLetterReasonUnspecified when empty.
+	Reason DeadLetterReason
+	// Subject is the transport subject of the record, when it has one.
+	Subject string
+	// Segment is the tenant stream segment id that the source of the record gave,
+	// when it has one.
+	Segment string
 }
 
 // DeadLetterQueue persists records a consumer has given up on. It is the sink an
@@ -97,7 +130,6 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 	// zero-length poison record (Store error -> Retry) — reintroducing the stall.
 	row := DeadLetter{
 		ConsumerName: q.consumerName,
-		PayloadHash:  payloadFingerprint(rec.Payload),
 		Feed:         sanitizeForText(rec.Feed),
 		EventID:      sanitizeForText(rec.EventID),
 		Payload:      rec.Payload,
@@ -108,7 +140,11 @@ func (q *gormDeadLetter) Store(ctx context.Context, rec DeadLetterRecord) error 
 		Error:    sanitizeForText(rec.Error),
 		Attempts: rec.Attempts,
 		FailedAt: time.Now(),
+		Reason:   reasonOrUnspecified(rec.Reason),
+		Subject:  sanitizeForText(rec.Subject),
+		Segment:  sanitizeForText(rec.Segment),
 	}
+	row.PayloadHash = deadLetterKey(row)
 	// Idempotent: a redelivered poison record hashes to the same key, so a repeat
 	// dead-letter is a no-op rather than a duplicate row or an error.
 	err := q.db.WithContext(ctx).
@@ -130,6 +166,28 @@ func payloadFingerprint(payload []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// deadLetterKey is the dedup key of a dead letter. The key of a BatchRouter row
+// also covers its source segment, feed and subject. A source can leave the
+// subject empty, so the feed is in the key too. A row of Consume, or a record of
+// another tenant or feed with the same payload, never shares the row. A row then
+// never changes kind, and the tenant check of BatchRouter.Replay always has the
+// segment of the record that failed.
+func deadLetterKey(row DeadLetter) string {
+	if !fromBatchRouter(row) {
+		return payloadFingerprint(row.Payload)
+	}
+	h := sha256.New()
+	for _, part := range [][]byte{[]byte("batch"), []byte(row.Segment), []byte(row.Feed), []byte(row.Subject), row.Payload} {
+		var size [8]byte
+		binary.BigEndian.PutUint64(size[:], uint64(len(part)))
+		h.Write(size[:])
+		h.Write(part)
+	}
+	// The prefix keeps this key apart from the plain payload hash of a Consume
+	// row. A Consume payload can hold the exact bytes that this hash reads.
+	return "batch:" + hex.EncodeToString(h.Sum(nil))
+}
+
 // shortFingerprint abbreviates a payload fingerprint for log lines. The prefix
 // is enough to correlate with a dead-letter row's PayloadHash.
 func shortFingerprint(fp string) string {
@@ -148,4 +206,11 @@ func sanitizeForText(s string) string {
 		return s
 	}
 	return strings.ToValidUTF8(strings.ReplaceAll(s, "\x00", ""), "")
+}
+
+func reasonOrUnspecified(r DeadLetterReason) DeadLetterReason {
+	if r == "" {
+		return DeadLetterReasonUnspecified
+	}
+	return r
 }

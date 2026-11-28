@@ -70,6 +70,19 @@ jobs:
     - name: Generate Code
       run: go generate -v ./...
 
+    # docs/nats_test.md. The version is the production version.
+    - name: Start NATS with JetStream
+      run: |
+        docker run -d --name nats -p 4222:4222 nats:2.12.6-alpine -js
+        for i in $(seq 1 30); do
+          if (exec 3<>/dev/tcp/127.0.0.1/4222) 2>/dev/null; then
+            exit 0
+          fi
+          sleep 1
+        done
+        docker logs nats
+        exit 1
+
     # setup-pmg exports the cloud settings of the PMG of this job. The tests
     # of the cloud package read SAFEDEP_* variables, and they fail with these
     # values. The proxy keeps its own copy, so the unset does not change it.
@@ -80,6 +93,7 @@ jobs:
       env:
         SANDBOX_ENABLE_E2E_TEST: true
         TEST_DOCKER_SANDBOX_SOCKET_PATH: /var/run/docker.sock
+        DRY_NATS_TEST_URL: nats://127.0.0.1:4222
 
     - name: Show sysbox logs
       if: failure()

@@ -174,3 +174,30 @@ func TestDeadLetterReader_DeleteIsScopedAndIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), n)
 }
+
+func TestDeleteDeadLetters_DeletesOneSegment(t *testing.T) {
+	adapter := newTestAdapter(t)
+	seedDeadLetter(t, adapter, "writer",
+		inbox.DeadLetterRecord{Payload: []byte("a1"), Feed: "feed.X", Reason: inbox.DeadLetterReasonHandler, Segment: "tenant-a"},
+		inbox.DeadLetterRecord{Payload: []byte("a2"), Feed: "feed.Y", Reason: inbox.DeadLetterReasonDecode, Segment: "tenant-a"},
+		inbox.DeadLetterRecord{Payload: []byte("b1"), Feed: "feed.X", Reason: inbox.DeadLetterReasonHandler, Segment: "tenant-b"},
+	)
+	reader, err := inbox.NewGormDeadLetterReader(adapter, "writer")
+	require.NoError(t, err)
+
+	_, err = inbox.DeleteDeadLetters(t.Context(), reader, inbox.DeadLetterFilter{})
+	require.Error(t, err, "a filter that selects every record is refused")
+
+	n, err := reader.Count(t.Context(), inbox.DeadLetterFilter{Segment: "tenant-a"})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	deleted, err := inbox.DeleteDeadLetters(t.Context(), reader, inbox.DeadLetterFilter{Segment: "tenant-a", Limit: 1})
+	require.NoError(t, err)
+	assert.Equal(t, 2, deleted, "every page is deleted")
+
+	rows, err := reader.List(t.Context(), inbox.DeadLetterFilter{})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "tenant-b", rows[0].Segment, "the other tenant keeps its dead letter")
+}
